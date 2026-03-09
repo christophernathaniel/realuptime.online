@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileDeleteRequest;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
+use App\Support\OAuthProviderCatalog;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,9 +20,28 @@ class ProfileController extends Controller
      */
     public function edit(Request $request): Response
     {
+        $user = $request->user()->load('connectedAccounts');
+
         return Inertia::render('settings/profile', [
-            'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
+            'mustVerifyEmail' => $user instanceof MustVerifyEmail,
             'status' => $request->session()->get('status'),
+            'oauthProviders' => collect(OAuthProviderCatalog::all())
+                ->map(function (array $provider) use ($user): array {
+                    $account = $user->connectedAccounts()->where('provider', $provider['key'])->first();
+
+                    return [
+                        ...$provider,
+                        'connected' => $account !== null,
+                        'connectedAs' => $account?->provider_email ?: $account?->provider_name,
+                        'avatarUrl' => $account?->avatar_url,
+                        'redirectUrl' => route('oauth.redirect', $provider['key']),
+                        'disconnectUrl' => route('oauth.disconnect', $provider['key']),
+                        'canDisconnect' => $account !== null && ($user->password_login_enabled || $user->connectedAccounts()->count() > 1),
+                    ];
+                })
+                ->values()
+                ->all(),
+            'passwordLoginEnabled' => $user->password_login_enabled,
         ]);
     }
 

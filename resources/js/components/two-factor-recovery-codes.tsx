@@ -2,14 +2,13 @@ import { Form } from '@inertiajs/react';
 import { Eye, EyeOff, LockKeyhole, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AlertError from '@/components/alert-error';
+import { PageCard } from '@/components/monitoring/page-card';
 import { Button } from '@/components/ui/button';
 import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from '@/components/ui/card';
+    surfaceMutedTextClass,
+    surfacePrimaryButtonClass,
+    surfaceSecondaryButtonClass,
+} from '@/lib/realuptime-theme';
 import { regenerateRecoveryCodes } from '@/routes/two-factor';
 
 type Props = {
@@ -53,33 +52,30 @@ export default function TwoFactorRecoveryCodes({
     const RecoveryCodeIconComponent = codesAreVisible ? EyeOff : Eye;
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="flex gap-3">
-                    <LockKeyhole className="size-4" aria-hidden="true" />
-                    2FA recovery codes
-                </CardTitle>
-                <CardDescription>
-                    Recovery codes let you regain access if you lose your 2FA
-                    device. Store them in a secure password manager.
-                </CardDescription>
-            </CardHeader>
-            <CardContent>
-                <div className="flex flex-col gap-3 select-none sm:flex-row sm:items-center sm:justify-between">
+        <PageCard className="p-6 sm:p-7">
+            <div className="space-y-6">
+                <div>
+                    <div className="flex items-center gap-3 text-[20px] font-semibold tracking-[-0.04em] text-white">
+                        <LockKeyhole className="size-5 text-[#3ee072]" />
+                        2FA recovery codes
+                    </div>
+                    <p className="mt-2 text-[14px] leading-6 text-[#8fa0bf]">
+                        Recovery codes let you regain access if you lose your authenticator device. Store them in a secure password manager.
+                    </p>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <Button
                         onClick={toggleCodesVisibility}
-                        className="w-fit"
+                        className={surfacePrimaryButtonClass}
                         aria-expanded={codesAreVisible}
                         aria-controls="recovery-codes-section"
                     >
-                        <RecoveryCodeIconComponent
-                            className="size-4"
-                            aria-hidden="true"
-                        />
+                        <RecoveryCodeIconComponent className="size-4" aria-hidden="true" />
                         {codesAreVisible ? 'Hide' : 'View'} recovery codes
                     </Button>
 
-                    {canRegenerateCodes && (
+                    {canRegenerateCodes ? (
                         <Form
                             {...regenerateRecoveryCodes.form()}
                             options={{ preserveScroll: true }}
@@ -90,27 +86,29 @@ export default function TwoFactorRecoveryCodes({
                                     variant="secondary"
                                     type="submit"
                                     disabled={processing}
+                                    className={surfaceSecondaryButtonClass}
                                     aria-describedby="regenerate-warning"
                                 >
-                                    <RefreshCw /> Regenerate codes
+                                    <RefreshCw className="size-4" /> Regenerate codes
                                 </Button>
                             )}
                         </Form>
-                    )}
+                    ) : null}
                 </div>
+
                 <div
                     id="recovery-codes-section"
                     className={`relative overflow-hidden transition-all duration-300 ${codesAreVisible ? 'h-auto opacity-100' : 'h-0 opacity-0'}`}
                     aria-hidden={!codesAreVisible}
                 >
-                    <div className="mt-3 space-y-3">
+                    <div className="space-y-3">
                         {errors?.length ? (
                             <AlertError errors={errors} />
                         ) : (
                             <>
                                 <div
                                     ref={codesSectionRef}
-                                    className="grid gap-1 rounded-lg bg-muted p-4 font-mono text-sm"
+                                    className="grid gap-2 rounded-[22px] border border-white/8 bg-[#081428] p-5 font-mono text-sm text-[#dce6fb]"
                                     role="list"
                                     aria-label="Recovery codes"
                                 >
@@ -119,7 +117,7 @@ export default function TwoFactorRecoveryCodes({
                                             <div
                                                 key={index}
                                                 role="listitem"
-                                                className="select-text"
+                                                className="select-text rounded-[10px] bg-white/3 px-3 py-2"
                                             >
                                                 {code}
                                             </div>
@@ -129,36 +127,27 @@ export default function TwoFactorRecoveryCodes({
                                             className="space-y-2"
                                             aria-label="Loading recovery codes"
                                         >
-                                            {Array.from(
-                                                { length: 8 },
-                                                (_, index) => (
-                                                    <div
-                                                        key={index}
-                                                        className="h-4 animate-pulse rounded bg-muted-foreground/20"
-                                                        aria-hidden="true"
-                                                    />
-                                                ),
-                                            )}
+                                            {Array.from({ length: 8 }, (_, index) => (
+                                                <div
+                                                    key={index}
+                                                    className="h-4 animate-pulse rounded bg-white/8"
+                                                    aria-hidden="true"
+                                                />
+                                            ))}
                                         </div>
                                     )}
                                 </div>
 
-                                <div className="text-xs text-muted-foreground select-none">
+                                <div className={surfaceMutedTextClass}>
                                     <p id="regenerate-warning">
-                                        Each recovery code can be used once to
-                                        access your account and will be removed
-                                        after use. If you need more, click{' '}
-                                        <span className="font-bold">
-                                            Regenerate codes
-                                        </span>{' '}
-                                        above.
+                                        Each recovery code can be used once. If you need a fresh set, regenerate them after storing the new list somewhere secure.
                                     </p>
                                 </div>
                             </>
                         )}
                     </div>
                 </div>
-            </CardContent>
-        </Card>
+            </div>
+        </PageCard>
     );
 }

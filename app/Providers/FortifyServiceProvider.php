@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Support\OAuthProviderCatalog;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -50,6 +51,7 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::loginView(fn (Request $request) => Inertia::render('auth/login', [
             'canResetPassword' => Features::enabled(Features::resetPasswords()),
             'canRegister' => Features::enabled(Features::registration()),
+            'oauthProviders' => $this->oauthProviders(),
             'status' => $request->session()->get('status'),
         ]));
 
@@ -66,7 +68,9 @@ class FortifyServiceProvider extends ServiceProvider
             'status' => $request->session()->get('status'),
         ]));
 
-        Fortify::registerView(fn () => Inertia::render('auth/register'));
+        Fortify::registerView(fn () => Inertia::render('auth/register', [
+            'oauthProviders' => $this->oauthProviders(),
+        ]));
 
         Fortify::twoFactorChallengeView(fn () => Inertia::render('auth/two-factor-challenge'));
 
@@ -87,5 +91,19 @@ class FortifyServiceProvider extends ServiceProvider
 
             return Limit::perMinute(5)->by($throttleKey);
         });
+    }
+
+    /**
+     * @return array<int, array{key: string, label: string, enabled: bool, redirectUrl: string}>
+     */
+    private function oauthProviders(): array
+    {
+        return collect(OAuthProviderCatalog::all())
+            ->map(fn (array $provider) => [
+                ...$provider,
+                'redirectUrl' => route('oauth.redirect', $provider['key']),
+            ])
+            ->values()
+            ->all();
     }
 }

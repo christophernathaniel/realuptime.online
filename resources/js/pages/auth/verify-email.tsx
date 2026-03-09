@@ -1,44 +1,57 @@
-// Components
 import { Form, Head } from '@inertiajs/react';
 import TextLink from '@/components/text-link';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import AuthLayout from '@/layouts/auth-layout';
-import { logout } from '@/routes';
+import {
+    surfaceInfoClass,
+    surfacePrimaryButtonClass,
+    surfaceSuccessClass,
+} from '@/lib/realuptime-theme';
 import { send } from '@/routes/verification';
 
 export default function VerifyEmail({ status }: { status?: string }) {
     return (
         <AuthLayout
-            title="Verify email"
-            description="Please verify your email address by clicking on the link we just emailed to you."
+            title="Verify your email"
+            description="Confirm your inbox before you manage monitors and notifications."
         >
             <Head title="Email verification" />
 
-            {status === 'verification-link-sent' && (
-                <div className="mb-4 text-center text-sm font-medium text-green-600">
-                    A new verification link has been sent to the email address
-                    you provided during registration.
+            <div className="space-y-5">
+                <div className={surfaceInfoClass}>
+                    Please verify your email address by clicking the link we just sent. This protects monitor ownership, email alerts, and account recovery.
                 </div>
-            )}
 
-            <Form {...send.form()} className="space-y-6 text-center">
-                {({ processing }) => (
-                    <>
-                        <Button disabled={processing} variant="secondary">
-                            {processing && <Spinner />}
-                            Resend verification email
-                        </Button>
+                {status === 'verification-link-sent' ? (
+                    <div className={surfaceSuccessClass}>
+                        A new verification link has been sent to your email address.
+                    </div>
+                ) : null}
 
-                        <TextLink
-                            href={logout()}
-                            className="mx-auto block text-sm"
-                        >
-                            Log out
-                        </TextLink>
-                    </>
-                )}
-            </Form>
+                <Form {...send.form()} className="space-y-4 text-center">
+                    {({ processing }) => (
+                        <>
+                            <Button
+                                disabled={processing}
+                                className={`${surfacePrimaryButtonClass} w-full`}
+                            >
+                                {processing ? <Spinner /> : null}
+                                Resend verification email
+                            </Button>
+
+                            <TextLink
+                                href="/logout"
+                                method="post"
+                                as="button"
+                                className="mx-auto block text-sm"
+                            >
+                                Log out
+                            </TextLink>
+                        </>
+                    )}
+                </Form>
+            </div>
         </AuthLayout>
     );
 }

@@ -25,6 +25,7 @@ class PasswordController extends Controller
     {
         $request->user()->update([
             'password' => $request->password,
+            'password_login_enabled' => true,
         ]);
 
         return back();

@@ -141,3 +141,31 @@
         @apply bg-background text-foreground;
     }
 }
+
+@layer utilities {
+    @media (min-width: 1024px) {
+        .monitoring-page {
+            zoom: 0.84;
+        }
+
+        .monitoring-sidebar-inner {
+            zoom: 0.92;
+        }
+    }
+
+    @supports not (zoom: 1) {
+        @media (min-width: 1024px) {
+            .monitoring-page {
+                transform: scale(0.84);
+                transform-origin: top left;
+                width: calc(100% / 0.84);
+            }
+
+            .monitoring-sidebar-inner {
+                transform: scale(0.92);
+                transform-origin: top left;
+                width: calc(100% / 0.92);
+            }
+        }
+    }
+}

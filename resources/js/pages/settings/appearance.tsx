@@ -1,35 +1,33 @@
 import { Head } from '@inertiajs/react';
 import AppearanceTabs from '@/components/appearance-tabs';
-import Heading from '@/components/heading';
-import AppLayout from '@/layouts/app-layout';
+import { PageCard } from '@/components/monitoring/page-card';
+import MonitoringLayout from '@/layouts/monitoring-layout';
 import SettingsLayout from '@/layouts/settings/layout';
-import { edit as editAppearance } from '@/routes/appearance';
-import type { BreadcrumbItem } from '@/types';
-
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Appearance settings',
-        href: editAppearance(),
-    },
-];
 
 export default function Appearance() {
     return (
-        <AppLayout breadcrumbs={breadcrumbs}>
+        <MonitoringLayout>
             <Head title="Appearance settings" />
 
-            <h1 className="sr-only">Appearance settings</h1>
+            <SettingsLayout
+                title="Appearance"
+                description="Choose how RealUptime should render the interface on this device."
+            >
+                <PageCard className="p-6 sm:p-7">
+                    <div className="space-y-6">
+                        <div>
+                            <h2 className="text-[20px] font-semibold tracking-[-0.04em] text-white">
+                                Theme preference
+                            </h2>
+                            <p className="mt-2 text-[14px] leading-6 text-[#8fa0bf]">
+                                Pick the interface mode that feels right for long sessions in the monitoring dashboard.
+                            </p>
+                        </div>
 
-            <SettingsLayout>
-                <div className="space-y-6">
-                    <Heading
-                        variant="small"
-                        title="Appearance settings"
-                        description="Update your account's appearance settings"
-                    />
-                    <AppearanceTabs />
-                </div>
+                        <AppearanceTabs />
+                    </div>
+                </PageCard>
             </SettingsLayout>
-        </AppLayout>
+        </MonitoringLayout>
     );
 }

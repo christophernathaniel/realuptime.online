@@ -1,5 +1,6 @@
 import { Form, Head } from '@inertiajs/react';
 import InputError from '@/components/input-error';
+import { OAuthProviderButtons } from '@/components/oauth-provider-buttons';
 import TextLink from '@/components/text-link';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -7,27 +8,51 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import AuthLayout from '@/layouts/auth-layout';
-import { register } from '@/routes';
+import {
+    surfaceCheckboxClass,
+    surfaceInputClass,
+    surfaceLabelClass,
+    surfaceMutedTextClass,
+    surfacePrimaryButtonClass,
+    surfaceSuccessClass,
+} from '@/lib/realuptime-theme';
 import { store } from '@/routes/login';
-import { request } from '@/routes/password';
 
 type Props = {
     status?: string;
     canResetPassword: boolean;
     canRegister: boolean;
+    oauthProviders: Array<{
+        key: string;
+        label: string;
+        enabled: boolean;
+        redirectUrl: string;
+    }>;
 };
 
 export default function Login({
     status,
     canResetPassword,
     canRegister,
+    oauthProviders,
 }: Props) {
     return (
         <AuthLayout
-            title="Log in to your account"
-            description="Enter your email and password below to log in"
+            title="Sign in"
+            description="Access your monitoring workspace, incidents, email alerts, and status pages."
+            variant="form-only"
         >
             <Head title="Log in" />
+
+            {status ? <div className={surfaceSuccessClass}>{status}</div> : null}
+
+            <OAuthProviderButtons providers={oauthProviders} className="mb-6" />
+
+            <div className="mb-6 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.26em] text-[#6f82a3]">
+                <span className="h-px flex-1 bg-white/8" />
+                Or use email
+                <span className="h-px flex-1 bg-white/8" />
+            </div>
 
             <Form
                 {...store.form()}
@@ -36,9 +61,11 @@ export default function Login({
             >
                 {({ processing, errors }) => (
                     <>
-                        <div className="grid gap-6">
-                            <div className="grid gap-2">
-                                <Label htmlFor="email">Email address</Label>
+                        <div className="grid gap-5">
+                            <div className="grid gap-2.5">
+                                <Label htmlFor="email" className={surfaceLabelClass}>
+                                    Email address
+                                </Label>
                                 <Input
                                     id="email"
                                     type="email"
@@ -48,22 +75,25 @@ export default function Login({
                                     tabIndex={1}
                                     autoComplete="email"
                                     placeholder="email@example.com"
+                                    className={surfaceInputClass}
                                 />
                                 <InputError message={errors.email} />
                             </div>
 
-                            <div className="grid gap-2">
-                                <div className="flex items-center">
-                                    <Label htmlFor="password">Password</Label>
-                                    {canResetPassword && (
+                            <div className="grid gap-2.5">
+                                <div className="flex items-center gap-3">
+                                    <Label htmlFor="password" className={surfaceLabelClass}>
+                                        Password
+                                    </Label>
+                                    {canResetPassword ? (
                                         <TextLink
-                                            href={request()}
+                                            href="/forgot-password"
                                             className="ml-auto text-sm"
                                             tabIndex={5}
                                         >
                                             Forgot password?
                                         </TextLink>
-                                    )}
+                                    ) : null}
                                 </div>
                                 <Input
                                     id="password"
@@ -73,48 +103,46 @@ export default function Login({
                                     tabIndex={2}
                                     autoComplete="current-password"
                                     placeholder="Password"
+                                    className={surfaceInputClass}
                                 />
                                 <InputError message={errors.password} />
                             </div>
 
-                            <div className="flex items-center space-x-3">
+                            <div className="flex items-center gap-3 rounded-[18px] border border-white/8 bg-[#101b2f]/72 px-4 py-3">
                                 <Checkbox
                                     id="remember"
                                     name="remember"
                                     tabIndex={3}
+                                    className={surfaceCheckboxClass}
                                 />
-                                <Label htmlFor="remember">Remember me</Label>
+                                <Label htmlFor="remember" className="text-sm text-[#dce6fb]">
+                                    Keep this device signed in
+                                </Label>
                             </div>
 
                             <Button
                                 type="submit"
-                                className="mt-4 w-full"
+                                className={surfacePrimaryButtonClass}
                                 tabIndex={4}
                                 disabled={processing}
                                 data-test="login-button"
                             >
-                                {processing && <Spinner />}
+                                {processing ? <Spinner /> : null}
                                 Log in
                             </Button>
                         </div>
 
-                        {canRegister && (
-                            <div className="text-center text-sm text-muted-foreground">
-                                Don't have an account?{' '}
-                                <TextLink href={register()} tabIndex={5}>
-                                    Sign up
+                        {canRegister ? (
+                            <div className={`text-center ${surfaceMutedTextClass}`}>
+                                Don&apos;t have an account?{' '}
+                                <TextLink href="/register" tabIndex={5}>
+                                    Create one
                                 </TextLink>
                             </div>
-                        )}
+                        ) : null}
                     </>
                 )}
             </Form>
-
-            {status && (
-                <div className="mb-4 text-center text-sm font-medium text-green-600">
-                    {status}
-                </div>
-            )}
         </AuthLayout>
     );
 }

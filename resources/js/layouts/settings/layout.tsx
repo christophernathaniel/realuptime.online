@@ -1,8 +1,7 @@
 import { Link } from '@inertiajs/react';
+import { CreditCard, KeyRound, Laptop2, Palette, ShieldCheck, UserRound } from 'lucide-react';
 import type { PropsWithChildren } from 'react';
-import Heading from '@/components/heading';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
+import { PageCard } from '@/components/monitoring/page-card';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn, toUrl } from '@/lib/utils';
 import { edit as editAppearance } from '@/routes/appearance';
@@ -11,78 +10,133 @@ import { show } from '@/routes/two-factor';
 import { edit as editPassword } from '@/routes/user-password';
 import type { NavItem } from '@/types';
 
-const sidebarNavItems: NavItem[] = [
+const sidebarNavItems: Array<NavItem & { description: string; icon: typeof UserRound }> = [
     {
         title: 'Profile',
         href: edit(),
-        icon: null,
+        icon: UserRound,
+        description: 'Identity and sign-in providers',
     },
     {
         title: 'Password',
         href: editPassword(),
-        icon: null,
+        icon: KeyRound,
+        description: 'Password updates and protection',
     },
     {
         title: 'Two-factor auth',
         href: show(),
-        icon: null,
+        icon: ShieldCheck,
+        description: 'Authenticator setup and recovery',
+    },
+    {
+        title: 'Sessions',
+        href: '/settings/sessions',
+        icon: Laptop2,
+        description: 'Manage signed-in devices',
+    },
+    {
+        title: 'Membership',
+        href: '/settings/membership',
+        icon: CreditCard,
+        description: 'Plans, limits, and Stripe billing',
     },
     {
         title: 'Appearance',
         href: editAppearance(),
-        icon: null,
+        icon: Palette,
+        description: 'Theme preferences',
     },
 ];
 
-export default function SettingsLayout({ children }: PropsWithChildren) {
+type SettingsLayoutProps = PropsWithChildren<{
+    title: string;
+    description: string;
+}>;
+
+export default function SettingsLayout({
+    children,
+    title,
+    description,
+}: SettingsLayoutProps) {
     const { isCurrentOrParentUrl } = useCurrentUrl();
 
-    // When server-side rendering, we only render the layout on the client...
     if (typeof window === 'undefined') {
         return null;
     }
 
     return (
-        <div className="px-4 py-6">
-            <Heading
-                title="Settings"
-                description="Manage your profile and account settings"
-            />
+        <div className="space-y-6">
+            <div className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#667998]">
+                    Settings
+                </p>
+                <h1 className="text-[32px] font-semibold tracking-[-0.05em] text-white sm:text-[38px]">
+                    {title}
+                    <span className="text-[#3ee072]">.</span>
+                </h1>
+                <p className="max-w-2xl text-[15px] leading-7 text-[#8fa0bf]">
+                    {description}
+                </p>
+            </div>
 
-            <div className="flex flex-col lg:flex-row lg:space-x-12">
-                <aside className="w-full max-w-xl lg:w-48">
-                    <nav
-                        className="flex flex-col space-y-1 space-x-0"
-                        aria-label="Settings"
-                    >
-                        {sidebarNavItems.map((item, index) => (
-                            <Button
-                                key={`${toUrl(item.href)}-${index}`}
-                                size="sm"
-                                variant="ghost"
-                                asChild
-                                className={cn('w-full justify-start', {
-                                    'bg-muted': isCurrentOrParentUrl(item.href),
-                                })}
-                            >
-                                <Link href={item.href}>
-                                    {item.icon && (
-                                        <item.icon className="h-4 w-4" />
+            <div className="grid gap-6 xl:grid-cols-[260px,minmax(0,1fr)]">
+                <PageCard className="h-fit p-3">
+                    <div className="mb-3 px-2 pt-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#61718f]">
+                            Account center
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-[#9badca]">
+                            Manage identity, security, devices, and appearance from the same workspace shell.
+                        </p>
+                    </div>
+
+                    <nav className="space-y-1.5" aria-label="Settings">
+                        {sidebarNavItems.map((item, index) => {
+                            const Icon = item.icon;
+                            const active = isCurrentOrParentUrl(item.href);
+
+                            return (
+                                <Link
+                                    key={`${toUrl(item.href)}-${index}`}
+                                    href={item.href}
+                                    className={cn(
+                                        'flex items-start gap-3 rounded-[18px] px-3 py-3 transition',
+                                        active
+                                            ? 'bg-[#0d172a] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]'
+                                            : 'text-[#c9d5ec] hover:bg-white/5 hover:text-white',
                                     )}
-                                    {item.title}
+                                >
+                                    <span
+                                        className={cn(
+                                            'mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-[14px] border',
+                                            active
+                                                ? 'border-[#3ee072]/35 bg-[#0a1324] text-[#3ee072]'
+                                                : 'border-white/8 bg-[#101b2f] text-[#7183a5]',
+                                        )}
+                                    >
+                                        <Icon className="size-4" />
+                                    </span>
+                                    <span className="min-w-0">
+                                        <span className="block text-[14px] font-semibold">
+                                            {item.title}
+                                        </span>
+                                        <span
+                                            className={cn(
+                                                'mt-1 block text-[12px] leading-5',
+                                                active ? 'text-[#8fa0bf]' : 'text-[#7081a2]',
+                                            )}
+                                        >
+                                            {item.description}
+                                        </span>
+                                    </span>
                                 </Link>
-                            </Button>
-                        ))}
+                            );
+                        })}
                     </nav>
-                </aside>
+                </PageCard>
 
-                <Separator className="my-6 lg:hidden" />
-
-                <div className="flex-1 md:max-w-2xl">
-                    <section className="max-w-xl space-y-12">
-                        {children}
-                    </section>
-                </div>
+                <div className="space-y-6">{children}</div>
             </div>
         </div>
     );

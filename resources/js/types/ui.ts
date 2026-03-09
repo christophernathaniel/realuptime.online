@@ -11,4 +11,5 @@ export type AuthLayoutProps = {
     name?: string;
     title?: string;
     description?: string;
+    variant?: 'full' | 'form-only';
 };

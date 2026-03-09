@@ -1,0 +1,88 @@
+import { Head, Link } from '@inertiajs/react';
+import { PageCard } from '@/components/monitoring/page-card';
+import MonitoringLayout from '@/layouts/monitoring-layout';
+
+type IncidentsPageProps = {
+    summary: {
+        open: number;
+        resolved: number;
+        last7Days: number;
+    };
+    incidents: Array<{
+        id: number;
+        monitor: string;
+        monitorUrl: string;
+        showUrl: string;
+        startedAt: string;
+        endedAt: string;
+        duration: string;
+        reason: string;
+        status: string;
+        typeLabel: string;
+        severityLabel: string;
+    }>;
+};
+
+export default function IncidentsPage({ summary, incidents }: IncidentsPageProps) {
+    return (
+        <MonitoringLayout>
+            <Head title="Incidents" />
+            <div className="space-y-6">
+                <h1 className="text-[56px] font-semibold tracking-[-0.06em] text-white">
+                    Incidents<span className="text-[#3ee072]">.</span>
+                </h1>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                    <PageCard className="p-7">
+                        <div className="text-lg text-[#8fa0bf]">Open</div>
+                        <div className="mt-3 text-[52px] font-semibold tracking-[-0.05em] text-white">{summary.open}</div>
+                    </PageCard>
+                    <PageCard className="p-7">
+                        <div className="text-lg text-[#8fa0bf]">Resolved</div>
+                        <div className="mt-3 text-[52px] font-semibold tracking-[-0.05em] text-white">{summary.resolved}</div>
+                    </PageCard>
+                    <PageCard className="p-7">
+                        <div className="text-lg text-[#8fa0bf]">Last 7 days</div>
+                        <div className="mt-3 text-[52px] font-semibold tracking-[-0.05em] text-white">{summary.last7Days}</div>
+                    </PageCard>
+                </div>
+
+                <PageCard className="p-8">
+                    <div className="space-y-4">
+                        {incidents.length === 0 ? (
+                            <div className="text-[18px] text-[#8fa0bf]">No incidents have been recorded yet.</div>
+                        ) : (
+                            incidents.map((incident) => (
+                                <div key={incident.id} className="rounded-[20px] bg-[#111a2c] px-5 py-5 transition hover:bg-[#162139]">
+                                    <div className="flex flex-wrap items-center justify-between gap-3 text-[20px] text-white">
+                                        <span className="flex flex-wrap items-center gap-3">
+                                            <Link href={incident.monitorUrl} className="hover:text-[#3ee072]">
+                                                {incident.monitor}
+                                            </Link>
+                                            <span className="rounded-full bg-[#0d1628] px-3 py-1 text-[12px] text-[#9bb4ff]">
+                                                {incident.typeLabel}
+                                            </span>
+                                            <span className="rounded-full bg-[#261826] px-3 py-1 text-[12px] text-[#ffd4d7]">
+                                                {incident.severityLabel}
+                                            </span>
+                                        </span>
+                                        <div className="flex items-center gap-4">
+                                            <div className="text-[#3ee072]">{incident.status}</div>
+                                            <Link href={incident.showUrl} className="text-[14px] text-[#9bb4ff] hover:text-white">
+                                                View details
+                                            </Link>
+                                        </div>
+                                    </div>
+                                    <div className="mt-2 text-[18px] text-[#d9e3f8]">{incident.reason}</div>
+                                    <div className="mt-2 text-[16px] text-[#8fa0bf]">
+                                        {incident.startedAt} to {incident.endedAt} • {incident.duration}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </PageCard>
+            </div>
+        </MonitoringLayout>
+    );
+}

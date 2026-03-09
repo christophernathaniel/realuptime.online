@@ -11,6 +11,12 @@ import {
 } from '@/components/ui/input-otp';
 import { OTP_MAX_LENGTH } from '@/hooks/use-two-factor-auth';
 import AuthLayout from '@/layouts/auth-layout';
+import {
+    surfaceInputClass,
+    surfaceInfoClass,
+    surfaceMutedTextClass,
+    surfacePrimaryButtonClass,
+} from '@/lib/realuptime-theme';
 import { store } from '@/routes/two-factor/login';
 
 export default function TwoFactorChallenge() {
@@ -26,16 +32,16 @@ export default function TwoFactorChallenge() {
             return {
                 title: 'Recovery code',
                 description:
-                    'Please confirm access to your account by entering one of your emergency recovery codes.',
-                toggleText: 'login using an authentication code',
+                    'Confirm access by entering one of your emergency recovery codes.',
+                toggleText: 'use an authentication code instead',
             };
         }
 
         return {
             title: 'Authentication code',
             description:
-                'Enter the authentication code provided by your authenticator application.',
-            toggleText: 'login using a recovery code',
+                'Enter the code from your authenticator app to finish signing in.',
+            toggleText: 'use a recovery code instead',
         };
     }, [showRecoveryInput]);
 
@@ -53,30 +59,33 @@ export default function TwoFactorChallenge() {
             <Head title="Two-factor authentication" />
 
             <div className="space-y-6">
+                <div className={surfaceInfoClass}>
+                    Two-factor authentication is enabled for this account. Finish the challenge to access your monitoring workspace.
+                </div>
+
                 <Form
                     {...store.form()}
-                    className="space-y-4"
+                    className="space-y-5"
                     resetOnError
                     resetOnSuccess={!showRecoveryInput}
                 >
                     {({ errors, processing, clearErrors }) => (
                         <>
                             {showRecoveryInput ? (
-                                <>
+                                <div className="space-y-2.5">
                                     <Input
                                         name="recovery_code"
                                         type="text"
                                         placeholder="Enter recovery code"
                                         autoFocus={showRecoveryInput}
                                         required
+                                        className={surfaceInputClass}
                                     />
-                                    <InputError
-                                        message={errors.recovery_code}
-                                    />
-                                </>
+                                    <InputError message={errors.recovery_code} />
+                                </div>
                             ) : (
-                                <div className="flex flex-col items-center justify-center space-y-3 text-center">
-                                    <div className="flex w-full items-center justify-center">
+                                <div className="space-y-4 text-center">
+                                    <div className="flex justify-center">
                                         <InputOTP
                                             name="code"
                                             maxLength={OTP_MAX_LENGTH}
@@ -85,13 +94,14 @@ export default function TwoFactorChallenge() {
                                             disabled={processing}
                                             pattern={REGEXP_ONLY_DIGITS}
                                         >
-                                            <InputOTPGroup>
+                                            <InputOTPGroup className="gap-2">
                                                 {Array.from(
                                                     { length: OTP_MAX_LENGTH },
                                                     (_, index) => (
                                                         <InputOTPSlot
                                                             key={index}
                                                             index={index}
+                                                            className="h-12 w-12 rounded-[16px] border border-white/10 bg-[#081428] text-base text-white shadow-none first:rounded-[16px] first:border first:border-white/10 last:rounded-[16px] last:border"
                                                         />
                                                     ),
                                                 )}
@@ -104,20 +114,18 @@ export default function TwoFactorChallenge() {
 
                             <Button
                                 type="submit"
-                                className="w-full"
+                                className={`${surfacePrimaryButtonClass} w-full`}
                                 disabled={processing}
                             >
                                 Continue
                             </Button>
 
-                            <div className="text-center text-sm text-muted-foreground">
-                                <span>or you can </span>
+                            <div className={`text-center ${surfaceMutedTextClass}`}>
+                                Or{' '}
                                 <button
                                     type="button"
-                                    className="cursor-pointer text-foreground underline decoration-neutral-300 underline-offset-4 transition-colors duration-300 ease-out hover:decoration-current! dark:decoration-neutral-500"
-                                    onClick={() =>
-                                        toggleRecoveryMode(clearErrors)
-                                    }
+                                    className="cursor-pointer text-[#3ee072] underline decoration-[#3ee072]/35 underline-offset-4 transition-colors hover:text-[#7ff3a0]"
+                                    onClick={() => toggleRecoveryMode(clearErrors)}
                                 >
                                     {authConfigContent.toggleText}
                                 </button>
