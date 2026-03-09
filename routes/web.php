@@ -29,8 +29,7 @@ Route::get('/terms-and-conditions', [MarketingPageController::class, 'terms'])->
 Route::post('heartbeat/{token}', [HeartbeatController::class, 'store'])->name('heartbeat.store');
 Route::get('auth/{provider}/redirect', [OAuthController::class, 'redirect'])->name('oauth.redirect');
 Route::get('auth/{provider}/callback', [OAuthController::class, 'callback'])->name('oauth.callback');
-Route::get('status/{user}/{statusPage:slug}', [PublicStatusPageController::class, 'show'])
-    ->scopeBindings()
+Route::get('status/{ownerKey}/{statusPage}', [PublicStatusPageController::class, 'show'])
     ->name('public-status-pages.show');
 
 Route::middleware(['auth'])->group(function () {

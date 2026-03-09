@@ -12,6 +12,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Cashier\Billable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
+use RuntimeException;
 
 class User extends Authenticatable
 {
@@ -27,6 +28,7 @@ class User extends Authenticatable
         'name',
         'email',
         'email_verified_at',
+        'public_status_key',
         'password',
         'password_login_enabled',
         'is_admin',
@@ -62,6 +64,15 @@ class User extends Authenticatable
             'admin_plan_assigned_at' => 'datetime',
             'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $user): void {
+            if (blank($user->public_status_key)) {
+                $user->public_status_key = static::generatePublicStatusKey();
+            }
+        });
     }
 
     public function monitors(): HasMany
@@ -191,5 +202,20 @@ class User extends Authenticatable
     public function hasReachedMonitorLimit(?self $actor = null): bool
     {
         return $this->monitors()->count() >= $this->monitorLimit();
+    }
+
+    protected static function generatePublicStatusKey(): string
+    {
+        for ($attempt = 0; $attempt < 10; $attempt++) {
+            $key = collect(range(1, 4))
+                ->map(fn (): string => str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT))
+                ->implode('');
+
+            if (! static::query()->where('public_status_key', $key)->exists()) {
+                return $key;
+            }
+        }
+
+        throw new RuntimeException('Unable to generate a unique public status key.');
     }
 }

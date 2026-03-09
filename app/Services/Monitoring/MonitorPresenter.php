@@ -163,7 +163,7 @@ class MonitorPresenter
                     'name' => $statusPage->name,
                     'slug' => $statusPage->slug,
                     'published' => $statusPage->published,
-                    'publicUrl' => route('public-status-pages.show', ['user' => $statusPage->user_id, 'statusPage' => $statusPage->slug]),
+                    'publicUrl' => $this->publicStatusPageUrl($statusPage),
                 ])->all(),
             ],
         ];
@@ -363,7 +363,7 @@ class MonitorPresenter
                 'monitorCount' => $statusPage->monitors->count(),
                 'monitorIds' => $statusPage->monitors->pluck('id')->all(),
                 'monitorNames' => $statusPage->monitors->pluck('name')->take(4)->values()->all(),
-                'publicUrl' => route('public-status-pages.show', ['user' => $user->id, 'statusPage' => $statusPage->slug]),
+                'publicUrl' => $this->publicStatusPageUrl($statusPage),
                 'updatedLabel' => $this->timeAgo($this->latestStatusPageActivityAt($statusPage, $statusPage->monitors)),
                 'incidents' => $statusPage->incidents
                     ->map(fn (StatusPageIncident $incident) => $this->statusPageIncidentItem($incident))
@@ -1613,6 +1613,16 @@ class MonitorPresenter
         }
 
         return $incident->severity === Incident::SEVERITY_CRITICAL ? 'Critical' : 'Open';
+    }
+
+    protected function publicStatusPageUrl(StatusPage $statusPage): string
+    {
+        $statusPage->loadMissing('user:id,public_status_key');
+
+        return route('public-status-pages.show', [
+            'ownerKey' => $statusPage->user?->public_status_key,
+            'statusPage' => $statusPage->slug,
+        ]);
     }
 
     /**

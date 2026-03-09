@@ -94,7 +94,7 @@ it('creates a public status page and renders it without authentication', functio
 
     expect($statusPage)->not->toBeNull();
 
-    $this->get("/status/{$user->id}/primary-status")
+    $this->get("/status/{$user->public_status_key}/primary-status")
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('monitoring/public-status')
@@ -153,13 +153,13 @@ it('scopes public status pages by user so matching slugs can coexist', function 
         ])
         ->assertRedirect('/status-pages');
 
-    $this->get("/status/{$firstUser->id}/primary-status")
+    $this->get("/status/{$firstUser->public_status_key}/primary-status")
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('monitoring/public-status')
             ->where('statusPage.headline', 'First primary status'));
 
-    $this->get("/status/{$secondUser->id}/primary-status")
+    $this->get("/status/{$secondUser->public_status_key}/primary-status")
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('monitoring/public-status')

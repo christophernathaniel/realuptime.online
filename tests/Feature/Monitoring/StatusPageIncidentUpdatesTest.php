@@ -60,7 +60,7 @@ it('creates public status page incident posts and renders them publicly', functi
         ])
         ->assertRedirect();
 
-    $this->get("/status/{$user->id}/primary-status")
+    $this->get("/status/{$user->public_status_key}/primary-status")
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('monitoring/public-status')
@@ -136,7 +136,7 @@ it('renders public status pages from live monitor checks and active maintenance 
         'updated_at' => $now->subHour(),
     ])->saveQuietly();
 
-    $this->get("/status/{$user->id}/checkout-status")
+    $this->get("/status/{$user->public_status_key}/checkout-status")
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('monitoring/public-status')
