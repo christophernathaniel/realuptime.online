@@ -2,7 +2,6 @@ import { Head, Link, usePage } from '@inertiajs/react';
 import {
     ArrowUpDown,
     Filter,
-    MoreHorizontal,
     Plus,
     Search,
 } from 'lucide-react';
@@ -15,6 +14,7 @@ import MonitoringLayout from '@/layouts/monitoring-layout';
 import { cn } from '@/lib/utils';
 import type {
     AggregateWindowStats,
+    CapabilityHealth,
     MonitorListItem,
     MonitorSummary,
 } from '@/types/monitoring';
@@ -22,12 +22,14 @@ import type {
 type MonitorsIndexProps = {
     summary: MonitorSummary;
     last24Hours: AggregateWindowStats;
+    capabilities: CapabilityHealth[];
     monitors: MonitorListItem[];
 };
 
 export default function MonitorsIndex({
     summary,
     last24Hours,
+    capabilities,
     monitors,
 }: MonitorsIndexProps) {
     const page = usePage<{
@@ -136,6 +138,58 @@ export default function MonitorsIndex({
                         </div>
                     </div>
 
+                    <PageCard className="space-y-4 p-5">
+                        <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+                            <div>
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#7f8b9b]">
+                                    Customer-facing capabilities
+                                </div>
+                                <div className="mt-2 text-[22px] font-semibold tracking-[-0.05em] text-white">
+                                    User impact view<span className="text-[#7c8cff]">.</span>
+                                </div>
+                                <div className="mt-1 text-sm text-[#9ca7b9]">
+                                    Group checks into capabilities like sign in, checkout, or webhook delivery so incidents show customer impact, not just raw failures.
+                                </div>
+                            </div>
+                        </div>
+
+                        {capabilities.length === 0 ? (
+                            <div className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4 text-sm text-[#9ca7b9]">
+                                No capabilities have been mapped yet. Add capability labels from a check editor to build an impact-oriented status layer.
+                            </div>
+                        ) : (
+                            <div className="grid gap-4 xl:grid-cols-3">
+                                {capabilities.slice(0, 6).map((capability) => (
+                                    <div key={capability.id} className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <div className="text-[17px] font-semibold text-white">{capability.name}</div>
+                                                <div className="mt-1 text-sm text-[#9ca7b9]">{capability.regions}</div>
+                                            </div>
+                                            <span
+                                                className={cn(
+                                                    'rounded-full px-3 py-1 text-xs font-medium',
+                                                    capability.tone === 'up' && 'bg-[#57c7c2]/15 text-[#57c7c2]',
+                                                    capability.tone === 'down' && 'bg-[#ff7a72]/15 text-[#ffb2ad]',
+                                                    capability.tone === 'warning' && 'bg-[#7c8cff]/15 text-[#d0d8ff]',
+                                                    capability.tone === 'maintenance' && 'bg-[#7483a5]/15 text-[#bfc9da]',
+                                                )}
+                                            >
+                                                {capability.status}
+                                            </span>
+                                        </div>
+                                        <div className="mt-3 text-sm text-[#dce6fb]">{capability.customerImpact}</div>
+                                        <div className="mt-3 text-sm text-[#9ca7b9]">{capability.summary}</div>
+                                        <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#aebadc]">
+                                            <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.linkedChecks} linked checks</span>
+                                            <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.openIncidents} open incidents</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </PageCard>
+
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-end">
                         <div className="flex flex-col gap-3 sm:flex-row">
                             <label className="relative block min-w-[280px]">
@@ -220,14 +274,15 @@ export default function MonitorsIndex({
                                                     <div>{monitor.intervalLabel}</div>
                                                     <div className="mt-1 text-sm">{monitor.lastCheckedLabel}</div>
                                                 </div>
+                                                <div className="w-[92px] text-right text-[15px] text-[#8fa0bf] lg:text-base">
+                                                    {monitor.responseTimeLabel}
+                                                </div>
                                                 <div className="w-full max-w-[190px] space-y-2 xl:w-[190px]">
                                                     <UptimeBars bars={monitor.bars} compact />
                                                     <div className="text-right text-base font-medium text-[#dfe7fa]">
                                                         {monitor.uptimePercentLabel}
                                                     </div>
                                                 </div>
-                                                <div className="text-right text-[15px] text-[#8fa0bf] lg:text-base">{monitor.responseTimeLabel}</div>
-                                                <MoreHorizontal className="size-4 text-[#7d8aa7]" />
                                             </div>
                                         </div>
                                     </PageCard>
@@ -254,7 +309,7 @@ export default function MonitorsIndex({
                 <aside className="space-y-4">
                     <PageCard className="px-6 py-6">
                         <h2 className="text-[20px] font-semibold tracking-[-0.04em] text-white">
-                            Fleet status<span className="text-[#7c8cff]">.</span>
+                            Workspace summary<span className="text-[#7c8cff]">.</span>
                         </h2>
                         <div className="mt-7 flex justify-center">
                             <StatusChip status="up" large />

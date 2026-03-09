@@ -91,6 +91,51 @@ export default function IncidentShow({ incident }: IncidentShowProps) {
                     <CheckSummaryCard title="Latest check" check={incident.latestCheck} />
                 </div>
 
+                <PageCard className="p-6">
+                    <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+                        <div>
+                            <div className="text-[20px] font-semibold text-white">
+                                Customer impact<span className="text-[#7c8cff]">.</span>
+                            </div>
+                            <div className="mt-2 text-[15px] text-[#dce6fb]">{incident.customerImpact}</div>
+                        </div>
+                    </div>
+
+                    {incident.capabilities.length > 0 ? (
+                        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                            {incident.capabilities.map((capability) => (
+                                <div key={capability.id} className="rounded-[18px] bg-[#171d28] px-4 py-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-[17px] font-semibold text-white">{capability.name}</div>
+                                            <div className="mt-1 text-sm text-[#9ca7b9]">{capability.regions}</div>
+                                        </div>
+                                        <span
+                                            className={
+                                                capability.tone === 'up'
+                                                    ? 'rounded-full bg-[#57c7c2]/15 px-3 py-1 text-xs font-medium text-[#57c7c2]'
+                                                    : capability.tone === 'down'
+                                                      ? 'rounded-full bg-[#ff7a72]/15 px-3 py-1 text-xs font-medium text-[#ffb2ad]'
+                                                      : capability.tone === 'maintenance'
+                                                        ? 'rounded-full bg-[#7483a5]/15 px-3 py-1 text-xs font-medium text-[#bfc9da]'
+                                                        : 'rounded-full bg-[#7c8cff]/15 px-3 py-1 text-xs font-medium text-[#d0d8ff]'
+                                            }
+                                        >
+                                            {capability.status}
+                                        </span>
+                                    </div>
+                                    <div className="mt-3 text-sm text-[#dce6fb]">{capability.customerImpact}</div>
+                                    <div className="mt-3 text-sm text-[#9ca7b9]">{capability.summary}</div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="mt-5 rounded-[18px] bg-[#171d28] px-4 py-4 text-sm text-[#9ca7b9]">
+                            This incident is not linked to a named customer-facing capability yet.
+                        </div>
+                    )}
+                </PageCard>
+
                 <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
                     <section className="space-y-5">
                         <PageCard className="p-7">

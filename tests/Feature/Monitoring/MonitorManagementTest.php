@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Capability;
 use App\Models\Monitor;
 use App\Models\NotificationContact;
 use App\Models\User;
@@ -13,6 +14,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
@@ -83,6 +85,33 @@ it('stores a new monitor and attaches selected email contacts', function () {
     expect($monitor->notificationContacts()->pluck('notification_contacts.id')->all())->toBe([$contact->id]);
 });
 
+it('creates capability mappings from capability labels on paid workspaces', function () {
+    $user = User::factory()->premium()->create();
+
+    $this->actingAs($user)
+        ->post('/monitors', [
+            'name' => 'Primary API',
+            'type' => 'http',
+            'target' => 'https://example.com',
+            'request_method' => 'GET',
+            'interval_seconds' => 300,
+            'timeout_seconds' => 30,
+            'retry_limit' => 2,
+            'follow_redirects' => true,
+            'expected_status_code' => 200,
+            'region' => 'North America',
+            'capability_names' => "Sign in\nCheckout",
+        ])
+        ->assertRedirect();
+
+    $monitor = Monitor::query()->firstOrFail();
+
+    expect(Capability::query()->where('user_id', $user->id)->pluck('name')->sort()->values()->all())
+        ->toBe(['Checkout', 'Sign in']);
+    expect($monitor->capabilities()->pluck('capabilities.name')->sort()->values()->all())
+        ->toBe(['Checkout', 'Sign in']);
+});
+
 it('prevents free workspaces from creating more than ten monitors', function () {
     $user = User::factory()->create();
 
@@ -145,7 +174,7 @@ it('prevents free workspaces from saving intervals faster than five minutes', fu
         ->assertSessionHasErrors('interval_seconds');
 });
 
-it('allows paid workspaces to save 30 second intervals', function () {
+it('allows paid workspaces to save 60 second intervals', function () {
     $user = User::factory()->premium()->create();
 
     $this->actingAs($user)
@@ -154,7 +183,7 @@ it('allows paid workspaces to save 30 second intervals', function () {
             'type' => 'http',
             'target' => 'https://example.com',
             'request_method' => 'GET',
-            'interval_seconds' => 30,
+            'interval_seconds' => 60,
             'timeout_seconds' => 30,
             'retry_limit' => 2,
             'follow_redirects' => true,
@@ -163,7 +192,7 @@ it('allows paid workspaces to save 30 second intervals', function () {
         ])
         ->assertRedirect();
 
-    expect(Monitor::query()->first()?->interval_seconds)->toBe(30);
+    expect(Monitor::query()->first()?->interval_seconds)->toBe(60);
 });
 
 it('locks free workspaces to the standard check profile', function () {
@@ -242,6 +271,60 @@ it('runs port monitors against a tcp target', function () {
     expect($monitor->fresh()->last_response_time_ms)->not->toBeNull();
 });
 
+it('defaults ping monitors to a single icmp packet when no packet count is provided', function () {
+    $user = User::factory()->premium()->create();
+
+    $this->actingAs($user)
+        ->post('/monitors', [
+            'name' => 'Single packet ping',
+            'type' => 'ping',
+            'target' => '1.1.1.1',
+            'interval_seconds' => 60,
+            'timeout_seconds' => 5,
+            'retry_limit' => 1,
+            'region' => 'North America',
+        ])
+        ->assertRedirect();
+
+    expect(Monitor::query()->first()?->packet_count)->toBe(1);
+});
+
+it('samples healthy ping results instead of storing every successful run', function () {
+    $user = User::factory()->premium()->create();
+    $startedAt = CarbonImmutable::parse('2026-03-09 12:00:00');
+
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Sampled ping target',
+        'type' => Monitor::TYPE_PING,
+        'status' => Monitor::STATUS_UP,
+        'target' => '1.1.1.1',
+        'interval_seconds' => 60,
+        'timeout_seconds' => 5,
+        'retry_limit' => 0,
+        'packet_count' => 1,
+        'region' => 'North America',
+        'last_status_changed_at' => $startedAt->subMinutes(10),
+    ]);
+
+    Process::fake([
+        '*' => Process::result('round-trip min/avg/max/stddev = 8.0/12.0/16.0/1.0 ms'),
+    ]);
+
+    $runner = app(MonitorRunner::class);
+
+    $runner->runMonitor($monitor->fresh(['notificationContacts', 'user']), $startedAt);
+    $runner->runMonitor($monitor->fresh(['notificationContacts', 'user']), $startedAt->addMinute());
+    $runner->runMonitor($monitor->fresh(['notificationContacts', 'user']), $startedAt->addMinutes(2));
+
+    $monitor = $monitor->fresh();
+
+    expect($monitor->checkResults()->count())->toBe(1);
+    expect($monitor->last_checked_at?->equalTo($startedAt->addMinutes(2)))->toBeTrue();
+    expect($monitor->last_result_stored_at?->equalTo($startedAt))->toBeTrue();
+    expect($monitor->next_check_at?->equalTo($startedAt->addMinutes(3)))->toBeTrue();
+});
+
 it('stores downtime webhook urls for paid workspaces and blocks them for free workspaces', function () {
     $freeUser = User::factory()->create();
 
@@ -269,7 +352,7 @@ it('stores downtime webhook urls for paid workspaces and blocks them for free wo
             'type' => 'http',
             'target' => 'https://example.com/premium-webhook',
             'request_method' => 'GET',
-            'interval_seconds' => 30,
+            'interval_seconds' => 60,
             'timeout_seconds' => 30,
             'retry_limit' => 2,
             'follow_redirects' => true,

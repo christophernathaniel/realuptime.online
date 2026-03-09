@@ -49,6 +49,7 @@ class MonitorRunner
         $attempts = max(1, $monitor->retry_limit + 1);
         $outcome = null;
         $attemptHistory = [];
+        $previousStatus = $monitor->status;
 
         for ($attempt = 1; $attempt <= $attempts; $attempt++) {
             $outcome = $this->performCheck($monitor, $checkedAt, $attempt);
@@ -64,29 +65,43 @@ class MonitorRunner
             'attempt_history' => $attemptHistory,
         ];
 
-        $checkResult = CheckResult::query()->create([
-            'monitor_id' => $monitor->id,
-            'status' => $outcome->status,
-            'checked_at' => $outcome->checkedAt,
-            'attempts' => $outcome->attempts,
-            'response_time_ms' => $outcome->responseTimeMs,
-            'http_status_code' => $outcome->httpStatusCode,
-            'error_type' => $outcome->errorType,
-            'error_message' => $outcome->errorMessage,
-            'keyword_match' => $outcome->keywordMatch,
-            'meta' => $meta,
-        ]);
-
-        $previousStatus = $monitor->status;
         $hasActiveMaintenance = $monitor->maintenanceWindows()
             ->where('status', '!=', MaintenanceWindow::STATUS_CANCELLED)
             ->where('starts_at', '<=', $checkedAt)
             ->where('ends_at', '>=', $checkedAt)
             ->exists();
+        $shouldStoreCheckResult = $this->shouldStoreCheckResult($monitor, $outcome, $checkedAt, $previousStatus);
+        $checkResult = $shouldStoreCheckResult
+            ? CheckResult::query()->create([
+                'monitor_id' => $monitor->id,
+                'status' => $outcome->status,
+                'checked_at' => $outcome->checkedAt,
+                'attempts' => $outcome->attempts,
+                'response_time_ms' => $outcome->responseTimeMs,
+                'http_status_code' => $outcome->httpStatusCode,
+                'error_type' => $outcome->errorType,
+                'error_message' => $outcome->errorMessage,
+                'keyword_match' => $outcome->keywordMatch,
+                'meta' => $meta,
+            ])
+            : new CheckResult([
+                'monitor_id' => $monitor->id,
+                'status' => $outcome->status,
+                'checked_at' => $outcome->checkedAt,
+                'attempts' => $outcome->attempts,
+                'response_time_ms' => $outcome->responseTimeMs,
+                'http_status_code' => $outcome->httpStatusCode,
+                'error_type' => $outcome->errorType,
+                'error_message' => $outcome->errorMessage,
+                'keyword_match' => $outcome->keywordMatch,
+                'meta' => $meta,
+            ]);
+
         $effectiveIntervalSeconds = $this->effectiveIntervalSeconds($monitor);
         $monitor->forceFill([
             'status' => $outcome->isUp() ? Monitor::STATUS_UP : Monitor::STATUS_DOWN,
             'last_checked_at' => $checkedAt,
+            'last_result_stored_at' => $shouldStoreCheckResult ? $checkedAt : $monitor->last_result_stored_at,
             'next_check_at' => $checkedAt->addSeconds($effectiveIntervalSeconds),
             'check_claimed_at' => null,
             'check_claim_token' => null,
@@ -221,7 +236,7 @@ class MonitorRunner
 
     protected function checkPing(Monitor $monitor, CarbonImmutable $checkedAt, int $attempt): MonitorCheckOutcome
     {
-        $count = max(1, $monitor->packet_count ?: 3);
+        $count = max(1, $monitor->packet_count ?: 1);
         $timeout = max(1, $monitor->timeout_seconds);
         $waitArgument = PHP_OS_FAMILY === 'Darwin'
             ? (string) ($timeout * 1000)
@@ -256,6 +271,37 @@ class MonitorRunner
         }
 
         return MonitorCheckOutcome::up($checkedAt, $attempt, $avgLatency, null, null, ['raw_output' => $output]);
+    }
+
+    protected function shouldStoreCheckResult(
+        Monitor $monitor,
+        MonitorCheckOutcome $outcome,
+        CarbonImmutable $checkedAt,
+        string $previousStatus,
+    ): bool {
+        if ($monitor->type !== Monitor::TYPE_PING) {
+            return true;
+        }
+
+        if (! $outcome->isUp() || (bool) data_get($outcome->meta, 'slow', false)) {
+            return true;
+        }
+
+        if ($previousStatus !== Monitor::STATUS_UP) {
+            return true;
+        }
+
+        if ($monitor->openIncidents()->exists()) {
+            return true;
+        }
+
+        if (! $monitor->last_result_stored_at) {
+            return true;
+        }
+
+        $sampleSeconds = max(60, (int) config('realuptime.ping.healthy_result_sample_seconds', 300));
+
+        return $monitor->last_result_stored_at->diffInSeconds($checkedAt) >= $sampleSeconds;
     }
 
     protected function checkPort(Monitor $monitor, CarbonImmutable $checkedAt, int $attempt): MonitorCheckOutcome

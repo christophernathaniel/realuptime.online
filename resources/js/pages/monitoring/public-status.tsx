@@ -53,6 +53,50 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
                 </div>
 
                 <section className="rounded-[24px] border border-[#2b3544] bg-[#171d28] p-6">
+                    <div className="text-[22px] font-semibold text-white">Customer-facing capabilities</div>
+                    <div className="mt-5 grid gap-4 md:grid-cols-2">
+                        {statusPage.capabilities.length === 0 ? (
+                            <div className="rounded-[18px] bg-[#121821] px-5 py-5 text-[15px] text-[#9ca7b9]">
+                                No customer-facing capabilities have been published on this status page yet.
+                            </div>
+                        ) : (
+                            statusPage.capabilities.map((capability) => (
+                                <div key={capability.id} className="rounded-[18px] bg-[#121821] px-5 py-5">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-[19px] font-semibold text-white">{capability.name}</div>
+                                            <div className="mt-1 text-[14px] text-[#7f8eab]">{capability.regions}</div>
+                                        </div>
+                                        <div
+                                            className={cn(
+                                                'inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium',
+                                                capability.tone === 'up' && 'bg-[#57c7c2]/15 text-[#57c7c2]',
+                                                capability.tone === 'down' && 'bg-[#ff7a72]/15 text-[#ffb2ad]',
+                                                capability.tone === 'warning' && 'bg-[#7c8cff]/15 text-[#d0d8ff]',
+                                                capability.tone === 'maintenance' && 'bg-[#7483a5]/15 text-[#bfc9da]',
+                                            )}
+                                        >
+                                            <span
+                                                className={cn(
+                                                    'inline-flex size-2 rounded-full',
+                                                    capability.tone === 'up' && 'bg-[#57c7c2]',
+                                                    capability.tone === 'down' && 'bg-[#ff7a72]',
+                                                    capability.tone === 'warning' && 'bg-[#7c8cff]',
+                                                    capability.tone === 'maintenance' && 'bg-[#7483a5]',
+                                                )}
+                                            />
+                                            {capability.status}
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 text-[15px] text-[#dce6fb]">{capability.customerImpact}</div>
+                                    <div className="mt-2 text-[13px] text-[#a7b6cb]">{capability.summary}</div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </section>
+
+                <section className="rounded-[24px] border border-[#2b3544] bg-[#171d28] p-6">
                     <div className="text-[22px] font-semibold text-white">Monitored services</div>
                     <div className="mt-5 grid gap-4 md:grid-cols-2">
                         {statusPage.monitors.map((monitor) => (
@@ -91,6 +135,15 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
                                 {monitor.statusDetail ? (
                                     <div className="mt-3 text-[13px] text-[#9badca]">{monitor.statusDetail}</div>
                                 ) : null}
+                                {monitor.capabilities.length > 0 ? (
+                                    <div className="mt-3 flex flex-wrap gap-2 text-[12px] text-[#a7b6cb]">
+                                        {monitor.capabilities.map((capability) => (
+                                            <span key={`${monitor.name}-${capability}`} className="rounded-full bg-[#171d28] px-3 py-1">
+                                                {capability}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : null}
                                 {monitor.activeMaintenance ? (
                                     <div className="mt-4 rounded-[14px] bg-[#7483a5]/12 px-4 py-3 text-[13px] text-[#c7d0df]">This monitor currently has an active maintenance window.</div>
                                 ) : null}
@@ -118,6 +171,11 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
                                             <span className="rounded-full bg-[#171d28] px-3 py-1">{incident.impact}</span>
                                             {incident.monitors.map((monitor) => (
                                                 <span key={monitor} className="rounded-full bg-[#171d28] px-3 py-1">{monitor}</span>
+                                            ))}
+                                            {incident.capabilities.map((capability) => (
+                                                <span key={`${incident.title}-${capability}`} className="rounded-full bg-[#101a2f] px-3 py-1 text-[#dbe1ff]">
+                                                    {capability}
+                                                </span>
                                             ))}
                                         </div>
                                         {incident.message ? <div className="mt-3 text-[15px] text-[#dce6fb]">{incident.message}</div> : null}
@@ -177,6 +235,15 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
                                                 <span className={incident.status === 'Resolved' ? 'text-[#57c7c2]' : 'text-[#7c8cff]'}>{incident.status}</span>
                                             </div>
                                             <div className="mt-2 text-[15px] text-[#dce6fb]">{incident.reason}</div>
+                                            {incident.capabilities.length > 0 ? (
+                                                <div className="mt-3 flex flex-wrap gap-2 text-[12px] text-[#a7b6cb]">
+                                                    {incident.capabilities.map((capability) => (
+                                                        <span key={`${incident.monitor}-${capability}`} className="rounded-full bg-[#171d28] px-3 py-1">
+                                                            {capability}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            ) : null}
                                             <div className="mt-2 text-[13px] text-[#7f8eab]">{incident.startedAt} to {incident.endedAt}</div>
                                         </div>
                                     ))

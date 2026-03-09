@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Capability;
 use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
 use App\Models\NotificationContact;
@@ -71,6 +72,12 @@ it('creates a public status page and renders it without authentication', functio
         'last_checked_at' => now()->subMinute(),
         'last_status_changed_at' => now()->subMinutes(5),
     ]);
+    $capability = Capability::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Sign in',
+        'slug' => 'sign-in',
+    ]);
+    $monitor->capabilities()->attach($capability->id);
     $monitor->checkResults()->create([
         'status' => 'up',
         'checked_at' => now()->subMinute(),
@@ -98,7 +105,8 @@ it('creates a public status page and renders it without authentication', functio
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('monitoring/public-status')
-            ->where('statusPage.name', 'Primary status'));
+            ->where('statusPage.name', 'Primary status')
+            ->where('statusPage.capabilities.0.name', 'Sign in'));
 });
 
 it('scopes public status pages by user so matching slugs can coexist', function () {

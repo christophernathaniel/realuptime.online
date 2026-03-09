@@ -4,13 +4,16 @@ namespace App\Http\Controllers\Monitoring;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Monitoring\UpsertMonitorRequest;
+use App\Models\Capability;
 use App\Models\Monitor;
+use App\Models\User;
 use App\Services\Monitoring\EmailNotificationService;
 use App\Services\Monitoring\MonitorPresenter;
 use App\Services\Monitoring\MonitorRunner;
 use App\Support\WorkspaceResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -81,6 +84,7 @@ class MonitorController extends Controller
         }
 
         $monitor->notificationContacts()->sync($contactIds);
+        $this->syncCapabilities($workspace, $monitor, $request->capabilityNames());
 
         return redirect()->route('monitors.show', $monitor);
     }
@@ -119,6 +123,7 @@ class MonitorController extends Controller
             'check_claim_token' => null,
         ])->save();
         $monitor->notificationContacts()->sync($request->contactIds());
+        $this->syncCapabilities($this->workspaces->current($request), $monitor, $request->capabilityNames());
 
         return redirect()->route('monitors.show', $monitor);
     }
@@ -167,5 +172,42 @@ class MonitorController extends Controller
         $monitor->delete();
 
         return redirect()->route('monitors.index')->with('success', 'Monitor deleted.');
+    }
+
+    /**
+     * @param  array<int, string>  $names
+     */
+    protected function syncCapabilities(User $workspace, Monitor $monitor, array $names): void
+    {
+        if (! $workspace->allowsAdvancedWorkspaceFeatures()) {
+            $monitor->capabilities()->sync([]);
+
+            return;
+        }
+
+        $capabilityIds = collect($names)->map(function (string $name) use ($workspace): int {
+            $existing = $workspace->capabilities()->where('name', $name)->first();
+
+            if ($existing) {
+                return $existing->id;
+            }
+
+            $baseSlug = Str::slug($name) ?: Str::lower(Str::random(8));
+            $slug = $baseSlug;
+            $suffix = 2;
+
+            while ($workspace->capabilities()->where('slug', $slug)->exists()) {
+                $slug = $baseSlug.'-'.$suffix;
+                $suffix++;
+            }
+
+            return Capability::query()->create([
+                'user_id' => $workspace->id,
+                'name' => $name,
+                'slug' => $slug,
+            ])->id;
+        })->all();
+
+        $monitor->capabilities()->sync($capabilityIds);
     }
 }

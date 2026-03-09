@@ -21,6 +21,7 @@ type IncidentsPageProps = {
         status: string;
         typeLabel: string;
         severityLabel: string;
+        capabilities: string[];
     }>;
 };
 
@@ -92,6 +93,15 @@ export default function IncidentsPage({ summary, incidents }: IncidentsPageProps
                                         </div>
                                     </div>
                                     <div className="mt-2 text-[18px] text-[#d9e3f8]">{incident.reason}</div>
+                                    {incident.capabilities.length > 0 ? (
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {incident.capabilities.map((capability) => (
+                                                <span key={`${incident.id}-${capability}`} className="rounded-full bg-[#121821] px-3 py-1 text-[12px] text-[#cfd8ec]">
+                                                    {capability}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : null}
                                     <div className="mt-2 text-[16px] text-[#9ca7b9]">
                                         {incident.startedAt} to {incident.endedAt} • {incident.duration}
                                     </div>

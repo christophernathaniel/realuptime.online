@@ -64,6 +64,7 @@ class Monitor extends Model
         'region',
         'heartbeat_token',
         'last_checked_at',
+        'last_result_stored_at',
         'next_check_at',
         'last_dispatched_at',
         'check_claimed_at',
@@ -91,6 +92,7 @@ class Monitor extends Model
             'synthetic_steps' => 'array',
             'downtime_webhook_urls' => 'array',
             'last_checked_at' => 'datetime',
+            'last_result_stored_at' => 'datetime',
             'next_check_at' => 'datetime',
             'last_dispatched_at' => 'datetime',
             'check_claimed_at' => 'datetime',
@@ -170,6 +172,11 @@ class Monitor extends Model
     public function maintenanceWindows(): BelongsToMany
     {
         return $this->belongsToMany(MaintenanceWindow::class)->withTimestamps();
+    }
+
+    public function capabilities(): BelongsToMany
+    {
+        return $this->belongsToMany(Capability::class)->withTimestamps();
     }
 
     public function statusPageIncidents(): BelongsToMany

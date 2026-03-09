@@ -28,7 +28,7 @@ class ApiTokenController extends Controller
             'token_hash' => hash('sha256', $plainTextToken),
         ]);
 
-        return back()->with('success', sprintf('API token "%s" created.', $token->name))
+        return back()->with('success', sprintf('Token "%s" created.', $token->name))
             ->with('api_token', [
                 'name' => $token->name,
                 'token' => $plainTextToken,
@@ -41,6 +41,6 @@ class ApiTokenController extends Controller
 
         $apiToken->delete();
 
-        return back()->with('success', 'API token revoked.');
+        return back()->with('success', 'Token revoked.');
     }
 }

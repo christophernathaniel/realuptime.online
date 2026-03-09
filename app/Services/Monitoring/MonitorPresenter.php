@@ -2,6 +2,7 @@
 
 namespace App\Services\Monitoring;
 
+use App\Models\Capability;
 use App\Models\CheckResult;
 use App\Models\Incident;
 use App\Models\MaintenanceWindow;
@@ -46,6 +47,7 @@ class MonitorPresenter
                 ),
                 'canCreate' => ! $user->hasReachedMonitorLimit(),
             ],
+            'capabilities' => $this->capabilityOverview($user),
             'last24Hours' => $this->aggregateMonitorWindow($monitors, 1),
             'monitors' => $monitors->map(fn (Monitor $monitor) => $this->monitorListItem($monitor))->values()->all(),
         ];
@@ -65,6 +67,11 @@ class MonitorPresenter
             'heartbeatEvents' => fn ($query) => $query->latest('received_at')->limit(1),
             'maintenanceWindows' => fn ($query) => $query->orderBy('starts_at'),
             'statusPages',
+            'capabilities' => fn ($query) => $query
+                ->with([
+                    'monitors' => fn ($monitorQuery) => $monitorQuery->with(['openIncidents', 'maintenanceWindows']),
+                ])
+                ->orderBy('name'),
         ]);
 
         $responseTimeData = $this->responseTimeData($monitor, $responseRange, $responseGranularity);
@@ -172,6 +179,10 @@ class MonitorPresenter
                     'published' => $statusPage->published,
                     'publicUrl' => $this->publicStatusPageUrl($statusPage),
                 ])->all(),
+                'capabilities' => $monitor->capabilities
+                    ->map(fn (Capability $capability) => $this->capabilityItem($capability))
+                    ->values()
+                    ->all(),
             ],
         ];
     }
@@ -201,12 +212,13 @@ class MonitorPresenter
                 'expected_status_code' => $monitor?->expected_status_code ?? 200,
                 'expected_keyword' => $monitor?->expected_keyword ?? '',
                 'keyword_match_type' => $monitor?->keyword_match_type ?? 'contains',
-                'packet_count' => $monitor?->packet_count ?? 3,
+                'packet_count' => $monitor?->packet_count ?? 1,
                 'synthetic_steps' => $monitor?->synthetic_steps ? json_encode($monitor->synthetic_steps, JSON_PRETTY_PRINT) : '',
                 'latency_threshold_ms' => $monitor?->latency_threshold_ms ?? 1500,
                 'degraded_consecutive_checks' => $monitor?->degraded_consecutive_checks ?? 3,
                 'critical_alert_after_minutes' => $monitor?->critical_alert_after_minutes ?? 30,
                 'downtime_webhook_urls' => $monitor?->downtime_webhook_urls ? implode("\n", $monitor->downtime_webhook_urls) : '',
+                'capability_names' => $monitor ? $monitor->capabilities()->orderBy('name')->pluck('name')->implode("\n") : '',
                 'ssl_threshold_days' => $monitor?->ssl_threshold_days ?? 21,
                 'domain_threshold_days' => $monitor?->domain_threshold_days ?? 30,
                 'heartbeat_grace_seconds' => $monitor?->heartbeat_grace_seconds ?? 300,
@@ -226,11 +238,12 @@ class MonitorPresenter
                     ['value' => Monitor::TYPE_PING, 'label' => 'Ping Monitor'],
                 ],
                 'methods' => ['GET', 'POST'],
-                'intervals' => collect([30, 60, 300, 1800, 3600, 43200, 86400])
+                'intervals' => collect([60, 300, 1800, 3600, 43200, 86400])
                     ->filter(fn (int $seconds) => $seconds >= $minimumInterval)
                     ->values()
                     ->all(),
                 'regions' => ['North America', 'Europe', 'Asia Pacific'],
+                'existingCapabilities' => $user->capabilities()->orderBy('name')->pluck('name')->all(),
                 'keywordMatchTypes' => ['contains', 'exact', 'regex'],
             ],
             'membership' => [
@@ -253,7 +266,7 @@ class MonitorPresenter
     {
         $incidents = Incident::query()
             ->whereHas('monitor', fn ($query) => $query->where('user_id', $user->id))
-            ->with('monitor')
+            ->with('monitor.capabilities')
             ->latest('started_at')
             ->limit(20)
             ->get();
@@ -276,6 +289,7 @@ class MonitorPresenter
                 'status' => $this->incidentStatusLabel($incident),
                 'typeLabel' => $this->incidentTypeLabel($incident),
                 'severityLabel' => ucfirst($incident->severity),
+                'capabilities' => $incident->monitor?->capabilities->pluck('name')->values()->all() ?? [],
             ])->all(),
         ];
     }
@@ -285,7 +299,7 @@ class MonitorPresenter
         abort_unless($incident->monitor()->where('user_id', $user->id)->exists(), 404);
 
         $incident->load([
-            'monitor',
+            'monitor.capabilities',
             'firstCheckResult',
             'lastGoodCheckResult',
             'latestCheckResult',
@@ -316,6 +330,17 @@ class MonitorPresenter
                 'duration' => $incident->duration_seconds !== null ? $this->durationLabel((int) $incident->duration_seconds) : 'Open',
                 'operatorNotes' => $incident->operator_notes ?? '',
                 'rootCauseSummary' => $incident->root_cause_summary ?? '',
+                'capabilities' => $incident->monitor?->capabilities
+                    ->map(fn (Capability $capability) => $this->capabilityItem(
+                        $capability->relationLoaded('monitors')
+                            ? $capability
+                            : $capability->loadMissing([
+                                'monitors' => fn ($query) => $query->with(['openIncidents', 'maintenanceWindows']),
+                            ])
+                    ))
+                    ->values()
+                    ->all() ?? [],
+                'customerImpact' => $this->incidentCustomerImpact($incident),
                 'firstFailedCheck' => $this->formatIncidentCheckResult($incident->firstCheckResult),
                 'lastGoodCheck' => $this->formatIncidentCheckResult($incident->lastGoodCheckResult),
                 'latestCheck' => $this->formatIncidentCheckResult($incident->latestCheckResult),
@@ -343,8 +368,9 @@ class MonitorPresenter
                 'monitors' => fn ($query) => $query->with([
                     'maintenanceWindows',
                     'openIncidents',
+                    'capabilities',
                 ]),
-                'incidents' => fn ($query) => $query->with(['monitors', 'updates'])->latest('started_at'),
+                'incidents' => fn ($query) => $query->with(['monitors.capabilities', 'updates'])->latest('started_at'),
             ])
             ->latest('updated_at')
             ->get();
@@ -379,6 +405,15 @@ class MonitorPresenter
                     'impact' => StatusPageIncident::IMPACT_MINOR,
                     'monitor_ids' => $statusPage->monitors->pluck('id')->all(),
                 ],
+                'capabilities' => $statusPage->monitors
+                    ->flatMap(fn (Monitor $monitor) => $monitor->capabilities)
+                    ->unique('id')
+                    ->values()
+                    ->map(fn (Capability $capability) => $this->capabilityItemFromMonitors(
+                        $capability,
+                        $statusPage->monitors->filter(fn (Monitor $monitor) => $monitor->capabilities->contains('id', $capability->id))->values(),
+                    ))
+                    ->all(),
             ])->all(),
             'monitorOptions' => $this->monitorOptions($user),
             'formDefaults' => [
@@ -606,7 +641,7 @@ class MonitorPresenter
     public function publicStatusPage(StatusPage $statusPage): array
     {
         $statusPage->load([
-            'incidents' => fn ($query) => $query->with(['monitors', 'updates'])->latest('started_at'),
+            'incidents' => fn ($query) => $query->with(['monitors.capabilities', 'updates'])->latest('started_at'),
             'monitors' => fn ($query) => $query->with([
                 'checkResults' => fn ($checkResults) => $checkResults
                     ->where('checked_at', '>=', now()->subDay())
@@ -616,6 +651,7 @@ class MonitorPresenter
                     ->latest('started_at'),
                 'maintenanceWindows' => fn ($maintenance) => $maintenance->orderBy('starts_at'),
                 'openIncidents',
+                'capabilities',
             ]),
         ]);
 
@@ -629,7 +665,7 @@ class MonitorPresenter
             ->get();
         $monitorIncidents = Incident::query()
             ->whereIn('monitor_id', $monitorIds)
-            ->with('monitor')
+            ->with('monitor.capabilities')
             ->latest('started_at')
             ->limit(8)
             ->get();
@@ -650,6 +686,10 @@ class MonitorPresenter
                 'createdAt' => CarbonImmutable::parse($update['createdAt'])->format('M j, Y H:i'),
             ])
             ->all();
+        $capabilities = $monitors
+            ->flatMap(fn (Monitor $monitor) => $monitor->capabilities)
+            ->unique('id')
+            ->values();
 
         return [
             'statusPage' => [
@@ -673,8 +713,15 @@ class MonitorPresenter
                         'lastCheckedLabel' => $monitor->last_checked_at ? $this->timeAgo($monitor->last_checked_at) : 'Never checked',
                         'responseTimeLabel' => $monitor->last_response_time_ms ? Number::format($monitor->last_response_time_ms).' ms' : 'n/a',
                         'activeMaintenance' => $publicStatus['tone'] === 'maintenance',
+                        'capabilities' => $monitor->capabilities->pluck('name')->values()->all(),
                     ];
                 })->all(),
+                'capabilities' => $capabilities
+                    ->map(fn (Capability $capability) => $this->capabilityItemFromMonitors(
+                        $capability,
+                        $monitors->filter(fn (Monitor $monitor) => $monitor->capabilities->contains('id', $capability->id))->values(),
+                    ))
+                    ->all(),
                 'incidents' => $statusPageIncidents->map(fn (StatusPageIncident $incident) => [
                     'title' => $incident->title,
                     'status' => $this->statusPageIncidentStatusLabel($incident->status),
@@ -683,6 +730,11 @@ class MonitorPresenter
                     'startedAt' => $incident->started_at?->format('M j, Y H:i'),
                     'endedAt' => $incident->resolved_at?->format('M j, Y H:i') ?? 'Ongoing',
                     'monitors' => $incident->monitors->pluck('name')->values()->all(),
+                    'capabilities' => $incident->monitors
+                        ->flatMap(fn (Monitor $monitor) => $monitor->capabilities->pluck('name'))
+                        ->unique()
+                        ->values()
+                        ->all(),
                     'updates' => $incident->updates->map(fn ($update) => [
                         'status' => $this->statusPageIncidentStatusLabel($update->status),
                         'message' => $update->message,
@@ -695,6 +747,7 @@ class MonitorPresenter
                     'reason' => $incident->reason,
                     'startedAt' => $incident->started_at?->format('M j, Y H:i'),
                     'endedAt' => $incident->resolved_at?->format('M j, Y H:i') ?? 'Ongoing',
+                    'capabilities' => $incident->monitor?->capabilities->pluck('name')->values()->all() ?? [],
                 ])->all(),
                 'recentUpdates' => $recentStatusUpdates,
                 'maintenance' => $maintenanceWindows
@@ -704,6 +757,147 @@ class MonitorPresenter
                     ->all(),
             ],
         ];
+    }
+
+    protected function capabilityOverview(User $user): array
+    {
+        return $user->capabilities()
+            ->with([
+                'monitors' => fn ($query) => $query->with(['openIncidents', 'maintenanceWindows'])->orderBy('name'),
+            ])
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Capability $capability) => $this->capabilityItem($capability))
+            ->all();
+    }
+
+    protected function capabilityItem(Capability $capability): array
+    {
+        $capability->loadMissing([
+            'monitors' => fn ($query) => $query->with(['openIncidents', 'maintenanceWindows'])->orderBy('name'),
+        ]);
+
+        return $this->capabilityItemFromMonitors($capability, $capability->monitors->unique('id')->values());
+    }
+
+    protected function capabilityItemFromMonitors(Capability $capability, Collection $monitors): array
+    {
+        $status = $this->capabilityStatus($capability->name, $monitors);
+
+        return [
+            'id' => $capability->id,
+            'name' => $capability->name,
+            'slug' => $capability->slug,
+            'status' => $status['label'],
+            'tone' => $status['tone'],
+            'summary' => $status['summary'],
+            'customerImpact' => $status['customerImpact'],
+            'linkedChecks' => $monitors->count(),
+            'affectedChecks' => $status['affectedChecks'],
+            'regions' => $this->capabilityRegionsLabel($monitors),
+            'openIncidents' => $monitors->sum(fn (Monitor $monitor) => $monitor->relationLoaded('openIncidents')
+                ? $monitor->openIncidents->count()
+                : $monitor->openIncidents()->count()),
+            'monitorNames' => $monitors->pluck('name')->take(4)->values()->all(),
+        ];
+    }
+
+    protected function capabilityStatus(string $capabilityName, Collection $monitors): array
+    {
+        $total = $monitors->count();
+        $down = $monitors->filter(fn (Monitor $monitor) => $monitor->status === Monitor::STATUS_DOWN
+            || $this->monitorHasOpenIncidentType($monitor, [Incident::TYPE_DOWNTIME]))->count();
+        $warnings = $monitors->filter(fn (Monitor $monitor) => $monitor->status === Monitor::STATUS_PAUSED
+            || $this->monitorHasOpenIncidentType($monitor, [
+                Incident::TYPE_DEGRADED_PERFORMANCE,
+                Incident::TYPE_SSL_EXPIRY,
+                Incident::TYPE_DOMAIN_EXPIRY,
+            ]))->count();
+        $maintenance = $monitors->filter(fn (Monitor $monitor) => $monitor->maintenanceWindows
+            ->contains(fn (MaintenanceWindow $window) => $this->maintenanceWindowStatus($window) === MaintenanceWindow::STATUS_ACTIVE))->count();
+        $regions = $this->capabilityRegionsLabel($monitors);
+
+        if ($down > 0) {
+            return [
+                'label' => $down === $total ? 'Unavailable' : 'Partial outage',
+                'tone' => 'down',
+                'summary' => sprintf('%d of %d linked checks are currently down.', $down, $total),
+                'customerImpact' => sprintf('%s is unavailable across %s.', $capabilityName, $regions),
+                'affectedChecks' => $down,
+            ];
+        }
+
+        if ($warnings > 0) {
+            return [
+                'label' => 'Degraded',
+                'tone' => 'warning',
+                'summary' => sprintf('%d linked checks are reporting warnings or degraded performance.', $warnings),
+                'customerImpact' => sprintf('%s is degraded across %s.', $capabilityName, $regions),
+                'affectedChecks' => $warnings,
+            ];
+        }
+
+        if ($maintenance > 0) {
+            return [
+                'label' => 'Maintenance',
+                'tone' => 'maintenance',
+                'summary' => sprintf('%d linked checks are inside an active maintenance window.', $maintenance),
+                'customerImpact' => sprintf('%s is currently under planned maintenance in %s.', $capabilityName, $regions),
+                'affectedChecks' => $maintenance,
+            ];
+        }
+
+        return [
+            'label' => 'Healthy',
+            'tone' => 'up',
+            'summary' => sprintf('%d linked checks are operating normally.', $total),
+            'customerImpact' => sprintf('%s is healthy across %s.', $capabilityName, $regions),
+            'affectedChecks' => 0,
+        ];
+    }
+
+    protected function capabilityRegionsLabel(Collection $monitors): string
+    {
+        $regions = $monitors->pluck('region')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($regions->isEmpty()) {
+            return 'your configured regions';
+        }
+
+        if ($regions->count() === 1) {
+            return (string) $regions->first();
+        }
+
+        if ($regions->count() === 2) {
+            return sprintf('%s and %s', $regions[0], $regions[1]);
+        }
+
+        return sprintf('%s, %s, and %d more regions', $regions[0], $regions[1], $regions->count() - 2);
+    }
+
+    protected function incidentCustomerImpact(Incident $incident): string
+    {
+        $capabilities = $incident->monitor?->capabilities
+            ? $incident->monitor->capabilities->pluck('name')->values()
+            : collect();
+
+        if ($capabilities->isEmpty()) {
+            return $incident->monitor?->name
+                ? sprintf('This incident is currently isolated to the %s check.', $incident->monitor->name)
+                : 'This incident is currently isolated to a single check.';
+        }
+
+        if ($capabilities->count() === 1) {
+            return sprintf('%s is customer-facing and currently impacted by this incident.', $capabilities->first());
+        }
+
+        return sprintf(
+            'Affected capabilities: %s.',
+            $capabilities->take(3)->implode(', ').($capabilities->count() > 3 ? sprintf(' and %d more', $capabilities->count() - 3) : '')
+        );
     }
 
     protected function monitorListItem(Monitor $monitor): array

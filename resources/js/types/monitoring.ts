@@ -1,5 +1,20 @@
 export type MonitorBarState = 'up' | 'down' | 'unknown';
 
+export type CapabilityHealth = {
+    id: number;
+    name: string;
+    slug: string;
+    status: string;
+    tone: 'up' | 'down' | 'warning' | 'maintenance';
+    summary: string;
+    customerImpact: string;
+    linkedChecks: number;
+    affectedChecks: number;
+    regions: string;
+    openIncidents: number;
+    monitorNames: string[];
+};
+
 export type MonitorListItem = {
     id: number;
     name: string;
@@ -158,6 +173,7 @@ export type DetailedMonitor = {
         time: string;
     }>;
     statusPages: StatusPageLink[];
+    capabilities: CapabilityHealth[];
 };
 
 export type MonitorFormData = {
@@ -182,6 +198,7 @@ export type MonitorFormData = {
     degraded_consecutive_checks: number;
     critical_alert_after_minutes: number;
     downtime_webhook_urls: string;
+    capability_names: string;
     ssl_threshold_days: number;
     domain_threshold_days: number;
     heartbeat_grace_seconds: number;
@@ -194,6 +211,7 @@ export type MonitorFormOptions = {
     methods: string[];
     intervals: number[];
     regions: string[];
+    existingCapabilities: string[];
     keywordMatchTypes: string[];
 };
 
@@ -369,6 +387,7 @@ export type PublicStatusPageData = {
     overallStatus: string;
     overallTone: 'up' | 'down' | 'warning' | 'maintenance';
     updatedLabel: string;
+    capabilities: CapabilityHealth[];
     monitors: Array<{
         name: string;
         type: string;
@@ -379,6 +398,7 @@ export type PublicStatusPageData = {
         lastCheckedLabel: string;
         responseTimeLabel: string;
         activeMaintenance: boolean;
+        capabilities: string[];
     }>;
     incidents: Array<{
         title: string;
@@ -388,6 +408,7 @@ export type PublicStatusPageData = {
         startedAt: string | null;
         endedAt: string | null;
         monitors: string[];
+        capabilities: string[];
         updates: Array<{
             status: string;
             message: string;
@@ -400,6 +421,7 @@ export type PublicStatusPageData = {
         reason: string;
         startedAt: string | null;
         endedAt: string | null;
+        capabilities: string[];
     }>;
     recentUpdates: Array<{
         incidentTitle: string;
@@ -441,6 +463,8 @@ export type IncidentDetail = {
     duration: string;
     operatorNotes: string;
     rootCauseSummary: string;
+    capabilities: CapabilityHealth[];
+    customerImpact: string;
     firstFailedCheck: IncidentCheckSummary | null;
     lastGoodCheck: IncidentCheckSummary | null;
     latestCheck: IncidentCheckSummary | null;

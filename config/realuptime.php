@@ -11,4 +11,8 @@ return [
         'max_batches' => (int) env('REALUPTIME_DISPATCH_MAX_BATCHES', 12),
         'claim_ttl_seconds' => (int) env('REALUPTIME_CHECK_CLAIM_TTL_SECONDS', 600),
     ],
+
+    'ping' => [
+        'healthy_result_sample_seconds' => (int) env('REALUPTIME_PING_HEALTHY_RESULT_SAMPLE_SECONDS', 300),
+    ],
 ];

@@ -80,61 +80,63 @@ export default function SettingsLayout({
                 </p>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[260px,minmax(0,1fr)]">
-                <PageCard className="h-fit p-3">
-                    <div className="mb-3 px-2 pt-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#61718f]">
-                            Account center
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-[#9badca]">
-                            Manage identity, security, devices, and appearance from the same workspace shell.
-                        </p>
-                    </div>
+            <div className="grid items-start gap-6 lg:grid-cols-[250px,minmax(0,1fr)] xl:grid-cols-[260px,minmax(0,1fr)]">
+                <aside className="w-full lg:sticky lg:top-6">
+                    <PageCard className="h-fit w-full max-w-[280px] p-3 lg:max-w-none">
+                        <div className="mb-3 px-2 pt-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#61718f]">
+                                Account center
+                            </p>
+                            <p className="mt-2 text-sm leading-6 text-[#9badca]">
+                                Manage identity, security, devices, and appearance from the same workspace shell.
+                            </p>
+                        </div>
 
-                    <nav className="space-y-1.5" aria-label="Settings">
-                        {sidebarNavItems.map((item, index) => {
-                            const Icon = item.icon;
-                            const active = isCurrentOrParentUrl(item.href);
+                        <nav className="space-y-1.5" aria-label="Settings">
+                            {sidebarNavItems.map((item, index) => {
+                                const Icon = item.icon;
+                                const active = isCurrentOrParentUrl(item.href);
 
-                            return (
-                                <Link
-                                    key={`${toUrl(item.href)}-${index}`}
-                                    href={item.href}
-                                    className={cn(
-                                        'flex items-start gap-3 rounded-[18px] px-3 py-3 transition',
-                                        active
-                                            ? 'bg-[#0d172a] text-white'
-                                            : 'text-[#c9d5ec] hover:bg-white/5 hover:text-white',
-                                    )}
-                                >
-                                    <span
+                                return (
+                                    <Link
+                                        key={`${toUrl(item.href)}-${index}`}
+                                        href={item.href}
                                         className={cn(
-                                            'mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-[14px] border',
+                                            'flex items-start gap-3 rounded-[18px] px-3 py-3 transition',
                                             active
-                                                ? 'border-[#7c8cff]/35 bg-[#171d28] text-[#7c8cff]'
-                                                : 'border-[#2b3544] bg-[#171d28] text-[#7183a5]',
+                                                ? 'bg-[#0d172a] text-white'
+                                                : 'text-[#c9d5ec] hover:bg-white/5 hover:text-white',
                                         )}
                                     >
-                                        <Icon className="size-4" />
-                                    </span>
-                                    <span className="min-w-0">
-                                        <span className="block text-[14px] font-semibold">
-                                            {item.title}
-                                        </span>
                                         <span
                                             className={cn(
-                                                'mt-1 block text-[12px] leading-5',
-                                                active ? 'text-[#8fa0bf]' : 'text-[#7081a2]',
+                                                'mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-[14px] border',
+                                                active
+                                                    ? 'border-[#7c8cff]/35 bg-[#171d28] text-[#7c8cff]'
+                                                    : 'border-[#2b3544] bg-[#171d28] text-[#7183a5]',
                                             )}
                                         >
-                                            {item.description}
+                                            <Icon className="size-4" />
                                         </span>
-                                    </span>
-                                </Link>
-                            );
-                        })}
-                    </nav>
-                </PageCard>
+                                        <span className="min-w-0">
+                                            <span className="block text-[14px] font-semibold">
+                                                {item.title}
+                                            </span>
+                                            <span
+                                                className={cn(
+                                                    'mt-1 block text-[12px] leading-5',
+                                                    active ? 'text-[#8fa0bf]' : 'text-[#7081a2]',
+                                                )}
+                                            >
+                                                {item.description}
+                                            </span>
+                                        </span>
+                                    </Link>
+                                );
+                            })}
+                        </nav>
+                    </PageCard>
+                </aside>
 
                 <div className="space-y-6">{children}</div>
             </div>

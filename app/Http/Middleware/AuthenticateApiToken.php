@@ -15,7 +15,7 @@ class AuthenticateApiToken
 
         if (! $plainTextToken) {
             return response()->json([
-                'message' => 'Missing API token.',
+                'message' => 'Missing token.',
             ], 401);
         }
 
@@ -26,7 +26,7 @@ class AuthenticateApiToken
 
         if (! $token || ! $token->user) {
             return response()->json([
-                'message' => 'Invalid API token.',
+                'message' => 'Invalid token.',
             ], 401);
         }
 

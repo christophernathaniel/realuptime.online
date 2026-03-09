@@ -7,7 +7,7 @@ const sections = [
     },
     {
         title: '2. Accounts, credentials, and collaborators',
-        body: 'You are responsible for maintaining the confidentiality of your credentials, recovery methods, connected sign-in providers, API tokens, and any devices or inboxes used to access the service. You are also responsible for the actions of users invited into your workspace. RealUptime should be notified promptly if you become aware of suspected unauthorised access or account compromise.',
+        body: 'You are responsible for maintaining the confidentiality of your credentials, recovery methods, connected sign-in providers, tokens, and any devices or inboxes used to access the service. You are also responsible for the actions of users invited into your workspace. RealUptime should be notified promptly if you become aware of suspected unauthorised access or account compromise.',
     },
     {
         title: '3. Authorised use only',

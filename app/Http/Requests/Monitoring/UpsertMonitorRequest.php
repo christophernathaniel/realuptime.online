@@ -58,6 +58,7 @@ class UpsertMonitorRequest extends FormRequest
             'degraded_consecutive_checks' => ['nullable', 'integer', 'min:1', 'max:10'],
             'critical_alert_after_minutes' => ['nullable', 'integer', 'min:1', 'max:10080'],
             'downtime_webhook_urls' => ['nullable', 'string'],
+            'capability_names' => ['nullable', 'string', 'max:2000'],
             'ssl_threshold_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'domain_threshold_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'heartbeat_grace_seconds' => ['nullable', 'integer', 'min:0', 'max:86400'],
@@ -151,7 +152,7 @@ class UpsertMonitorRequest extends FormRequest
         if ($data['type'] !== Monitor::TYPE_PING) {
             $data['packet_count'] = null;
         } else {
-            $data['packet_count'] = $data['packet_count'] ?? 3;
+            $data['packet_count'] = $data['packet_count'] ?? 1;
         }
 
         if (! in_array($data['type'], [Monitor::TYPE_HTTP, Monitor::TYPE_PORT, Monitor::TYPE_PING], true)) {
@@ -163,7 +164,7 @@ class UpsertMonitorRequest extends FormRequest
 
         if ($data['type'] !== Monitor::TYPE_HTTP) {
             $data['ssl_threshold_days'] = null;
-            $data['domain_threshold_days'] = null;
+            $data['domain_threshold_days'] = $data['domain_threshold_days'] ?? 30;
         } else {
             $data['domain_threshold_days'] = $data['domain_threshold_days'] ?? 30;
             $data['ssl_threshold_days'] = $data['ssl_threshold_days'] ?? 21;
@@ -187,6 +188,26 @@ class UpsertMonitorRequest extends FormRequest
         }
 
         return array_map('intval', $this->validated('contact_ids', []));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function capabilityNames(): array
+    {
+        $workspace = app(WorkspaceResolver::class)->current($this);
+
+        if (! $workspace->allowsAdvancedWorkspaceFeatures()) {
+            return [];
+        }
+
+        return collect(preg_split('/[\r\n,]+/', (string) $this->validated('capability_names', '')) ?: [])
+            ->map(fn (string $name) => trim($name))
+            ->filter()
+            ->unique(fn (string $name) => mb_strtolower($name))
+            ->take(12)
+            ->values()
+            ->all();
     }
 
     /**

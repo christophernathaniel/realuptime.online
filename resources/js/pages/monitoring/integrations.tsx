@@ -183,13 +183,13 @@ export default function IntegrationsPage({
                             Automation &amp; API<span className="text-[#7c8cff]">.</span>
                         </h1>
                         <div className="mt-2 max-w-[820px] text-[16px] text-[#9ca7b9]">
-                            Manage email contacts, issue API tokens for automation, and verify that queues, workers, and mail delivery are configured correctly before deployment.
+                            Manage email contacts, issue tokens for automation, and verify that queues, workers, and mail delivery are configured correctly before deployment.
                         </div>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
                         <MetricCard label="Contacts" value={summary.contacts} />
                         <MetricCard label="Enabled" value={summary.enabled} tone="good" />
-                        <MetricCard label="API tokens" value={summary.apiTokens} />
+                        <MetricCard label="Tokens" value={summary.apiTokens} />
                         <MetricCard label="Sent" value={summary.emailsSent} tone="good" />
                         <MetricCard label="Pending" value={summary.emailsPending} tone="warning" />
                         <MetricCard label="Failed" value={summary.emailsFailed} tone={summary.emailsFailed > 0 ? 'danger' : 'default'} />
@@ -263,7 +263,7 @@ export default function IntegrationsPage({
                             <div className="space-y-3">
                                 {apiTokens.length === 0 ? (
                                     <div className="rounded-[16px] bg-[#171d28] px-4 py-4 text-[14px] text-[#9ca7b9]">
-                                        No API tokens issued yet.
+                                        No tokens issued yet.
                                     </div>
                                 ) : (
                                     apiTokens.map((token) => (
@@ -276,7 +276,7 @@ export default function IntegrationsPage({
                                                 type="button"
                                                 className="inline-flex items-center gap-2 rounded-[12px] border border-[#ff6269]/25 bg-[#231320] px-3 py-2 text-sm text-[#ffd4d7]"
                                                 onClick={() => {
-                                                    if (window.confirm(`Revoke API token "${token.name}"?`)) {
+                                                    if (window.confirm(`Revoke token "${token.name}"?`)) {
                                                         router.delete(`/api-tokens/${token.id}`, { preserveScroll: true });
                                                     }
                                                 }}

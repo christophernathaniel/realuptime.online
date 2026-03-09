@@ -80,6 +80,11 @@ class User extends Authenticatable
         return $this->hasMany(Monitor::class);
     }
 
+    public function capabilities(): HasMany
+    {
+        return $this->hasMany(Capability::class);
+    }
+
     public function notificationContacts(): HasMany
     {
         return $this->hasMany(NotificationContact::class);

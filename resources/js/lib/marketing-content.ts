@@ -347,7 +347,7 @@ export const marketingPlans: MarketingPlan[] = [
         monthlyPriceLabel: '£5.99',
         badge: 'Most popular',
         monitors: '50 monitors',
-        interval: '30 second checks',
+        interval: '60 second checks',
         featured: true,
         cta: 'Start Premium',
         features: [
@@ -355,7 +355,7 @@ export const marketingPlans: MarketingPlan[] = [
             { label: 'Custom HTTP, port, and ping configuration', included: true },
             { label: 'Public status pages and incident updates', included: true },
             { label: 'Maintenance windows and notification contacts', included: true },
-            { label: 'Shared workspaces, API tokens, and downtime webhooks', included: true },
+            { label: 'Shared workspaces, tokens, and downtime webhooks', included: true },
             { label: 'Built for small production teams', included: true, muted: true },
         ],
     },
@@ -365,7 +365,7 @@ export const marketingPlans: MarketingPlan[] = [
         description: 'Scale the same workflow across larger estates without changing how you operate.',
         monthlyPriceLabel: '£15.99',
         monitors: '200 monitors',
-        interval: '30 second checks',
+        interval: '60 second checks',
         cta: 'Start Ultra',
         features: [
             { label: 'Everything in Premium', included: true },

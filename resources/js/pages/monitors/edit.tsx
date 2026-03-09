@@ -225,6 +225,53 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
                                             </Select>
                                         </div>
                                         <div className="space-y-3">
+                                            <FieldLabel>Capability labels</FieldLabel>
+                                            <Textarea
+                                                value={form.data.capability_names}
+                                                onChange={(event) => form.setData('capability_names', event.target.value)}
+                                                placeholder={'Sign in\nCheckout\nWebhook delivery'}
+                                                className="min-h-[120px]"
+                                            />
+                                            <div className="text-sm text-[#9ca7b9]">
+                                                Group checks into customer-facing capabilities. Use one label per line or a comma-separated list.
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {options.existingCapabilities.length > 0 ? (
+                                        <div className="space-y-3">
+                                            <FieldLabel>Existing capabilities</FieldLabel>
+                                            <div className="flex flex-wrap gap-2">
+                                                {options.existingCapabilities.map((capability) => (
+                                                    <button
+                                                        key={capability}
+                                                        type="button"
+                                                        className="rounded-full border border-[#2b3544] bg-[#171d28] px-3 py-1.5 text-sm text-[#dce6fb]"
+                                                        onClick={() => {
+                                                            const current = form.data.capability_names
+                                                                .split(/\r\n|\r|\n|,/)
+                                                                .map((value) => value.trim())
+                                                                .filter(Boolean);
+
+                                                            if (current.includes(capability)) {
+                                                                return;
+                                                            }
+
+                                                            form.setData(
+                                                                'capability_names',
+                                                                [...current, capability].join('\n'),
+                                                            );
+                                                        }}
+                                                    >
+                                                        {capability}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : null}
+
+                                    <div className="grid gap-5 lg:grid-cols-2">
+                                        <div className="space-y-3">
                                             <FieldLabel>Retries before incident</FieldLabel>
                                             <Input
                                                 type="number"

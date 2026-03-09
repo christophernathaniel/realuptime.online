@@ -36,7 +36,7 @@ export default function MarketingHome({ canRegister = true }: { canRegister?: bo
                     <div className="mt-10 grid gap-4 sm:grid-cols-3">
                         {[
                             ['10 free', 'Included monitors on the Free plan'],
-                            ['30 sec', 'Fastest paid check interval'],
+                            ['60 sec', 'Fastest paid check interval'],
                             ['Email + webhooks', 'Alerting for operators and tools'],
                         ].map(([value, label]) => (
                             <div key={value} className="rounded-[24px] border border-white/8 bg-white/4 px-5 py-5">

@@ -68,7 +68,7 @@ export default function Welcome({ canRegister = true }: { canRegister?: boolean 
                                         ['HTTP, port, and ping checks with incidents, timelines, and alerting', Activity],
                                         ['Incident timelines, uptime analytics, and response-time charts', ShieldCheck],
                                         ['Published status pages, status updates, and scheduled maintenance', Globe2],
-                                        ['Queued email notifications, API tokens, and shared workspaces', BellRing],
+                                        ['Queued email notifications, tokens, and shared workspaces', BellRing],
                                     ].map(([label, Icon]) => {
                                         const EntryIcon = Icon as typeof Activity;
                                         return (

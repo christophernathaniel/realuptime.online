@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Capability;
 use App\Models\Incident;
 use App\Models\Monitor;
 use App\Models\NotificationContact;
@@ -15,6 +16,45 @@ use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Process;
 
 uses(RefreshDatabase::class);
+
+it('renders affected capabilities on the incident detail page', function () {
+    $user = User::factory()->premium()->create();
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Primary API',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_DOWN,
+        'target' => 'https://example.com/health',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 0,
+        'expected_status_code' => 200,
+        'region' => 'North America',
+    ]);
+
+    $capability = Capability::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Checkout',
+        'slug' => 'checkout',
+    ]);
+    $monitor->capabilities()->attach($capability->id);
+
+    $incident = Incident::query()->create([
+        'monitor_id' => $monitor->id,
+        'started_at' => now()->subMinutes(10),
+        'type' => Incident::TYPE_DOWNTIME,
+        'severity' => Incident::SEVERITY_MAJOR,
+        'reason' => 'Primary API is unavailable.',
+    ]);
+
+    $this->actingAs($user)
+        ->get("/incidents/{$incident->id}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('incidents/show')
+            ->where('incident.capabilities.0.name', 'Checkout'));
+});
 
 it('escalates downtime incidents to critical after the configured threshold', function () {
     Notification::fake();
