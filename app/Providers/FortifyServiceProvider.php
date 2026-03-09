@@ -99,6 +99,7 @@ class FortifyServiceProvider extends ServiceProvider
     private function oauthProviders(): array
     {
         return collect(OAuthProviderCatalog::all())
+            ->filter(fn (array $provider) => $provider['enabled'])
             ->map(fn (array $provider) => [
                 ...$provider,
                 'redirectUrl' => route('oauth.redirect', $provider['key']),

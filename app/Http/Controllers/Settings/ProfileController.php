@@ -39,6 +39,7 @@ class ProfileController extends Controller
                         'canDisconnect' => $account !== null && ($user->password_login_enabled || $user->connectedAccounts()->count() > 1),
                     ];
                 })
+                ->filter(fn (array $provider) => $provider['enabled'] || $provider['connected'])
                 ->values()
                 ->all(),
             'passwordLoginEnabled' => $user->password_login_enabled,

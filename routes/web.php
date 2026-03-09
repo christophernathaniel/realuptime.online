@@ -71,6 +71,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('incidents', [MonitoringSectionController::class, 'incidents'])->name('incidents.index');
         Route::get('incidents/{incident}', [IncidentController::class, 'show'])->name('incidents.show');
         Route::put('incidents/{incident}', [IncidentController::class, 'update'])->name('incidents.update');
+        Route::delete('incidents/{incident}', [IncidentController::class, 'destroy'])->name('incidents.destroy');
         Route::get('status-pages', [MonitoringSectionController::class, 'statusPages'])->name('status-pages.index');
         Route::get('maintenance', [MonitoringSectionController::class, 'maintenance'])->name('maintenance.index');
         Route::get('team-members', [MonitoringSectionController::class, 'team'])->name('team-members.index');

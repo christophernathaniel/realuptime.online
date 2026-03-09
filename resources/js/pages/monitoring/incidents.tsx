@@ -1,4 +1,5 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
+import { Trash2 } from 'lucide-react';
 import { PageCard } from '@/components/monitoring/page-card';
 import MonitoringLayout from '@/layouts/monitoring-layout';
 
@@ -68,6 +69,18 @@ export default function IncidentsPage({ summary, incidents }: IncidentsPageProps
                                         </span>
                                         <div className="flex items-center gap-4">
                                             <div className="text-[#3ee072]">{incident.status}</div>
+                                            <button
+                                                type="button"
+                                                className="inline-flex items-center gap-1.5 text-[14px] text-[#ff9ca3] transition hover:text-white"
+                                                onClick={() => {
+                                                    if (window.confirm(`Delete incident "${incident.reason}"?`)) {
+                                                        router.delete(`/incidents/${incident.id}`, { preserveScroll: true });
+                                                    }
+                                                }}
+                                            >
+                                                <Trash2 className="size-4" />
+                                                Delete
+                                            </button>
                                             <Link href={incident.showUrl} className="text-[14px] text-[#9bb4ff] hover:text-white">
                                                 View details
                                             </Link>

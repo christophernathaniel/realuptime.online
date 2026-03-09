@@ -412,3 +412,100 @@ it('renders and updates the incident detail page', function () {
         'root_cause_summary' => 'Upstream load balancer was returning 500s.',
     ]);
 });
+
+it('deletes incidents from the current workspace and detaches notification logs', function () {
+    $user = User::factory()->premium()->create();
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Primary API',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_DOWN,
+        'target' => 'https://example.com/health',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 2,
+        'region' => 'North America',
+    ]);
+
+    $check = $monitor->checkResults()->create([
+        'status' => 'down',
+        'checked_at' => now()->subMinutes(5),
+        'attempts' => 1,
+        'http_status_code' => 500,
+        'error_type' => 'invalid_status',
+        'error_message' => 'Expected HTTP 200 but received 500.',
+    ]);
+
+    $incident = Incident::query()->create([
+        'monitor_id' => $monitor->id,
+        'first_check_result_id' => $check->id,
+        'latest_check_result_id' => $check->id,
+        'started_at' => now()->subMinutes(5),
+        'type' => Incident::TYPE_DOWNTIME,
+        'severity' => Incident::SEVERITY_MAJOR,
+        'reason' => 'Expected HTTP 200 but received 500.',
+        'error_type' => 'invalid_status',
+        'http_status_code' => 500,
+    ]);
+
+    $notificationLog = NotificationLog::query()->create([
+        'monitor_id' => $monitor->id,
+        'incident_id' => $incident->id,
+        'channel' => 'email',
+        'type' => 'down',
+        'subject' => 'Primary API is down',
+        'status' => 'sent',
+        'sent_at' => now()->subMinutes(4),
+        'payload' => ['email' => 'ops@example.com'],
+    ]);
+
+    $this->actingAs($user)
+        ->delete("/incidents/{$incident->id}")
+        ->assertRedirect('/incidents');
+
+    $this->assertDatabaseMissing('incidents', [
+        'id' => $incident->id,
+    ]);
+
+    $this->assertDatabaseHas('notification_logs', [
+        'id' => $notificationLog->id,
+        'incident_id' => null,
+    ]);
+});
+
+it('does not delete incidents outside the current workspace', function () {
+    $owner = User::factory()->premium()->create();
+    $otherUser = User::factory()->premium()->create();
+
+    $monitor = Monitor::query()->create([
+        'user_id' => $owner->id,
+        'name' => 'Primary API',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_DOWN,
+        'target' => 'https://example.com/health',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 2,
+        'region' => 'North America',
+    ]);
+
+    $incident = Incident::query()->create([
+        'monitor_id' => $monitor->id,
+        'started_at' => now()->subMinutes(5),
+        'type' => Incident::TYPE_DOWNTIME,
+        'severity' => Incident::SEVERITY_MAJOR,
+        'reason' => 'Expected HTTP 200 but received 500.',
+        'error_type' => 'invalid_status',
+        'http_status_code' => 500,
+    ]);
+
+    $this->actingAs($otherUser)
+        ->delete("/incidents/{$incident->id}")
+        ->assertNotFound();
+
+    $this->assertDatabaseHas('incidents', [
+        'id' => $incident->id,
+    ]);
+});

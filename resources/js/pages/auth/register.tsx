@@ -24,6 +24,8 @@ type Props = {
 };
 
 export default function Register({ oauthProviders }: Props) {
+    const hasOAuthProviders = oauthProviders.length > 0;
+
     return (
         <AuthLayout
             title="Create your account"
@@ -32,13 +34,17 @@ export default function Register({ oauthProviders }: Props) {
         >
             <Head title="Register" />
 
-            <OAuthProviderButtons providers={oauthProviders} className="mb-6" />
+            {hasOAuthProviders ? (
+                <>
+                    <OAuthProviderButtons providers={oauthProviders} className="mb-6" />
 
-            <div className="mb-6 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.26em] text-[#6f82a3]">
-                <span className="h-px flex-1 bg-white/8" />
-                Or sign up with email
-                <span className="h-px flex-1 bg-white/8" />
-            </div>
+                    <div className="mb-6 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.26em] text-[#6f82a3]">
+                        <span className="h-px flex-1 bg-white/8" />
+                        Or sign up with email
+                        <span className="h-px flex-1 bg-white/8" />
+                    </div>
+                </>
+            ) : null}
 
             <Form
                 action="/register"

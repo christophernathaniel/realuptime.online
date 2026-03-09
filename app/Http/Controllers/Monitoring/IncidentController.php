@@ -35,4 +35,13 @@ class IncidentController extends Controller
 
         return back()->with('success', 'Incident notes updated.');
     }
+
+    public function destroy(Request $request, Incident $incident): RedirectResponse
+    {
+        abort_unless($incident->monitor()->where('user_id', $this->workspaces->current($request)->id)->exists(), 404);
+
+        $incident->delete();
+
+        return redirect()->route('incidents.index')->with('success', 'Incident deleted.');
+    }
 }

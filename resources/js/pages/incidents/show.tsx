@@ -1,5 +1,5 @@
-import { Head, Link, useForm } from '@inertiajs/react';
-import { Save } from 'lucide-react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
+import { Save, Trash2 } from 'lucide-react';
 import { PageCard } from '@/components/monitoring/page-card';
 import MonitoringLayout from '@/layouts/monitoring-layout';
 import type { IncidentCheckSummary, IncidentDetail } from '@/types/monitoring';
@@ -71,6 +71,18 @@ export default function IncidentShow({ incident }: IncidentShowProps) {
                         </div>
                         <div className="mt-4 max-w-[880px] text-[17px] text-[#dce6fb]">{incident.reason}</div>
                     </div>
+                    <button
+                        type="button"
+                        className="inline-flex items-center gap-2 self-start rounded-[14px] border border-[#ff6269]/25 bg-[#231320] px-4 py-2.5 text-sm font-medium text-[#ffd4d7]"
+                        onClick={() => {
+                            if (window.confirm(`Delete this incident for ${incident.monitorName ?? 'this monitor'}?`)) {
+                                router.delete(`/incidents/${incident.id}`);
+                            }
+                        }}
+                    >
+                        <Trash2 className="size-4" />
+                        Delete incident
+                    </button>
                 </div>
 
                 <div className="grid gap-4 xl:grid-cols-3">

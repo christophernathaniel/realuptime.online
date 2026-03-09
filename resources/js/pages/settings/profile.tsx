@@ -159,81 +159,81 @@ export default function Profile({
                     </div>
                 </PageCard>
 
-                <PageCard className="p-6 sm:p-7">
-                    <div className="space-y-6">
-                        <div>
-                            <h2 className={sectionTitleClass}>Connected sign-in providers</h2>
-                            <p className={sectionDescriptionClass}>
-                                Link Google or GitHub so you can sign in without relying only on a password.
-                            </p>
-                        </div>
+                {oauthProviders.length > 0 ? (
+                    <PageCard className="p-6 sm:p-7">
+                        <div className="space-y-6">
+                            <div>
+                                <h2 className={sectionTitleClass}>Connected sign-in providers</h2>
+                                <p className={sectionDescriptionClass}>
+                                    Link Google or GitHub so you can sign in without relying only on a password.
+                                </p>
+                            </div>
 
-                        <div className="grid gap-3">
-                            {oauthProviders.map((provider) => (
-                                <div
-                                    key={provider.key}
-                                    className="flex flex-col gap-4 rounded-[22px] border border-white/8 bg-[#101b2f]/85 p-4 sm:flex-row sm:items-center sm:justify-between"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        {provider.avatarUrl ? (
-                                            <img
-                                                src={provider.avatarUrl}
-                                                alt={provider.label}
-                                                className="size-11 rounded-full border border-white/10 object-cover"
-                                            />
-                                        ) : (
-                                            <div className="inline-flex size-11 items-center justify-center rounded-full border border-white/10 bg-[#081428] text-[15px] font-semibold text-white">
-                                                {provider.label.slice(0, 1)}
-                                            </div>
-                                        )}
-                                        <div>
-                                            <div className="text-[15px] font-semibold text-white">
-                                                {provider.label}
-                                            </div>
-                                            <div className="mt-1 text-sm text-[#8fa0bf]">
-                                                {provider.connected
-                                                    ? `Connected as ${provider.connectedAs ?? provider.label}`
-                                                    : provider.enabled
-                                                      ? 'Not connected'
-                                                      : 'Not configured'}
+                            <div className="grid gap-3">
+                                {oauthProviders.map((provider) => (
+                                    <div
+                                        key={provider.key}
+                                        className="flex flex-col gap-4 rounded-[22px] border border-white/8 bg-[#101b2f]/85 p-4 sm:flex-row sm:items-center sm:justify-between"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            {provider.avatarUrl ? (
+                                                <img
+                                                    src={provider.avatarUrl}
+                                                    alt={provider.label}
+                                                    className="size-11 rounded-full border border-white/10 object-cover"
+                                                />
+                                            ) : (
+                                                <div className="inline-flex size-11 items-center justify-center rounded-full border border-white/10 bg-[#081428] text-[15px] font-semibold text-white">
+                                                    {provider.label.slice(0, 1)}
+                                                </div>
+                                            )}
+                                            <div>
+                                                <div className="text-[15px] font-semibold text-white">
+                                                    {provider.label}
+                                                </div>
+                                                <div className="mt-1 text-sm text-[#8fa0bf]">
+                                                    {provider.connected
+                                                        ? `Connected as ${provider.connectedAs ?? provider.label}`
+                                                        : 'Not connected'}
+                                                </div>
                                             </div>
                                         </div>
+
+                                        {provider.connected ? (
+                                            <button
+                                                type="button"
+                                                className={`${surfaceSecondaryButtonClass} inline-flex items-center justify-center gap-2 px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50`}
+                                                disabled={!provider.canDisconnect}
+                                                onClick={() =>
+                                                    router.delete(provider.disconnectUrl, {
+                                                        preserveScroll: true,
+                                                    })
+                                                }
+                                            >
+                                                <Link2Off className="size-4" />
+                                                Disconnect
+                                            </button>
+                                        ) : (
+                                            <a
+                                                href={provider.redirectUrl}
+                                                className={`${surfaceSecondaryButtonClass} inline-flex items-center justify-center gap-2 px-4 text-sm font-medium`}
+                                            >
+                                                <Link2 className="size-4" />
+                                                Connect
+                                            </a>
+                                        )}
                                     </div>
+                                ))}
+                            </div>
 
-                                    {provider.connected ? (
-                                        <button
-                                            type="button"
-                                            className={`${surfaceSecondaryButtonClass} inline-flex items-center justify-center gap-2 px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50`}
-                                            disabled={!provider.canDisconnect}
-                                            onClick={() =>
-                                                router.delete(provider.disconnectUrl, {
-                                                    preserveScroll: true,
-                                                })
-                                            }
-                                        >
-                                            <Link2Off className="size-4" />
-                                            Disconnect
-                                        </button>
-                                    ) : (
-                                        <a
-                                            href={provider.redirectUrl}
-                                            className={`${surfaceSecondaryButtonClass} inline-flex items-center justify-center gap-2 px-4 text-sm font-medium ${provider.enabled ? '' : 'pointer-events-none opacity-50'}`}
-                                        >
-                                            <Link2 className="size-4" />
-                                            Connect
-                                        </a>
-                                    )}
-                                </div>
-                            ))}
+                            {!passwordLoginEnabled ? (
+                                <p className={surfaceMutedTextClass}>
+                                    Password login is disabled for this account. Set a password before disconnecting your last OAuth provider.
+                                </p>
+                            ) : null}
                         </div>
-
-                        {!passwordLoginEnabled ? (
-                            <p className={surfaceMutedTextClass}>
-                                Password login is disabled for this account. Set a password before disconnecting your last OAuth provider.
-                            </p>
-                        ) : null}
-                    </div>
-                </PageCard>
+                    </PageCard>
+                ) : null}
 
                 <DeleteUser />
             </SettingsLayout>
