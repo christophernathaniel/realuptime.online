@@ -1484,18 +1484,20 @@ class MonitorPresenter
             return [];
         }
 
+        $bucketAnchor = $this->responseTimeBucketAnchor($from, $bucketSeconds);
         $buckets = [];
 
         foreach ($results as $result) {
-            $bucketIndex = (int) floor($from->diffInSeconds(CarbonImmutable::parse($result->checked_at)) / $bucketSeconds);
+            $checkedAt = CarbonImmutable::parse($result->checked_at)->setTimezone(config('app.timezone'));
+            $bucketIndex = (int) floor($bucketAnchor->diffInSeconds($checkedAt) / $bucketSeconds);
             $buckets[$bucketIndex] ??= [];
             $buckets[$bucketIndex][] = $result;
         }
 
         ksort($buckets);
 
-        return collect($buckets)->map(function (array $bucket, int $index) use ($from, $bucketSeconds, $shortLabelFormat): array {
-            $bucketStart = $from->addSeconds($index * $bucketSeconds)->setTimezone(config('app.timezone'));
+        return collect($buckets)->map(function (array $bucket, int $index) use ($bucketAnchor, $bucketSeconds, $shortLabelFormat): array {
+            $bucketStart = $bucketAnchor->addSeconds($index * $bucketSeconds);
             $responseTimes = collect($bucket)
                 ->pluck('response_time_ms')
                 ->filter(fn ($value) => $value !== null)
@@ -1513,6 +1515,18 @@ class MonitorPresenter
                 'status' => $status,
             ];
         })->values()->all();
+    }
+
+    protected function responseTimeBucketAnchor(CarbonImmutable $from, int $bucketSeconds): CarbonImmutable
+    {
+        $localFrom = $from->setTimezone(config('app.timezone'));
+
+        return match ($bucketSeconds) {
+            86400 => $localFrom->startOfDay(),
+            604800 => $localFrom->startOfWeek(),
+            2592000 => $localFrom->startOfMonth(),
+            default => $localFrom,
+        };
     }
 
     protected function incidentTimeline(Incident $incident, Collection $checkResults): array

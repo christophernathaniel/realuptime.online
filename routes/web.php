@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\MarketingPageController;
 use App\Http\Controllers\Monitoring\HeartbeatController;
 use App\Http\Controllers\Monitoring\IncidentController;
 use App\Http\Controllers\Monitoring\MaintenanceWindowController;
@@ -14,11 +15,16 @@ use App\Http\Controllers\Monitoring\StatusPageController;
 use App\Http\Controllers\Monitoring\StatusPageIncidentController;
 use App\Http\Controllers\Monitoring\WorkspaceMembershipController;
 use Illuminate\Support\Facades\Route;
-use Laravel\Fortify\Features;
 
-Route::inertia('/', 'welcome', [
-    'canRegister' => Features::enabled(Features::registration()),
-])->name('home');
+Route::get('/', [MarketingPageController::class, 'home'])->name('home');
+Route::get('/features', [MarketingPageController::class, 'features'])->name('features.index');
+Route::get('/features/{slug}', [MarketingPageController::class, 'feature'])->name('features.show');
+Route::get('/pricing', [MarketingPageController::class, 'pricing'])->name('pricing');
+Route::get('/plans', [MarketingPageController::class, 'plans'])->name('plans');
+Route::get('/about', [MarketingPageController::class, 'about'])->name('about');
+Route::get('/careers', [MarketingPageController::class, 'careers'])->name('careers');
+Route::get('/privacy-policy', [MarketingPageController::class, 'privacy'])->name('privacy-policy');
+Route::get('/terms-and-conditions', [MarketingPageController::class, 'terms'])->name('terms-and-conditions');
 
 Route::post('heartbeat/{token}', [HeartbeatController::class, 'store'])->name('heartbeat.store');
 Route::get('auth/{provider}/redirect', [OAuthController::class, 'redirect'])->name('oauth.redirect');

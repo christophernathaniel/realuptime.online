@@ -89,11 +89,11 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                         </Link>
                     </div>
 
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                        <div className="flex items-start gap-5">
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-4">
                             <StatusChip status={monitor.status} large />
-                            <div>
-                                <h1 className="text-[40px] font-semibold tracking-[-0.06em] text-white lg:text-[48px]">
+                            <div className="min-w-0">
+                                <h1 className="text-[40px] font-semibold leading-none tracking-[-0.06em] text-white lg:text-[48px]">
                                     {monitor.name}
                                 </h1>
                                 <div className="mt-2 flex flex-wrap items-center gap-3 text-[16px] text-[#9eacc7] lg:text-[18px]">
@@ -117,7 +117,7 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                             </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                             <button
                                 type="button"
                                 className="inline-flex items-center gap-3 rounded-[16px] border border-white/6 bg-[#1a2339]/95 px-4 py-2.5 text-base text-[#d5def3]"

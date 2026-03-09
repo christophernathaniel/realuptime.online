@@ -82,13 +82,13 @@ export default function Welcome({ canRegister = true }: { canRegister?: boolean 
                             <div className="rounded-[28px] border border-white/6 bg-[linear-gradient(135deg,#132444_0%,#0d1628_100%)] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.25)]">
                                 <div className="flex items-center gap-2 text-[18px] text-[#dce6fb]">
                                     <ServerCog className="size-5 text-[#3ee072]" />
-                                    Deployment essentials
+                                    Operational visibility
                                 </div>
                                 <div className="mt-4 space-y-3 text-[14px] text-[#9db0d2]">
-                                    <div>1. Configure `MAIL_*`, `APP_URL`, and OAuth providers.</div>
-                                    <div>2. Run a scheduler process with `php artisan schedule:work`.</div>
-                                    <div>3. Run queue workers for `monitor-checks`, `notifications`, and `default`.</div>
-                                    <div>4. Use Redis for queue and cache in production.</div>
+                                    <div>1. Track websites, APIs, certificates, and infrastructure from one shared workspace.</div>
+                                    <div>2. Capture incident history with retries, root cause notes, and notification timelines.</div>
+                                    <div>3. Publish public status pages and maintenance updates without a separate tool.</div>
+                                    <div>4. Send alert emails and paid-plan downtime webhooks when monitors fail.</div>
                                 </div>
                             </div>
                         </section>

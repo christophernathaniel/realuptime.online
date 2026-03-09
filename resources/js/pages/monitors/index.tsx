@@ -131,18 +131,7 @@ export default function MonitorsIndex({
                         </div>
                     </div>
 
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                        <div className="flex flex-wrap items-center gap-3">
-                            <PageCard className="flex items-center gap-3 px-4 py-3 text-[#dfe8fb]">
-                                <div className="size-4 rounded-[6px] border border-white/10 bg-[#0b1425]" />
-                                <span className="text-base">0 / {summary.total}</span>
-                            </PageCard>
-                            <PageCard className="flex items-center gap-3 px-4 py-3 text-[#8fa0bf]">
-                                <span className="inline-flex size-4 rounded-[6px] border border-[#ffb454]/50 text-[#ffb454]" />
-                                <span className="text-base">Show groups</span>
-                            </PageCard>
-                        </div>
-
+                    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-end">
                         <div className="flex flex-col gap-3 sm:flex-row">
                             <label className="relative block min-w-[280px]">
                                 <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#6f7d98]" />
