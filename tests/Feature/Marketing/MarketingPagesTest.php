@@ -38,10 +38,17 @@ test('marketing pages render successfully', function () {
 
 test('invalid feature pages return not found', function () {
     $this->get(route('features.show', ['slug' => 'not-a-feature']))
-        ->assertNotFound();
+        ->assertNotFound()
+        ->assertInertia(fn (Assert $page) => $page->component('errors/not-found')->has('canRegister'));
 });
 
 test('plans route redirects to pricing', function () {
     $this->get(route('plans'))
         ->assertRedirect(route('pricing'));
+});
+
+test('unknown web routes render the custom not found page', function () {
+    $this->get('/this-page-does-not-exist')
+        ->assertNotFound()
+        ->assertInertia(fn (Assert $page) => $page->component('errors/not-found')->has('canRegister'));
 });

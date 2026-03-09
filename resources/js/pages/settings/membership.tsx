@@ -171,7 +171,7 @@ export default function MembershipPage({ membership }: MembershipPageProps) {
                                 ) : (
                                     <div className="rounded-[14px] bg-[#111a2c] px-4 py-3 text-sm text-[#8fa0bf]">
                                         {membership.adminOverride
-                                            ? 'Plan access is currently controlled by an admin override.'
+                                            ? 'This workspace plan is not available for self-service changes.'
                                             : 'This plan is already active or managed through Stripe.'}
                                     </div>
                                 )}
