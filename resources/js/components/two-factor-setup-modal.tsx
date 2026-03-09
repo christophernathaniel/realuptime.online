@@ -29,8 +29,8 @@ import { confirm } from '@/routes/two-factor';
 
 function GridScanIcon() {
     return (
-        <div className="mb-2 rounded-full border border-white/8 bg-[#101b2f] p-1 shadow-[0_18px_40px_rgba(0,0,0,0.18)]">
-            <div className="relative overflow-hidden rounded-full border border-white/10 bg-[#081428] p-3 text-[#3ee072]">
+        <div className="mb-2 rounded-full border border-white/8 bg-[#101b2f] p-1">
+            <div className="relative overflow-hidden rounded-full border border-white/10 bg-[#081428] p-3 text-[#7c8cff]">
                 <div className="absolute inset-0 grid grid-cols-5 opacity-45">
                     {Array.from({ length: 5 }, (_, i) => (
                         <div
@@ -111,7 +111,7 @@ function TwoFactorSetupStep({
             <div className="flex w-full">
                 <div className="flex w-full items-stretch overflow-hidden rounded-[18px] border border-white/8 bg-[#081428]">
                     {!manualSetupKey ? (
-                        <div className="flex h-full w-full items-center justify-center p-4 text-[#8fa0bf]">
+                        <div className="flex h-full w-full items-center justify-center p-4 text-[#9ca7b9]">
                             <Spinner />
                         </div>
                     ) : (
@@ -125,7 +125,7 @@ function TwoFactorSetupStep({
                             <button
                                 type="button"
                                 onClick={() => copy(manualSetupKey)}
-                                className="border-l border-white/8 px-4 text-[#8fa0bf] transition hover:bg-white/5 hover:text-white"
+                                className="border-l border-white/8 px-4 text-[#9ca7b9] transition hover:bg-white/5 hover:text-white"
                             >
                                 <IconComponent className="size-4" />
                             </button>
@@ -307,13 +307,13 @@ export default function TwoFactorSetupModal({
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-            <DialogContent className="border-white/8 bg-[#101b2f] text-white shadow-[0_32px_90px_rgba(0,0,0,0.42)] sm:max-w-md">
+            <DialogContent className="border-white/8 bg-[#101b2f] text-white sm:max-w-md">
                 <DialogHeader className="flex items-center justify-center gap-3">
                     <GridScanIcon />
                     <DialogTitle className="text-center text-[24px] font-semibold tracking-[-0.04em] text-white">
                         {modalConfig.title}
                     </DialogTitle>
-                    <DialogDescription className="text-center text-[14px] leading-6 text-[#8fa0bf]">
+                    <DialogDescription className="text-center text-[14px] leading-6 text-[#9ca7b9]">
                         {modalConfig.description}
                     </DialogDescription>
                 </DialogHeader>

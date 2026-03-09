@@ -2,9 +2,9 @@ import { cn } from '@/lib/utils';
 import type { MonitorBarState } from '@/types/monitoring';
 
 const toneMap: Record<MonitorBarState, string> = {
-    up: 'bg-[#3ee072]',
-    down: 'bg-[#ff6269]',
-    unknown: 'bg-[#273149]',
+    up: 'bg-[#57c7c2]',
+    down: 'bg-[#ff7a72]',
+    unknown: 'bg-[#2a3344]',
 };
 
 export function UptimeBars({ bars, compact = false }: { bars: MonitorBarState[]; compact?: boolean }) {

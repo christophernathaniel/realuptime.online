@@ -79,17 +79,17 @@ export default function TeamPage({
 
     return (
         <MonitoringLayout>
-            <Head title="Team members" />
+            <Head title="Workspace access" />
             <div className="space-y-5">
                 <div>
                     <h1 className="text-[40px] font-semibold tracking-[-0.06em] text-white lg:text-[46px]">
-                        Team members<span className="text-[#3ee072]">.</span>
+                        Workspace access<span className="text-[#7c8cff]">.</span>
                     </h1>
-                    <div className="mt-2 max-w-[780px] text-[16px] text-[#8fa0bf]">
+                    <div className="mt-2 max-w-[780px] text-[16px] text-[#9ca7b9]">
                         Invite teammates into this workspace, track accepted access, and remove members when they no longer need access.
                     </div>
                     {!teamWorkspace.isOwner ? (
-                        <div className="mt-4 inline-flex rounded-full border border-[#3ee072]/20 bg-[#10273a] px-4 py-2 text-sm text-[#dfffe9]">
+                        <div className="mt-4 inline-flex rounded-full border border-[#7c8cff]/20 bg-[#171c33] px-4 py-2 text-sm text-[#dbe1ff]">
                             You are currently viewing {owner.name}&apos;s shared workspace.
                         </div>
                     ) : null}
@@ -100,10 +100,10 @@ export default function TeamPage({
                         {canInvite ? (
                             <PageCard className="space-y-5 p-6">
                                 <div className="flex items-center gap-3 text-[24px] font-semibold text-white">
-                                    <MailPlus className="size-5 text-[#3ee072]" />
-                                    Invite teammate
+                                    <MailPlus className="size-5 text-[#7c8cff]" />
+                                    Invite collaborator
                                 </div>
-                                <div className="text-[15px] text-[#8fa0bf]">
+                                <div className="text-[15px] text-[#9ca7b9]">
                                     Invitations are sent by email. The recipient signs in with that email address, accepts the invitation, and gets access to this workspace.
                                 </div>
 
@@ -146,28 +146,28 @@ export default function TeamPage({
 
                         <PageCard className="space-y-5 p-6">
                             <div className="flex items-center gap-3 text-[24px] font-semibold text-white">
-                                <Users className="size-5 text-[#3ee072]" />
+                                <Users className="size-5 text-[#7c8cff]" />
                                 Accepted members
                             </div>
                             <div className="grid gap-3">
                                 {acceptedMembers.map((member) => (
                                     <div
                                         key={member.id}
-                                        className="flex flex-col gap-4 rounded-[18px] bg-[#111a2c] px-5 py-5 sm:flex-row sm:items-center sm:justify-between"
+                                        className="flex flex-col gap-4 rounded-[18px] bg-[#171d28] px-5 py-5 sm:flex-row sm:items-center sm:justify-between"
                                     >
                                         <div>
                                             <div className="flex items-center gap-2 text-[16px] font-semibold text-white">
                                                 {member.name}
-                                                <span className="rounded-full border border-white/8 px-2 py-0.5 text-[11px] uppercase tracking-[0.18em] text-[#8fa0bf]">
+                                                <span className="rounded-full border border-white/8 px-2 py-0.5 text-[11px] uppercase tracking-[0.18em] text-[#9ca7b9]">
                                                     {member.statusLabel}
                                                 </span>
                                                 {member.isCurrentUser ? (
-                                                    <span className="rounded-full border border-[#3ee072]/20 bg-[#10273a] px-2 py-0.5 text-[11px] uppercase tracking-[0.18em] text-[#dfffe9]">
+                                                    <span className="rounded-full border border-[#7c8cff]/20 bg-[#171c33] px-2 py-0.5 text-[11px] uppercase tracking-[0.18em] text-[#dbe1ff]">
                                                         You
                                                     </span>
                                                 ) : null}
                                             </div>
-                                            <div className="mt-1 text-sm text-[#8fa0bf]">{member.email}</div>
+                                            <div className="mt-1 text-sm text-[#9ca7b9]">{member.email}</div>
                                             <div className="mt-2 text-[12px] text-[#7081a2]">
                                                 {member.acceptedAt ? `Accepted ${member.acceptedAt}` : 'Accepted'}
                                             </div>
@@ -195,18 +195,18 @@ export default function TeamPage({
                             <div className="text-[22px] font-semibold text-white">Pending invitations</div>
                             <div className="grid gap-3">
                                 {pendingInvitations.length === 0 ? (
-                                    <div className="rounded-[18px] bg-[#111a2c] px-5 py-5 text-[15px] text-[#8fa0bf]">
+                                    <div className="rounded-[18px] bg-[#171d28] px-5 py-5 text-[15px] text-[#9ca7b9]">
                                         No pending invitations.
                                     </div>
                                 ) : (
                                     pendingInvitations.map((invitation) => (
                                         <div
                                             key={invitation.id}
-                                            className="flex flex-col gap-4 rounded-[18px] bg-[#111a2c] px-5 py-5 sm:flex-row sm:items-center sm:justify-between"
+                                            className="flex flex-col gap-4 rounded-[18px] bg-[#171d28] px-5 py-5 sm:flex-row sm:items-center sm:justify-between"
                                         >
                                             <div>
                                                 <div className="text-[16px] font-semibold text-white">{invitation.email}</div>
-                                                <div className="mt-1 text-sm text-[#8fa0bf]">
+                                                <div className="mt-1 text-sm text-[#9ca7b9]">
                                                     Invited {invitation.invitedAt}
                                                 </div>
                                             </div>
@@ -237,7 +237,7 @@ export default function TeamPage({
                                     <Link
                                         key={link.href}
                                         href={link.href}
-                                        className="rounded-[16px] border border-white/8 bg-[#111a2c] px-5 py-4 text-[15px] text-[#dce6fb] transition hover:border-white/14 hover:bg-[#162139]"
+                                        className="rounded-[16px] border border-white/8 bg-[#171d28] px-5 py-4 text-[15px] text-[#dce6fb] transition hover:border-white/14 hover:bg-[#162139]"
                                     >
                                         {link.label}
                                     </Link>
@@ -249,23 +249,23 @@ export default function TeamPage({
                     <aside className="space-y-4">
                         <PageCard className="space-y-5 p-6">
                             <div className="flex items-center gap-3 text-[24px] font-semibold text-white">
-                                <UserRound className="size-5 text-[#3ee072]" />
+                                <UserRound className="size-5 text-[#7c8cff]" />
                                 Current workspace
                             </div>
                             <div className="grid gap-4">
-                                <div className="rounded-[18px] bg-[#111a2c] px-5 py-5">
-                                    <div className="text-sm text-[#8fa0bf]">Workspace name</div>
+                                <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
+                                    <div className="text-sm text-[#9ca7b9]">Workspace name</div>
                                     <div className="mt-1 text-[22px] font-semibold text-white">{teamWorkspace.name}</div>
                                 </div>
-                                <div className="rounded-[18px] bg-[#111a2c] px-5 py-5">
-                                    <div className="text-sm text-[#8fa0bf]">Workspace type</div>
+                                <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
+                                    <div className="text-sm text-[#9ca7b9]">Workspace type</div>
                                     <div className="mt-1 text-[22px] font-semibold text-white">
                                         {teamWorkspace.isPersonal ? 'Personal workspace' : 'Shared workspace'}
                                     </div>
                                 </div>
                                 {!teamWorkspace.isPersonal ? (
-                                    <div className="rounded-[18px] bg-[#111a2c] px-5 py-5">
-                                        <div className="text-sm text-[#8fa0bf]">Workspace email</div>
+                                    <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
+                                        <div className="text-sm text-[#9ca7b9]">Workspace email</div>
                                         <div className="mt-1 text-[22px] font-semibold text-white">{teamWorkspace.email}</div>
                                     </div>
                                 ) : null}
@@ -274,26 +274,26 @@ export default function TeamPage({
 
                         <PageCard className="space-y-5 p-6">
                             <div className="flex items-center gap-3 text-[24px] font-semibold text-white">
-                                <UserRound className="size-5 text-[#3ee072]" />
+                                <UserRound className="size-5 text-[#7c8cff]" />
                                 Workspace owner
                             </div>
                             <div className="grid gap-4">
-                                <div className="rounded-[18px] bg-[#111a2c] px-5 py-5">
-                                    <div className="text-sm text-[#8fa0bf]">Name</div>
+                                <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
+                                    <div className="text-sm text-[#9ca7b9]">Name</div>
                                     <div className="mt-1 text-[22px] font-semibold text-white">{owner.name}</div>
                                 </div>
-                                <div className="rounded-[18px] bg-[#111a2c] px-5 py-5">
-                                    <div className="text-sm text-[#8fa0bf]">Email</div>
+                                <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
+                                    <div className="text-sm text-[#9ca7b9]">Email</div>
                                     <div className="mt-1 text-[22px] font-semibold text-white">{owner.email}</div>
                                 </div>
-                                <div className="rounded-[18px] bg-[#111a2c] px-5 py-5">
-                                    <div className="text-sm text-[#8fa0bf]">Email verification</div>
+                                <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
+                                    <div className="text-sm text-[#9ca7b9]">Email verification</div>
                                     <div className="mt-1 text-[22px] font-semibold text-white">
                                         {owner.emailVerified ? 'Verified' : 'Pending'}
                                     </div>
                                 </div>
-                                <div className="rounded-[18px] bg-[#111a2c] px-5 py-5">
-                                    <div className="text-sm text-[#8fa0bf]">Two-factor authentication</div>
+                                <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
+                                    <div className="text-sm text-[#9ca7b9]">Two-factor authentication</div>
                                     <div className="mt-1 text-[22px] font-semibold text-white">
                                         {owner.twoFactorEnabled ? 'Enabled' : 'Disabled'}
                                     </div>
@@ -304,24 +304,24 @@ export default function TeamPage({
 
                         <PageCard className="p-6">
                             <div className="flex items-center gap-3 text-[20px] font-semibold text-white">
-                                <BadgeCheck className="size-5 text-[#3ee072]" />
+                                <BadgeCheck className="size-5 text-[#7c8cff]" />
                                 Workspace summary
                             </div>
                             <div className="mt-5 grid gap-4">
-                                <div className="rounded-[18px] bg-[#111a2c] px-5 py-5">
-                                    <div className="text-sm text-[#8fa0bf]">Members</div>
+                                <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
+                                    <div className="text-sm text-[#9ca7b9]">Members</div>
                                     <div className="mt-1 text-[30px] font-semibold text-white">{summary.members}</div>
                                 </div>
-                                <div className="rounded-[18px] bg-[#111a2c] px-5 py-5">
-                                    <div className="text-sm text-[#8fa0bf]">Monitors</div>
+                                <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
+                                    <div className="text-sm text-[#9ca7b9]">Monitors</div>
                                     <div className="mt-1 text-[30px] font-semibold text-white">{summary.monitors}</div>
                                 </div>
-                                <div className="rounded-[18px] bg-[#111a2c] px-5 py-5">
-                                    <div className="text-sm text-[#8fa0bf]">Email contacts</div>
+                                <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
+                                    <div className="text-sm text-[#9ca7b9]">Email contacts</div>
                                     <div className="mt-1 text-[30px] font-semibold text-white">{summary.contacts}</div>
                                 </div>
-                                <div className="rounded-[18px] bg-[#111a2c] px-5 py-5">
-                                    <div className="text-sm text-[#8fa0bf]">Status pages</div>
+                                <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
+                                    <div className="text-sm text-[#9ca7b9]">Status pages</div>
                                     <div className="mt-1 text-[30px] font-semibold text-white">{summary.statusPages}</div>
                                 </div>
                             </div>
@@ -329,14 +329,14 @@ export default function TeamPage({
 
                         <PageCard className="space-y-4 p-6">
                             <div className="flex items-center gap-3 text-[20px] font-semibold text-white">
-                                <Shield className="size-5 text-[#3ee072]" />
+                                <Shield className="size-5 text-[#7c8cff]" />
                                 Security posture
                             </div>
-                            <div className="text-[15px] text-[#8fa0bf]">
+                            <div className="text-[15px] text-[#9ca7b9]">
                                 Shared workspaces still use personal account security. Encourage every member to verify email, enable two-factor auth, and keep sessions clean.
                             </div>
-                            <div className="flex items-center gap-3 rounded-[16px] bg-[#111a2c] px-4 py-4 text-[15px] text-[#dce6fb]">
-                                <KeyRound className="size-4 text-[#3ee072]" />
+                            <div className="flex items-center gap-3 rounded-[16px] bg-[#171d28] px-4 py-4 text-[15px] text-[#dce6fb]">
+                                <KeyRound className="size-4 text-[#7c8cff]" />
                                 Use the settings area to rotate credentials and review active sessions.
                             </div>
                         </PageCard>

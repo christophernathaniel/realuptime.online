@@ -18,6 +18,8 @@ class Monitor extends Model
 
     public const TYPE_PING = 'ping';
 
+    public const TYPE_PORT = 'port';
+
     public const TYPE_KEYWORD = 'keyword';
 
     public const TYPE_SSL = 'ssl';

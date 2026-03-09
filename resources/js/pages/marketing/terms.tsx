@@ -62,7 +62,7 @@ export default function TermsPage() {
                 <div className="max-w-[860px]">
                     <div className="text-[14px] font-semibold uppercase tracking-[0.22em] text-[#7083a2]">Terms & conditions</div>
                     <h1 className="mt-5 text-[40px] font-semibold leading-[0.9] tracking-[-0.08em] text-white sm:text-[50px] lg:text-[62px]">
-                        Terms for using the RealUptime product and public website<span className="text-[#42df79]">.</span>
+                        Terms for using the RealUptime product and public website<span className="text-[#7c8cff]">.</span>
                     </h1>
                     <p className="mt-6 text-[20px] leading-9 text-[#97aac6]">
                         These terms set out how the RealUptime service may be used, where responsibility sits for credentials and published content, and how liability is allocated to the fullest extent permitted by law.

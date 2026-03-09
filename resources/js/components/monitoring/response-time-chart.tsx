@@ -41,8 +41,8 @@ export function ResponseTimeChart({ points }: { points: ResponsePoint[] }) {
                 x2: point.x,
                 y2: point.y,
                 stroke: point.status === 'down' || previous.status === 'down'
-                    ? '#ff6269'
-                    : (point.status === 'warning' || previous.status === 'warning' ? '#f7b84b' : '#3ee072'),
+                    ? '#ff7a72'
+                    : (point.status === 'warning' || previous.status === 'warning' ? '#7c8cff' : '#57c7c2'),
             };
         });
 
@@ -57,14 +57,14 @@ export function ResponseTimeChart({ points }: { points: ResponsePoint[] }) {
     const yLabels = [0, Math.round(max * 0.25), Math.round(max * 0.5), Math.round(max * 0.75), max].reverse();
 
     return (
-        <div className="rounded-[28px] border border-white/6 bg-[#1a2339]/95 p-6 shadow-[0_24px_60px_rgba(0,0,0,0.22)]">
+        <div className="rounded-[28px] border border-[#2a3342] bg-[linear-gradient(180deg,rgba(17,22,31,0.97)_0%,rgba(15,19,27,0.97)_100%)] p-6">
             <svg viewBox={`0 0 ${width} ${height}`} className="h-[260px] w-full overflow-visible lg:h-[280px]">
                 {yLabels.map((label, index) => {
                     const y = padding.top + ((height - padding.top - padding.bottom) / (yLabels.length - 1)) * index;
                     return (
                         <g key={label}>
-                            <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="rgba(151, 165, 192, 0.18)" />
-                            <text x={14} y={y + 4} fill="#7582a0" fontSize="14">
+                            <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="rgba(145, 157, 179, 0.16)" />
+                            <text x={14} y={y + 4} fill="#7b879a" fontSize="14">
                                 {label}ms
                             </text>
                         </g>
@@ -73,7 +73,7 @@ export function ResponseTimeChart({ points }: { points: ResponsePoint[] }) {
 
                 {circles.length > 0 ? (
                     <>
-                        <polyline fill="none" stroke="#2a3652" strokeWidth="3" points={`${padding.left},${height - padding.bottom} ${width - padding.right},${height - padding.bottom}`} />
+                        <polyline fill="none" stroke="#334156" strokeWidth="3" points={`${padding.left},${height - padding.bottom} ${width - padding.right},${height - padding.bottom}`} />
                         {circles.map((point) =>
                             point.status === 'up' ? null : (
                                 <rect
@@ -83,7 +83,7 @@ export function ResponseTimeChart({ points }: { points: ResponsePoint[] }) {
                                     width="14"
                                     height={height - padding.top - padding.bottom}
                                     rx="7"
-                                    fill={point.status === 'down' ? 'rgba(255,98,105,0.18)' : 'rgba(247,184,75,0.16)'}
+                                    fill={point.status === 'down' ? 'rgba(255,122,114,0.18)' : 'rgba(124,140,255,0.16)'}
                                 />
                             ),
                         )}
@@ -105,8 +105,8 @@ export function ResponseTimeChart({ points }: { points: ResponsePoint[] }) {
                                 cx={point.x}
                                 cy={point.y}
                                 r="5.5"
-                                fill={point.status === 'down' ? '#ffe3e5' : point.status === 'warning' ? '#fff2d7' : '#d8ffdf'}
-                                stroke={point.status === 'down' ? '#ff6269' : point.status === 'warning' ? '#f7b84b' : '#3ee072'}
+                                fill={point.status === 'down' ? '#ffe5e2' : point.status === 'warning' ? '#fff0d9' : '#dff8f5'}
+                                stroke={point.status === 'down' ? '#ff7a72' : point.status === 'warning' ? '#7c8cff' : '#57c7c2'}
                                 strokeWidth="3"
                             />
                         ))}
@@ -114,7 +114,7 @@ export function ResponseTimeChart({ points }: { points: ResponsePoint[] }) {
                 ) : null}
 
                 {labels.map((point) => (
-                    <text key={point.label} x={point.x} y={height - 8} fill="#7582a0" fontSize="14" textAnchor={point.x === padding.left ? 'start' : point.x === width - padding.right ? 'end' : 'middle'}>
+                    <text key={point.label} x={point.x} y={height - 8} fill="#7b879a" fontSize="14" textAnchor={point.x === padding.left ? 'start' : point.x === width - padding.right ? 'end' : 'middle'}>
                         {point.shortLabel}
                     </text>
                 ))}

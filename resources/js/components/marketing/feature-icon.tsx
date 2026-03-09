@@ -7,6 +7,7 @@ const icons: Record<string, LucideIcon> = {
     bell: BellRing,
     broadcast: Wifi,
     globe: Globe2,
+    server: ServerCog,
     shield: ShieldCheck,
     siren: TriangleAlert,
     webhook: ServerCog,

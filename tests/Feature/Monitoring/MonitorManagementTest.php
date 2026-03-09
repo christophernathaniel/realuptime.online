@@ -52,7 +52,7 @@ it('renders the monitors index for authenticated users', function () {
 });
 
 it('stores a new monitor and attaches selected email contacts', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->premium()->create();
     $contact = NotificationContact::query()->create([
         'user_id' => $user->id,
         'name' => 'Ops',
@@ -83,10 +83,10 @@ it('stores a new monitor and attaches selected email contacts', function () {
     expect($monitor->notificationContacts()->pluck('notification_contacts.id')->all())->toBe([$contact->id]);
 });
 
-it('prevents free workspaces from creating more than three monitors', function () {
+it('prevents free workspaces from creating more than ten monitors', function () {
     $user = User::factory()->create();
 
-    foreach (range(1, 3) as $index) {
+    foreach (range(1, 10) as $index) {
         Monitor::query()->create([
             'user_id' => $user->id,
             'name' => "Monitor {$index}",
@@ -164,6 +164,82 @@ it('allows paid workspaces to save 30 second intervals', function () {
         ->assertRedirect();
 
     expect(Monitor::query()->first()?->interval_seconds)->toBe(30);
+});
+
+it('locks free workspaces to the standard check profile', function () {
+    $user = User::factory()->create();
+    $contact = NotificationContact::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Ops',
+        'email' => 'ops@example.com',
+        'enabled' => true,
+        'is_primary' => true,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/monitors', [
+            'name' => 'Free website',
+            'type' => 'http',
+            'target' => 'https://example.com/free',
+            'request_method' => 'POST',
+            'interval_seconds' => 300,
+            'timeout_seconds' => 9,
+            'retry_limit' => 5,
+            'follow_redirects' => false,
+            'expected_status_code' => 204,
+            'latency_threshold_ms' => 9999,
+            'degraded_consecutive_checks' => 7,
+            'critical_alert_after_minutes' => 120,
+            'region' => 'Europe',
+            'contact_ids' => [$contact->id],
+        ])
+        ->assertRedirect();
+
+    $monitor = Monitor::query()->where('user_id', $user->id)->where('name', 'Free website')->first();
+
+    expect($monitor)->not->toBeNull();
+    expect($monitor->request_method)->toBe('GET');
+    expect($monitor->timeout_seconds)->toBe(30);
+    expect($monitor->retry_limit)->toBe(2);
+    expect($monitor->follow_redirects)->toBeTrue();
+    expect($monitor->expected_status_code)->toBe(200);
+    expect($monitor->region)->toBe('North America');
+    expect($monitor->critical_alert_after_minutes)->toBe(30);
+    expect($monitor->notificationContacts()->count())->toBe(1);
+});
+
+it('runs port monitors against a tcp target', function () {
+    $user = User::factory()->premium()->create();
+    $socket = tmpfile();
+
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Database port',
+        'type' => Monitor::TYPE_PORT,
+        'status' => Monitor::STATUS_UP,
+        'target' => '127.0.0.1:5432',
+        'interval_seconds' => 30,
+        'timeout_seconds' => 5,
+        'retry_limit' => 0,
+        'latency_threshold_ms' => 5000,
+        'degraded_consecutive_checks' => 3,
+        'critical_alert_after_minutes' => 30,
+        'region' => 'North America',
+        'last_status_changed_at' => now()->subMinutes(10),
+    ]);
+
+    $this->partialMock(MonitorRunner::class, function ($mock) use ($socket) {
+        $mock->shouldAllowMockingProtectedMethods();
+        $mock->shouldReceive('openTcpSocket')
+            ->once()
+            ->with('127.0.0.1', 5432, 5, \Mockery::any(), \Mockery::any())
+            ->andReturn($socket);
+    });
+
+    $outcome = app(MonitorRunner::class)->runMonitor($monitor->fresh(['notificationContacts', 'user']));
+
+    expect($outcome->status)->toBe('up');
+    expect($monitor->fresh()->last_response_time_ms)->not->toBeNull();
 });
 
 it('stores downtime webhook urls for paid workspaces and blocks them for free workspaces', function () {
@@ -264,7 +340,7 @@ it('requires platform admins to respect workspace monitor quotas and interval li
         'name' => 'Admin fast monitor',
     ]);
 
-    foreach (range(1, 3) as $index) {
+    foreach (range(1, 9) as $index) {
         Monitor::query()->create([
             'user_id' => $workspaceOwner->id,
             'name' => "Workspace Monitor overflow {$index}",
@@ -320,7 +396,7 @@ it('renders the workspace plan on the monitors index page for shared free worksp
         'accepted_at' => now(),
     ]);
 
-    foreach (range(1, 4) as $index) {
+    foreach (range(1, 10) as $index) {
         Monitor::query()->create([
             'user_id' => $workspaceOwner->id,
             'name' => "Workspace Monitor {$index}",
@@ -342,7 +418,7 @@ it('renders the workspace plan on the monitors index page for shared free worksp
         ->assertInertia(fn ($page) => $page
             ->component('monitors/index')
             ->where('summary.canCreate', false)
-            ->where('summary.usageLabel', 'Using 4 of 3 monitors on the Free plan.'));
+            ->where('summary.usageLabel', 'Using 10 of 10 monitors on the Free plan.'));
 });
 
 it('clamps free workspace execution cadence to the plan minimum interval', function () {

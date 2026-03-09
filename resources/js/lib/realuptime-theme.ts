@@ -1,28 +1,28 @@
 export const surfaceInputClass =
-    'h-12 rounded-[18px] border border-white/10 bg-[#081428] px-4 text-[15px] text-white placeholder:text-[#7081a2] shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] focus-visible:border-[#2f43ff] focus-visible:ring-[3px] focus-visible:ring-[#2f43ff]/20';
+    'h-12 rounded-[18px] border border-[#2c3645] bg-[#0d131d] px-4 text-[15px] text-white placeholder:text-[#70809a] focus-visible:border-[#57c7c2] focus-visible:ring-[3px] focus-visible:ring-[#57c7c2]/20';
 
 export const surfaceLabelClass =
-    'text-[11px] font-semibold uppercase tracking-[0.22em] text-[#8fa0bf]';
+    'text-[11px] font-semibold uppercase tracking-[0.22em] text-[#92a0b5]';
 
 export const surfacePrimaryButtonClass =
-    'h-12 rounded-[18px] border-0 bg-[#2f43ff] text-white shadow-[0_18px_36px_rgba(47,67,255,0.32)] hover:bg-[#4355ff]';
+    'h-12 rounded-[18px] border-0 bg-[#7c8cff] text-white hover:bg-[#95a3ff]';
 
 export const surfaceSecondaryButtonClass =
-    'h-11 rounded-[16px] border border-white/10 bg-[#101b2f] text-[#dce6fb] hover:bg-[#15233d] hover:text-white';
+    'h-11 rounded-[16px] border border-[#2c3645] bg-[#171d28] text-[#dce6fb] hover:bg-[#1c2431] hover:text-white';
 
 export const surfaceDangerButtonClass =
-    'h-11 rounded-[16px] border border-[#ff6b75]/20 bg-[#2a1621] text-[#ffe6e8] hover:bg-[#321b27] hover:text-white';
+    'h-11 rounded-[16px] border border-[#ff7a72]/20 bg-[#2a1818] text-[#ffe6e8] hover:bg-[#34201f] hover:text-white';
 
 export const surfaceLinkClass =
-    'text-[#3ee072] underline decoration-[#3ee072]/35 underline-offset-4 hover:text-[#7ff3a0]';
+    'text-[#57c7c2] underline decoration-[#57c7c2]/35 underline-offset-4 hover:text-[#7edfd9]';
 
-export const surfaceMutedTextClass = 'text-[14px] text-[#8fa0bf]';
+export const surfaceMutedTextClass = 'text-[14px] text-[#92a0b5]';
 
 export const surfaceSuccessClass =
-    'rounded-[18px] border border-[#3ee072]/20 bg-[#10273a] px-4 py-3 text-sm text-[#dfffe9]';
+    'rounded-[18px] border border-[#57c7c2]/20 bg-[#15222a] px-4 py-3 text-sm text-[#def8f4]';
 
 export const surfaceInfoClass =
-    'rounded-[18px] border border-white/8 bg-[#101b2f] px-4 py-3 text-sm text-[#dce6fb]';
+    'rounded-[18px] border border-[#2c3645] bg-[#171d28] px-4 py-3 text-sm text-[#dce6fb]';
 
 export const surfaceCheckboxClass =
-    'size-4 rounded-[5px] border-white/12 bg-[#081428] data-[state=checked]:border-[#3ee072] data-[state=checked]:bg-[#3ee072] data-[state=checked]:text-[#081428] focus-visible:border-[#2f43ff] focus-visible:ring-[#2f43ff]/25';
+    'size-4 rounded-[5px] border-[#344053] bg-[#0d131d] data-[state=checked]:border-[#57c7c2] data-[state=checked]:bg-[#57c7c2] data-[state=checked]:text-[#0d131d] focus-visible:border-[#57c7c2] focus-visible:ring-[#57c7c2]/25';

@@ -53,11 +53,11 @@ function SummaryCard({
     value: string | number;
     tone?: 'default' | 'good' | 'warning';
 }) {
-    const toneClass = tone === 'good' ? 'text-[#3ee072]' : tone === 'warning' ? 'text-[#ffb454]' : 'text-white';
+    const toneClass = tone === 'good' ? 'text-[#7c8cff]' : tone === 'warning' ? 'text-[#7c8cff]' : 'text-white';
 
     return (
         <PageCard className="px-5 py-4">
-            <div className="text-sm text-[#8fa0bf]">{label}</div>
+            <div className="text-sm text-[#9ca7b9]">{label}</div>
             <div className={`mt-1 text-[28px] font-semibold ${toneClass}`}>{value}</div>
         </PageCard>
     );
@@ -75,9 +75,9 @@ export default function AdminUsersPage({ summary, users, formDefaults }: AdminUs
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div>
                         <h1 className="text-[40px] font-semibold tracking-[-0.06em] text-white lg:text-[46px]">
-                            Admin users<span className="text-[#3ee072]">.</span>
+                            Admin users<span className="text-[#7c8cff]">.</span>
                         </h1>
-                        <div className="mt-2 max-w-[840px] text-[16px] text-[#8fa0bf]">
+                        <div className="mt-2 max-w-[840px] text-[16px] text-[#9ca7b9]">
                             Monitor platform usage across all accounts, create standard users, and explicitly promote or demote admin access. Self-registration and workspace invitations remain non-admin by default.
                         </div>
                     </div>
@@ -94,24 +94,24 @@ export default function AdminUsersPage({ summary, users, formDefaults }: AdminUs
                     <section className="space-y-4">
                         <PageCard className="space-y-5 p-6">
                             <div className="flex items-center gap-3 text-[24px] font-semibold text-white">
-                                <Users className="size-5 text-[#3ee072]" />
+                                <Users className="size-5 text-[#7c8cff]" />
                                 Platform accounts
                             </div>
                             <div className="grid gap-4">
                                 {users.map((user) => (
-                                    <div key={user.id} className="rounded-[18px] border border-white/8 bg-[#111a2c] px-5 py-5">
+                                    <div key={user.id} className="rounded-[18px] border border-white/8 bg-[#171d28] px-5 py-5">
                                         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                                             <div>
                                                 <div className="flex flex-wrap items-center gap-2 text-[18px] font-semibold text-white">
                                                 <span>{user.name}</span>
-                                                <span className="rounded-full border border-white/8 px-2 py-0.5 text-[11px] uppercase tracking-[0.18em] text-[#8fa0bf]">
+                                                <span className="rounded-full border border-white/8 px-2 py-0.5 text-[11px] uppercase tracking-[0.18em] text-[#9ca7b9]">
                                                     {user.emailVerified ? 'Verified' : 'Unverified'}
                                                 </span>
                                                 <span className="rounded-full border border-[#4d7cff]/20 bg-[#102240] px-2 py-0.5 text-[11px] uppercase tracking-[0.18em] text-[#dce6fb]">
                                                     {user.membershipPlanLabel}
                                                 </span>
                                                 {user.isAdmin ? (
-                                                    <span className="rounded-full border border-[#3ee072]/20 bg-[#10273a] px-2 py-0.5 text-[11px] uppercase tracking-[0.18em] text-[#dfffe9]">
+                                                    <span className="rounded-full border border-[#7c8cff]/20 bg-[#171c33] px-2 py-0.5 text-[11px] uppercase tracking-[0.18em] text-[#dbe1ff]">
                                                         Admin
                                                         </span>
                                                     ) : null}
@@ -121,7 +121,7 @@ export default function AdminUsersPage({ summary, users, formDefaults }: AdminUs
                                                         </span>
                                                     ) : null}
                                                 </div>
-                                            <div className="mt-1 text-sm text-[#8fa0bf]">{user.email}</div>
+                                            <div className="mt-1 text-sm text-[#9ca7b9]">{user.email}</div>
                                             <div className="mt-2 text-[12px] text-[#7081a2]">
                                                 Created {user.createdAt ?? 'Unknown'} • Last active {user.lastActiveLabel}
                                             </div>
@@ -144,7 +144,7 @@ export default function AdminUsersPage({ summary, users, formDefaults }: AdminUs
                                                     className={`inline-flex items-center gap-2 rounded-[14px] px-4 py-2.5 text-sm ${
                                                         user.isAdmin
                                                             ? 'border border-white/10 bg-[#101b2f] text-[#dce6fb]'
-                                                            : 'bg-[#352ef6] text-white'
+                                                            : 'bg-[#7c8cff] text-white'
                                                     }`}
                                                 >
                                                     {user.isAdmin ? (
@@ -175,37 +175,37 @@ export default function AdminUsersPage({ summary, users, formDefaults }: AdminUs
                                         </div>
 
                                         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                                            <div className="rounded-[14px] bg-[#0d1628] px-4 py-3">
+                                            <div className="rounded-[14px] bg-[#121821] px-4 py-3">
                                                 <div className="text-[12px] text-[#7f8eab]">Monitors</div>
                                                 <div className="mt-1 text-[20px] font-semibold text-white">{user.monitorsCount}</div>
                                             </div>
-                                            <div className="rounded-[14px] bg-[#0d1628] px-4 py-3">
+                                            <div className="rounded-[14px] bg-[#121821] px-4 py-3">
                                                 <div className="text-[12px] text-[#7f8eab]">Open incidents</div>
-                                                <div className={`mt-1 text-[20px] font-semibold ${user.openIncidentsCount > 0 ? 'text-[#ffb454]' : 'text-white'}`}>{user.openIncidentsCount}</div>
+                                                <div className={`mt-1 text-[20px] font-semibold ${user.openIncidentsCount > 0 ? 'text-[#7c8cff]' : 'text-white'}`}>{user.openIncidentsCount}</div>
                                             </div>
-                                            <div className="rounded-[14px] bg-[#0d1628] px-4 py-3">
+                                            <div className="rounded-[14px] bg-[#121821] px-4 py-3">
                                                 <div className="text-[12px] text-[#7f8eab]">Status pages</div>
                                                 <div className="mt-1 text-[20px] font-semibold text-white">{user.statusPagesCount}</div>
                                             </div>
-                                            <div className="rounded-[14px] bg-[#0d1628] px-4 py-3">
+                                            <div className="rounded-[14px] bg-[#121821] px-4 py-3">
                                                 <div className="text-[12px] text-[#7f8eab]">Active sessions</div>
                                                 <div className="mt-1 text-[20px] font-semibold text-white">{user.activeSessionsCount}</div>
                                             </div>
                                         </div>
 
                                         <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                                            <div className="rounded-[14px] bg-[#0d1628] px-4 py-3 text-sm text-[#9badca]">
+                                            <div className="rounded-[14px] bg-[#121821] px-4 py-3 text-sm text-[#9badca]">
                                                 Contacts <span className="ml-2 font-semibold text-white">{user.contactsCount}</span>
                                             </div>
-                                            <div className="rounded-[14px] bg-[#0d1628] px-4 py-3 text-sm text-[#9badca]">
+                                            <div className="rounded-[14px] bg-[#121821] px-4 py-3 text-sm text-[#9badca]">
                                                 Team members <span className="ml-2 font-semibold text-white">{user.acceptedMembersCount}</span>
                                             </div>
-                                            <div className="rounded-[14px] bg-[#0d1628] px-4 py-3 text-sm text-[#9badca]">
+                                            <div className="rounded-[14px] bg-[#121821] px-4 py-3 text-sm text-[#9badca]">
                                                 Pending invites <span className="ml-2 font-semibold text-white">{user.pendingInvitationsCount}</span>
                                             </div>
                                         </div>
 
-                                        <div className="mt-4 flex flex-col gap-3 rounded-[14px] bg-[#0d1628] px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+                                        <div className="mt-4 flex flex-col gap-3 rounded-[14px] bg-[#121821] px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
                                             <div className="text-sm text-[#9badca]">
                                                 Override membership plan for this user. Choose <span className="font-semibold text-white">Subscription / default</span> to let Stripe or free access determine the plan.
                                             </div>
@@ -229,8 +229,8 @@ export default function AdminUsersPage({ summary, users, formDefaults }: AdminUs
                                                             }
                                                             className={`rounded-[12px] px-3 py-2 text-xs font-medium ${
                                                                 active
-                                                                    ? 'bg-[#352ef6] text-white'
-                                                                    : 'border border-white/10 bg-[#111a2c] text-[#dce6fb]'
+                                                                    ? 'bg-[#7c8cff] text-white'
+                                                                    : 'border border-white/10 bg-[#171d28] text-[#dce6fb]'
                                                             }`}
                                                         >
                                                             {option.label}
@@ -248,10 +248,10 @@ export default function AdminUsersPage({ summary, users, formDefaults }: AdminUs
                     <aside className="space-y-4">
                         <PageCard className="space-y-5 p-6">
                             <div className="flex items-center gap-3 text-[24px] font-semibold text-white">
-                                <MailPlus className="size-5 text-[#3ee072]" />
+                                <MailPlus className="size-5 text-[#7c8cff]" />
                                 Create user
                             </div>
-                            <div className="text-[15px] text-[#8fa0bf]">
+                            <div className="text-[15px] text-[#9ca7b9]">
                                 New accounts created here are standard users, not admins. Promote them explicitly only when platform access is required.
                             </div>
 
@@ -316,7 +316,7 @@ export default function AdminUsersPage({ summary, users, formDefaults }: AdminUs
                                 <button
                                     type="submit"
                                     disabled={form.processing}
-                                    className="inline-flex h-11 items-center gap-2 rounded-[14px] bg-[#352ef6] px-4 text-sm font-medium text-white"
+                                    className="inline-flex h-11 items-center gap-2 rounded-[14px] bg-[#7c8cff] px-4 text-sm font-medium text-white"
                                 >
                                     <Activity className="size-4" />
                                     Create standard user

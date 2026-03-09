@@ -18,7 +18,7 @@ export default function PlaceholderPage({ title, description, stats }: Placehold
             <div className="space-y-6">
                 <h1 className="text-[56px] font-semibold tracking-[-0.06em] text-white">
                     {title}
-                    <span className="text-[#3ee072]">.</span>
+                    <span className="text-[#7c8cff]">.</span>
                 </h1>
                 <div className="max-w-[880px] text-[20px] text-[#8fa0bf]">{description}</div>
                 <div className="grid gap-4 md:grid-cols-3">

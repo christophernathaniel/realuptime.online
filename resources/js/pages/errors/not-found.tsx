@@ -48,10 +48,10 @@ export default function NotFoundPage() {
                             Error 404
                         </div>
                         <div className="mt-5 text-[82px] font-semibold leading-[0.84] tracking-[-0.09em] text-white sm:text-[110px] lg:text-[148px]">
-                            404<span className="text-[#42df79]">.</span>
+                            404<span className="text-[#7c8cff]">.</span>
                         </div>
                         <h1 className="mt-5 max-w-[11ch] text-[38px] font-semibold leading-[0.9] tracking-[-0.08em] text-white sm:text-[50px] lg:text-[64px]">
-                            This route does not exist in RealUptime<span className="text-[#42df79]">.</span>
+                            This route does not exist in RealUptime<span className="text-[#7c8cff]">.</span>
                         </h1>
                         <p className="mt-6 max-w-[42ch] text-[18px] leading-8 text-[#97aac8] sm:text-[20px] sm:leading-9">
                             The address may be outdated, unpublished, or incorrect. If you followed a public status page link, confirm the page is still published and that the full URL was copied correctly.
@@ -59,7 +59,7 @@ export default function NotFoundPage() {
                         <div className="mt-8 flex flex-wrap gap-4">
                             <Link
                                 href={primaryHref}
-                                className="inline-flex h-14 items-center justify-center gap-2 rounded-full bg-[#42df79] px-6 text-[16px] font-semibold text-[#082039] transition hover:bg-[#36cb68]"
+                                className="inline-flex h-14 items-center justify-center gap-2 rounded-full bg-[#7c8cff] px-6 text-[16px] font-semibold text-[#10151d] transition hover:bg-[#95a3ff]"
                             >
                                 <ArrowLeft className="size-4" />
                                 {primaryLabel}
@@ -74,7 +74,7 @@ export default function NotFoundPage() {
                         </div>
                     </div>
 
-                    <div className="rounded-[34px] border border-white/8 bg-[linear-gradient(145deg,#0b1832_0%,#08111f_100%)] p-8 shadow-[0_34px_90px_rgba(0,0,0,0.34)] lg:p-10">
+                    <div className="rounded-[34px] border border-white/8 bg-[linear-gradient(145deg,#0b1832_0%,#08111f_100%)] p-8 lg:p-10">
                         <div className="text-[14px] font-semibold uppercase tracking-[0.22em] text-[#7083a2]">
                             Suggested next steps
                         </div>
@@ -83,9 +83,9 @@ export default function NotFoundPage() {
                                 <Link
                                     key={title}
                                     href={href}
-                                    className="group flex items-start gap-4 rounded-[22px] border border-white/7 bg-white/[0.03] px-5 py-5 transition hover:border-[#42df79]/30 hover:bg-white/[0.05]"
+                                    className="group flex items-start gap-4 rounded-[22px] border border-white/7 bg-white/[0.03] px-5 py-5 transition hover:border-[#7c8cff]/30 hover:bg-white/[0.05]"
                                 >
-                                    <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-[16px] border border-[#1b345c] bg-[#091122] text-[#42df79]">
+                                    <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-[16px] border border-[#1b345c] bg-[#091122] text-[#7c8cff]">
                                         <Icon className="size-5" />
                                     </span>
                                     <span className="min-w-0 flex-1">
@@ -96,7 +96,7 @@ export default function NotFoundPage() {
                                             {description}
                                         </span>
                                     </span>
-                                    <ArrowRight className="mt-1 size-4 shrink-0 text-[#6e82a5] transition group-hover:text-[#42df79]" />
+                                    <ArrowRight className="mt-1 size-4 shrink-0 text-[#6e82a5] transition group-hover:text-[#7c8cff]" />
                                 </Link>
                             ))}
                         </div>

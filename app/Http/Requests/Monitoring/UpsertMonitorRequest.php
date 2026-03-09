@@ -29,22 +29,19 @@ class UpsertMonitorRequest extends FormRequest
         $workspace = app(WorkspaceResolver::class)->current($this);
         $workspaceOwnerId = $workspace->id;
         $type = $this->input('type');
-        $requiresUrl = in_array($type, [Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD, Monitor::TYPE_SSL, Monitor::TYPE_SYNTHETIC], true);
-        $requiresHost = $type === Monitor::TYPE_PING;
+        $requiresUrl = $type === Monitor::TYPE_HTTP;
+        $requiresHost = in_array($type, [Monitor::TYPE_PING, Monitor::TYPE_PORT], true);
         $minimumInterval = $workspace->minimumMonitorIntervalSeconds();
 
         return [
             'name' => ['required', 'string', 'max:255'],
             'type' => ['required', Rule::in([
                 Monitor::TYPE_HTTP,
+                Monitor::TYPE_PORT,
                 Monitor::TYPE_PING,
-                Monitor::TYPE_KEYWORD,
-                Monitor::TYPE_SSL,
-                Monitor::TYPE_HEARTBEAT,
-                Monitor::TYPE_SYNTHETIC,
             ])],
             'target' => [Rule::requiredIf($requiresUrl || $requiresHost), 'nullable', 'string', 'max:2048'],
-            'request_method' => [Rule::requiredIf(in_array($type, [Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD], true)), 'nullable', Rule::in(['GET', 'POST'])],
+            'request_method' => [Rule::requiredIf($type === Monitor::TYPE_HTTP), 'nullable', Rule::in(['GET', 'POST'])],
             'interval_seconds' => ['required', 'integer', 'min:'.$minimumInterval, 'max:86400'],
             'timeout_seconds' => ['required', 'integer', 'min:1', 'max:60'],
             'retry_limit' => ['required', 'integer', 'min:0', 'max:5'],
@@ -53,10 +50,10 @@ class UpsertMonitorRequest extends FormRequest
             'auth_username' => ['nullable', 'string', 'max:255'],
             'auth_password' => ['nullable', 'string', 'max:255'],
             'expected_status_code' => ['nullable', 'integer', 'between:100,599'],
-            'expected_keyword' => [Rule::requiredIf($type === Monitor::TYPE_KEYWORD), 'nullable', 'string', 'max:255'],
+            'expected_keyword' => ['nullable', 'string', 'max:255'],
             'keyword_match_type' => ['nullable', Rule::in(['contains', 'exact', 'regex'])],
             'packet_count' => ['nullable', 'integer', 'min:1', 'max:10'],
-            'synthetic_steps' => [Rule::requiredIf($type === Monitor::TYPE_SYNTHETIC), 'nullable', 'string'],
+            'synthetic_steps' => ['nullable', 'string'],
             'latency_threshold_ms' => ['nullable', 'integer', 'min:1', 'max:60000'],
             'degraded_consecutive_checks' => ['nullable', 'integer', 'min:1', 'max:10'],
             'critical_alert_after_minutes' => ['nullable', 'integer', 'min:1', 'max:10080'],
@@ -104,35 +101,67 @@ class UpsertMonitorRequest extends FormRequest
         $data['follow_redirects'] = $this->boolean('follow_redirects');
         $data['critical_alert_after_minutes'] = $data['critical_alert_after_minutes'] ?? 30;
 
-        if (! in_array($data['type'], [Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD, Monitor::TYPE_SYNTHETIC], true)) {
+        if ($data['type'] === Monitor::TYPE_PORT) {
+            $data['target'] = $this->normalizePortTarget((string) $data['target']);
+        }
+
+        if ($workspace->allowsAdvancedWorkspaceFeatures()) {
+            if (! in_array($data['type'], [Monitor::TYPE_HTTP], true)) {
+                $data['follow_redirects'] = true;
+                $data['custom_headers'] = null;
+                $data['auth_username'] = null;
+                $data['auth_password'] = null;
+            }
+
+            if ($data['type'] !== Monitor::TYPE_HTTP) {
+                $data['request_method'] = null;
+                $data['expected_status_code'] = null;
+            }
+        } else {
+            $data['request_method'] = $data['type'] === Monitor::TYPE_HTTP ? 'GET' : null;
+            $data['timeout_seconds'] = 30;
+            $data['retry_limit'] = 2;
+            $data['follow_redirects'] = true;
+            $data['custom_headers'] = null;
+            $data['auth_username'] = null;
+            $data['auth_password'] = null;
+            $data['expected_status_code'] = $data['type'] === Monitor::TYPE_HTTP ? 200 : null;
+            $data['latency_threshold_ms'] = 1500;
+            $data['degraded_consecutive_checks'] = 3;
+            $data['critical_alert_after_minutes'] = 30;
+            $data['region'] = 'North America';
+            $data['contact_ids'] = [];
+        }
+
+        if (! in_array($data['type'], [Monitor::TYPE_HTTP], true)) {
             $data['follow_redirects'] = true;
             $data['custom_headers'] = null;
             $data['auth_username'] = null;
             $data['auth_password'] = null;
         }
 
-        if (! in_array($data['type'], [Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD], true)) {
+        if ($data['type'] !== Monitor::TYPE_HTTP) {
             $data['request_method'] = null;
             $data['expected_status_code'] = null;
         }
 
-        if ($data['type'] !== Monitor::TYPE_KEYWORD) {
-            $data['expected_keyword'] = null;
-            $data['keyword_match_type'] = null;
-        }
+        $data['expected_keyword'] = null;
+        $data['keyword_match_type'] = null;
 
         if ($data['type'] !== Monitor::TYPE_PING) {
             $data['packet_count'] = null;
+        } else {
+            $data['packet_count'] = $data['packet_count'] ?? 3;
         }
 
-        if (! in_array($data['type'], [Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD, Monitor::TYPE_PING, Monitor::TYPE_SYNTHETIC], true)) {
+        if (! in_array($data['type'], [Monitor::TYPE_HTTP, Monitor::TYPE_PORT, Monitor::TYPE_PING], true)) {
             $data['latency_threshold_ms'] = null;
             $data['degraded_consecutive_checks'] = null;
         } else {
             $data['degraded_consecutive_checks'] = $data['degraded_consecutive_checks'] ?? 3;
         }
 
-        if (! in_array($data['type'], [Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD, Monitor::TYPE_SSL, Monitor::TYPE_SYNTHETIC], true)) {
+        if ($data['type'] !== Monitor::TYPE_HTTP) {
             $data['ssl_threshold_days'] = null;
             $data['domain_threshold_days'] = null;
         } else {
@@ -140,13 +169,8 @@ class UpsertMonitorRequest extends FormRequest
             $data['ssl_threshold_days'] = $data['ssl_threshold_days'] ?? 21;
         }
 
-        if ($data['type'] !== Monitor::TYPE_HEARTBEAT) {
-            $data['heartbeat_grace_seconds'] = null;
-        }
-
-        if ($data['type'] !== Monitor::TYPE_SYNTHETIC) {
-            $data['synthetic_steps'] = null;
-        }
+        $data['heartbeat_grace_seconds'] = null;
+        $data['synthetic_steps'] = null;
 
         return $data;
     }
@@ -156,6 +180,12 @@ class UpsertMonitorRequest extends FormRequest
      */
     public function contactIds(): array
     {
+        $workspace = app(WorkspaceResolver::class)->current($this);
+
+        if (! $workspace->allowsAdvancedWorkspaceFeatures()) {
+            return [];
+        }
+
         return array_map('intval', $this->validated('contact_ids', []));
     }
 
@@ -299,5 +329,40 @@ class UpsertMonitorRequest extends FormRequest
                 'expected_keyword' => $expectedKeyword ?: null,
             ];
         }, $decoded, array_keys($decoded));
+    }
+
+    protected function normalizePortTarget(string $target): string
+    {
+        $target = trim($target);
+
+        if ($target === '') {
+            throw ValidationException::withMessages([
+                'target' => 'Enter a host and port in the format host:port.',
+            ]);
+        }
+
+        if (preg_match('/^\[([^\]]+)\]:(\d+)$/', $target, $matches) === 1) {
+            $host = $matches[1];
+            $port = (int) $matches[2];
+        } else {
+            $lastColon = strrpos($target, ':');
+
+            if ($lastColon === false) {
+                throw ValidationException::withMessages([
+                    'target' => 'Port monitors require a host and port in the format host:port.',
+                ]);
+            }
+
+            $host = trim(substr($target, 0, $lastColon));
+            $port = (int) trim(substr($target, $lastColon + 1));
+        }
+
+        if ($host === '' || $port < 1 || $port > 65535) {
+            throw ValidationException::withMessages([
+                'target' => 'Use a valid host and a TCP port between 1 and 65535.',
+            ]);
+        }
+
+        return str_contains($host, ':') ? sprintf('[%s]:%d', $host, $port) : sprintf('%s:%d', $host, $port);
     }
 }

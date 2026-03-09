@@ -23,7 +23,7 @@ import { send } from '@/routes/verification';
 import type { Auth } from '@/types/auth';
 
 const sectionTitleClass = 'text-[20px] font-semibold tracking-[-0.04em] text-white';
-const sectionDescriptionClass = 'mt-2 text-[14px] leading-6 text-[#8fa0bf]';
+const sectionDescriptionClass = 'mt-2 text-[14px] leading-6 text-[#9ca7b9]';
 
 export default function Profile({
     mustVerifyEmail,
@@ -109,7 +109,7 @@ export default function Profile({
                                     </div>
 
                                     {mustVerifyEmail && user.email_verified_at === null ? (
-                                        <div className="rounded-[20px] border border-[#ffcd62]/16 bg-[#2b2110] px-4 py-4 text-sm text-[#ffd88c]">
+                                        <div className="rounded-[20px] border border-[#bac6ff]/16 bg-[#1f2644] px-4 py-4 text-sm text-[#c7d0ff]">
                                             Your email address is not verified.{' '}
                                             <Link
                                                 href={send()}
@@ -120,9 +120,9 @@ export default function Profile({
                                             </Link>
                                         </div>
                                     ) : (
-                                        <div className="rounded-[20px] border border-[#3ee072]/18 bg-[#10273a] px-4 py-4 text-sm text-[#ddffe7]">
+                                        <div className="rounded-[20px] border border-[#7c8cff]/18 bg-[#171c33] px-4 py-4 text-sm text-[#dbe1ff]">
                                             <span className="inline-flex items-center gap-2 font-medium">
-                                                <CheckCircle2 className="size-4 text-[#3ee072]" />
+                                                <CheckCircle2 className="size-4 text-[#7c8cff]" />
                                                 Email verified
                                             </span>
                                         </div>
@@ -191,7 +191,7 @@ export default function Profile({
                                                 <div className="text-[15px] font-semibold text-white">
                                                     {provider.label}
                                                 </div>
-                                                <div className="mt-1 text-sm text-[#8fa0bf]">
+                                                <div className="mt-1 text-sm text-[#9ca7b9]">
                                                     {provider.connected
                                                         ? `Connected as ${provider.connectedAs ?? provider.label}`
                                                         : 'Not connected'}

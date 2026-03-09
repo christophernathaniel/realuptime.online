@@ -73,7 +73,7 @@ export default function SettingsLayout({
                 </p>
                 <h1 className="text-[32px] font-semibold tracking-[-0.05em] text-white sm:text-[38px]">
                     {title}
-                    <span className="text-[#3ee072]">.</span>
+                    <span className="text-[#7c8cff]">.</span>
                 </h1>
                 <p className="max-w-2xl text-[15px] leading-7 text-[#8fa0bf]">
                     {description}
@@ -103,7 +103,7 @@ export default function SettingsLayout({
                                     className={cn(
                                         'flex items-start gap-3 rounded-[18px] px-3 py-3 transition',
                                         active
-                                            ? 'bg-[#0d172a] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]'
+                                            ? 'bg-[#0d172a] text-white'
                                             : 'text-[#c9d5ec] hover:bg-white/5 hover:text-white',
                                     )}
                                 >
@@ -111,8 +111,8 @@ export default function SettingsLayout({
                                         className={cn(
                                             'mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-[14px] border',
                                             active
-                                                ? 'border-[#3ee072]/35 bg-[#0a1324] text-[#3ee072]'
-                                                : 'border-white/8 bg-[#101b2f] text-[#7183a5]',
+                                                ? 'border-[#7c8cff]/35 bg-[#171d28] text-[#7c8cff]'
+                                                : 'border-[#2b3544] bg-[#171d28] text-[#7183a5]',
                                         )}
                                     >
                                         <Icon className="size-4" />

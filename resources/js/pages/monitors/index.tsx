@@ -87,43 +87,48 @@ export default function MonitorsIndex({
 
     return (
         <MonitoringLayout>
-            <Head title="Monitors" />
+            <Head title="Checks" />
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
                 <section className="space-y-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div>
-                            <h1 className="text-[40px] font-semibold tracking-[-0.06em] text-white lg:text-[46px]">
-                                Monitors<span className="text-[#3ee072]">.</span>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#7f8b9b]">
+                                Operations workspace
+                            </div>
+                            <h1 className="mt-2 text-[40px] font-semibold tracking-[-0.06em] text-white lg:text-[46px]">
+                                Checks<span className="text-[#7c8cff]">.</span>
                             </h1>
-                            <div className="mt-2 text-[15px] text-[#8fa0bf]">{summary.usageLabel}</div>
+                            <div className="mt-2 max-w-[720px] text-[15px] text-[#9ca7b9]">
+                                Live watchlist for websites, TCP services, and ping targets. {summary.usageLabel}
+                            </div>
                         </div>
 
                         <div className="flex items-center gap-3 self-start lg:self-auto">
                             {summary.canCreate ? (
                                 <Link
                                     href="/monitors/create"
-                                    className="inline-flex items-center gap-3 rounded-[16px] bg-[#352ef6] px-5 py-3 text-base font-medium text-white shadow-[0_14px_36px_rgba(53,46,246,0.35)] transition hover:bg-[#4038ff]"
+                                    className="inline-flex items-center gap-3 rounded-[16px] bg-[#7c8cff] px-5 py-3 text-base font-medium text-white transition hover:bg-[#95a3ff]"
                                 >
                                     <Plus className="size-[18px]" />
-                                    New
+                                    New check
                                 </Link>
                             ) : membershipManageUrl ? (
                                 <Link
                                     href={membershipManageUrl}
-                                    className="inline-flex items-center gap-3 rounded-[16px] border border-[#3ee072]/25 bg-[#10273a] px-5 py-3 text-base font-medium text-[#dfffe9] transition hover:border-[#3ee072]/40"
+                                    className="inline-flex items-center gap-3 rounded-[16px] border border-[#7c8cff]/25 bg-[#171c33] px-5 py-3 text-base font-medium text-[#dbe1ff] transition hover:border-[#7c8cff]/40"
                                 >
                                     <Plus className="size-[18px]" />
-                                    Upgrade to add monitors
+                                    Upgrade workspace
                                 </Link>
                             ) : (
-                                <div className="inline-flex items-center gap-3 rounded-[16px] border border-white/10 bg-[#111a2c] px-5 py-3 text-base font-medium text-[#8fa0bf]">
+                                <div className="inline-flex items-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-5 py-3 text-base font-medium text-[#9ca7b9]">
                                     <Plus className="size-[18px]" />
                                     Limit reached
                                 </div>
                             )}
                             <button
                                 type="button"
-                                className="inline-flex size-[48px] items-center justify-center rounded-[16px] border border-white/6 bg-[#1a2339]/95 text-[#aab7d4]"
+                                className="inline-flex size-[48px] items-center justify-center rounded-[16px] border border-[#2b3544] bg-[#171d28] text-[#aab7d4]"
                                 onClick={() => setSortMode((current) => (current === 'down' ? 'name' : 'down'))}
                             >
                                 <ArrowUpDown className="size-4" />
@@ -134,30 +139,30 @@ export default function MonitorsIndex({
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-end">
                         <div className="flex flex-col gap-3 sm:flex-row">
                             <label className="relative block min-w-[280px]">
-                                <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#6f7d98]" />
+                                <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#7f8b9b]" />
                                 <input
                                     value={search}
                                     onChange={(event) => setSearch(event.target.value)}
                                     placeholder="Search by name or URL"
-                                    className="h-12 w-full rounded-[16px] border border-white/10 bg-[#0c1628] pl-11 pr-4 text-base text-white outline-none placeholder:text-[#6f7d98] focus:border-[#3a4b6b]"
+                                    className="h-12 w-full rounded-[16px] border border-[#2b3544] bg-[#121821] pl-11 pr-4 text-base text-white outline-none placeholder:text-[#7f8b9b] focus:border-[#57c7c2]"
                                 />
                             </label>
 
                             <button
                                 type="button"
                                 className={cn(
-                                    'inline-flex h-12 items-center gap-3 rounded-[16px] border border-white/6 px-4 text-base text-[#cfd8ec] transition',
-                                    showOnlyDown ? 'bg-[#1e2941]' : 'bg-[#1a2339]/95',
+                                    'inline-flex h-12 items-center gap-3 rounded-[16px] border border-[#2b3544] px-4 text-base text-[#cfd8ec] transition',
+                                    showOnlyDown ? 'bg-[#211817] text-[#ffe3e0]' : 'bg-[#171d28]',
                                 )}
                                 onClick={() => setShowOnlyDown((current) => !current)}
                             >
                                 <Filter className="size-4 text-[#7d8aa7]" />
-                                Filter
+                                {showOnlyDown ? 'Down only' : 'Filter'}
                             </button>
 
                             <button
                                 type="button"
-                                className="inline-flex h-12 items-center gap-3 rounded-[16px] border border-white/6 bg-[#1a2339]/95 px-4 text-base text-[#cfd8ec]"
+                                className="inline-flex h-12 items-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 text-base text-[#cfd8ec]"
                                 onClick={() => setSortMode((current) => (current === 'down' ? 'name' : 'down'))}
                             >
                                 <ArrowUpDown className="size-4 text-[#7d8aa7]" />
@@ -167,17 +172,17 @@ export default function MonitorsIndex({
                     </div>
 
                     {!summary.canCreate ? (
-                        <PageCard className="flex flex-col gap-3 rounded-[20px] border border-[#ffb454]/18 bg-[#2b2110] px-5 py-4 text-[#ffe3b0] sm:flex-row sm:items-center sm:justify-between">
+                        <PageCard className="flex flex-col gap-3 rounded-[20px] border border-[#7c8cff]/18 bg-[#171c33] px-5 py-4 text-[#d6ddff] sm:flex-row sm:items-center sm:justify-between">
                             <div>
                                 <div className="text-[17px] font-semibold text-white">Monitor limit reached</div>
-                                <div className="mt-1 text-sm text-[#ffd88c]">
-                                    This workspace has reached its monitor allowance. Upgrade the membership plan to create additional monitors or remove an existing one.
+                                <div className="mt-1 text-sm text-[#d3daff]">
+                                    This workspace has reached its allowance. Upgrade the plan or retire an existing check before adding another one.
                                 </div>
                             </div>
                             {membershipManageUrl ? (
                                 <Link
                                     href={membershipManageUrl}
-                                    className="inline-flex h-11 items-center justify-center rounded-[14px] bg-[#352ef6] px-4 text-sm font-medium text-white"
+                                    className="inline-flex h-11 items-center justify-center rounded-[14px] bg-[#7c8cff] px-4 text-sm font-medium text-white"
                                 >
                                     Compare plans
                                 </Link>
@@ -187,13 +192,13 @@ export default function MonitorsIndex({
 
                     <div className="space-y-4">
                         {filtered.length === 0 ? (
-                            <PageCard className="p-8 text-[#8fa0bf]">
-                                No monitors matched the current filters.
+                            <PageCard className="p-6 text-[#9ca7b9]">
+                                No checks matched the current filters.
                             </PageCard>
                         ) : (
                             filtered.map((monitor) => (
                                 <Link key={monitor.id} href={monitor.showUrl} className="block">
-                                    <PageCard className="rounded-[20px] px-5 py-4 transition hover:border-white/12 hover:bg-[#1d2740]">
+                                    <PageCard className="rounded-[22px] px-5 py-4 transition hover:border-[#3b4656] hover:bg-[#161d29]">
                                         <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
                                             <div className="flex min-w-0 flex-1 items-center gap-4">
                                                 <StatusChip status={monitor.status} />
@@ -202,7 +207,7 @@ export default function MonitorsIndex({
                                                         {monitor.name}
                                                     </div>
                                                     <div className="mt-1 flex flex-wrap items-center gap-3 text-[15px] text-[#9eacc7] lg:text-[16px]">
-                                                        <span className="rounded-[10px] border border-white/8 bg-[#162139] px-2.5 py-1 text-[11px] uppercase tracking-[0.18em] text-[#aebadc]">
+                                                        <span className="rounded-[10px] border border-[#2b3544] bg-[#151d28] px-2.5 py-1 text-[11px] uppercase tracking-[0.18em] text-[#aebadc]">
                                                             {monitor.type}
                                                         </span>
                                                         <span>{monitor.statusSummary}</span>
@@ -231,25 +236,25 @@ export default function MonitorsIndex({
                         )}
                     </div>
 
-                    <PageCard className="flex flex-col gap-4 rounded-[24px] px-7 py-6 sm:flex-row sm:items-center sm:justify-between">
+                    <PageCard className="flex flex-col gap-4 rounded-[22px] px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <div className="text-[22px] font-semibold tracking-[-0.04em] text-white lg:text-[24px]">
-                                Email notifications are active.
+                                Alert routing is live.
                             </div>
                             <div className="mt-2 max-w-[760px] text-[15px] text-[#98a6c4] lg:text-[16px]">
-                                Alert routing is configured for your primary contact. Test delivery from any monitor detail page.
+                                Contacts are configured for this workspace. Validate delivery from any check detail page before sending traffic through production.
                             </div>
                         </div>
-                        <div className="rounded-[14px] bg-[#3ee072] px-4 py-2.5 text-base font-semibold text-[#0b1730]">
-                            Email only
+                        <div className="rounded-[14px] bg-[#57c7c2] px-4 py-2.5 text-base font-semibold text-[#08131a]">
+                            Email active
                         </div>
                     </PageCard>
                 </section>
 
                 <aside className="space-y-4">
-                    <PageCard className="px-7 py-8">
+                    <PageCard className="px-6 py-6">
                         <h2 className="text-[20px] font-semibold tracking-[-0.04em] text-white">
-                            Current status<span className="text-[#3ee072]">.</span>
+                            Fleet status<span className="text-[#7c8cff]">.</span>
                         </h2>
                         <div className="mt-7 flex justify-center">
                             <StatusChip status="up" large />
@@ -271,13 +276,13 @@ export default function MonitorsIndex({
                         <div className="mt-7 text-center text-[15px] text-[#8fa0bf]">{summary.usageLabel}</div>
                     </PageCard>
 
-                    <PageCard className="px-7 py-8">
+                    <PageCard className="px-6 py-6">
                         <h2 className="text-[20px] font-semibold tracking-[-0.04em] text-white">
-                            Last 24 hours<span className="text-[#3ee072]">.</span>
+                            24h health<span className="text-[#7c8cff]">.</span>
                         </h2>
                         <div className="mt-7 grid grid-cols-2 gap-x-6 gap-y-6">
                             <div>
-                                <div className="text-[24px] font-semibold tracking-[-0.04em] text-[#3ee072]">
+                                <div className="text-[24px] font-semibold tracking-[-0.04em] text-[#57c7c2]">
                                     {last24Hours.uptimeLabel}
                                 </div>
                                 <div className="text-base text-[#8fa0bf]">Overall uptime</div>

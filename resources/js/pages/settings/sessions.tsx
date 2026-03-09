@@ -39,7 +39,7 @@ export default function Sessions({ sessions }: { sessions: SessionItem[] }) {
                                 <h2 className="text-[20px] font-semibold tracking-[-0.04em] text-white">
                                     Active sessions
                                 </h2>
-                                <p className="mt-2 text-[14px] leading-6 text-[#8fa0bf]">
+                                <p className="mt-2 text-[14px] leading-6 text-[#9ca7b9]">
                                     Keep only the devices you recognize. Ending a session removes access until the user signs in again.
                                 </p>
                             </div>
@@ -68,10 +68,10 @@ export default function Sessions({ sessions }: { sessions: SessionItem[] }) {
                                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                                         <div className="space-y-2">
                                             <div className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-white">
-                                                <Laptop2 className="size-4 text-[#8fa0bf]" />
+                                                <Laptop2 className="size-4 text-[#9ca7b9]" />
                                                 {session.deviceLabel}
                                                 {session.isCurrent ? (
-                                                    <span className="inline-flex items-center gap-1 rounded-full border border-[#3ee072]/25 bg-[#10273a] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#dfffe9]">
+                                                    <span className="inline-flex items-center gap-1 rounded-full border border-[#7c8cff]/25 bg-[#171c33] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#dbe1ff]">
                                                         <ShieldCheck className="size-3" />
                                                         Current session
                                                     </span>

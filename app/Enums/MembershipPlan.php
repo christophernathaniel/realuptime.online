@@ -15,7 +15,7 @@ enum MembershipPlan: string
 
     public function monitorLimit(): int
     {
-        return (int) config("membership.plans.{$this->value}.monitor_limit", 3);
+        return (int) config("membership.plans.{$this->value}.monitor_limit", 10);
     }
 
     public function minimumIntervalSeconds(): int

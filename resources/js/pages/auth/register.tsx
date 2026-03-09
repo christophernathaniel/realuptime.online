@@ -29,7 +29,7 @@ export default function Register({ oauthProviders }: Props) {
     return (
         <AuthLayout
             title="Create your account"
-            description="Start monitoring websites, APIs, SSL certificates, and heartbeats from a single workspace."
+            description="Start monitoring websites, HTTP endpoints, TCP ports, and ping targets from a single workspace."
             variant="form-only"
         >
             <Head title="Register" />

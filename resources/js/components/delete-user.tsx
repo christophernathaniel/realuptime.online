@@ -62,7 +62,7 @@ export default function DeleteUser() {
                             Delete account
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="border-white/8 bg-[#101b2f] text-white shadow-[0_32px_90px_rgba(0,0,0,0.42)] sm:max-w-xl">
+                    <DialogContent className="border-white/8 bg-[#101b2f] text-white sm:max-w-xl">
                         <DialogTitle className="text-[22px] font-semibold tracking-[-0.04em] text-white">
                             Delete this account?
                         </DialogTitle>

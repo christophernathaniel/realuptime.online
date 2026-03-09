@@ -1,8 +1,7 @@
 export type FeatureSlug =
     | 'website-monitoring'
-    | 'endpoint-monitoring'
+    | 'port-monitoring'
     | 'ping-monitoring'
-    | 'ssl-monitoring'
     | 'incidents-management'
     | 'public-status-pages'
     | 'it-alerting-software';
@@ -46,12 +45,12 @@ export const marketingFeatures: MarketingFeature[] = [
         eyebrow: 'Website monitoring',
         title: 'Catch downtime before your visitors do.',
         summary: 'Monitor public websites, storefronts, docs portals, and sign-in pages with fast HTTP checks and clear incident history.',
-        intro: 'Use RealUptime to probe any HTTP or HTTPS page, validate its response, measure latency, and confirm that the content your users depend on is actually available.',
+        intro: 'Use RealUptime to probe any HTTP or HTTPS page, validate its response, measure latency, and confirm that the service your users depend on is actually available.',
         bullets: [
-            'HTTP and HTTPS endpoint checks',
+            'HTTP and HTTPS website checks',
             'Expected status code validation',
             'Redirect handling and response time tracking',
-            'Keyword checks for rendered content markers',
+            'Optional authentication and headers on paid workspaces',
         ],
         benefitCards: [
             {
@@ -75,59 +74,59 @@ export const marketingFeatures: MarketingFeature[] = [
         ],
         faqs: [
             {
-                question: 'Can I validate page content as well as uptime?',
-                answer: 'Yes. Website monitors can check for expected status codes and, when needed, validate expected keywords so you know the right content is present.',
-            },
-            {
                 question: 'Can I follow redirects?',
                 answer: 'Yes. Redirect handling is configurable on HTTP-style monitors so you can monitor the final destination your visitors reach.',
+            },
+            {
+                question: 'Is website monitoring available on the Free plan?',
+                answer: 'Yes. Free workspaces can create website checks, but they use the standard check profile with fixed timing and alert defaults.',
             },
         ],
     },
     {
-        slug: 'endpoint-monitoring',
-        label: 'Endpoint Monitoring',
-        shortLabel: 'Endpoint monitoring',
-        menuDescription: 'Track APIs and service endpoints with methods, headers, auth, latency thresholds, and assertions.',
-        icon: 'webhook',
-        eyebrow: 'Endpoint monitoring',
-        title: 'Keep APIs, webhooks, and service endpoints healthy.',
-        summary: 'Monitor the application edge your systems depend on with request methods, headers, auth credentials, timeout rules, and performance alerts.',
-        intro: 'RealUptime endpoint monitoring is built for JSON APIs, internal services, webhook receivers, and any HTTP endpoint that needs to stay fast and available.',
+        slug: 'port-monitoring',
+        label: 'Port Monitoring',
+        shortLabel: 'Port monitoring',
+        menuDescription: 'Track TCP ports for databases, brokers, SSH, mail relays, and internal services.',
+        icon: 'server',
+        eyebrow: 'Port monitoring',
+        title: 'Know when the service port is open before users feel the outage.',
+        summary: 'Watch raw TCP ports for infrastructure and internal services that do not expose a friendly website endpoint.',
+        intro: 'RealUptime port monitoring is built for the operational layer below your website checks. Use it for SSH, databases, cache nodes, brokers, and any TCP service that needs to stay reachable.',
         bullets: [
-            'GET and POST request support',
-            'Custom headers and basic auth',
+            'Host and port checks in the format host:port',
+            'TCP connect time measurement',
             'Latency thresholds with degraded-performance incidents',
-            'Expected status code and keyword matching',
+            'Useful alongside HTTP checks for faster root-cause direction',
         ],
         benefitCards: [
             {
-                title: 'Useful for internal and public APIs',
-                description: 'Track REST endpoints, webhook receivers, health endpoints, and machine-to-machine services from one workflow.',
+                title: 'Infrastructure-first visibility',
+                description: 'Validate that the actual service port is reachable even when there is no website to probe.',
             },
             {
-                title: 'Alert on slowdowns, not just outages',
-                description: 'Performance incidents open when latency stays above your threshold for consecutive checks.',
+                title: 'Separate transport failures from app failures',
+                description: 'Pair port checks with website checks to tell whether the outage is at the socket or application layer.',
             },
             {
-                title: 'Flexible request configuration',
-                description: 'Set headers, auth, timeouts, and validation rules to match the contract your clients rely on.',
+                title: 'Operationally lightweight',
+                description: 'Port checks give teams a fast signal for hosts and services where HTTP assertions would be the wrong abstraction.',
             },
         ],
         useCases: [
-            'REST and JSON APIs',
-            'Webhook receivers',
-            'Authentication endpoints',
-            'Health checks for containers and services',
+            'PostgreSQL and MySQL ports',
+            'SSH, SMTP, and IMAP services',
+            'Redis, RabbitMQ, and broker ports',
+            'Internal TCP services behind VPNs or load balancers',
         ],
         faqs: [
             {
-                question: 'Can I monitor authenticated endpoints?',
-                answer: 'Yes. Endpoint monitors support custom headers and basic authentication for endpoints that are not publicly open.',
+                question: 'How should I format a port target?',
+                answer: 'Use a host and port in the format `host:port`, for example `db.example.com:5432`.',
             },
             {
-                question: 'Can I alert on slow APIs?',
-                answer: 'Yes. You can set a latency threshold and require multiple slow checks before opening a degraded-performance incident.',
+                question: 'Can I alert when a port stays slow?',
+                answer: 'Yes. Paid workspaces can apply latency thresholds to port checks and open degraded-performance incidents when connect times stay elevated.',
             },
         ],
     },
@@ -154,11 +153,11 @@ export const marketingFeatures: MarketingFeature[] = [
             },
             {
                 title: 'Useful for bare-metal and network edges',
-                description: 'Watch routers, gateways, firewalls, VMs, or dedicated hosts that need a reachability heartbeat.',
+                description: 'Watch routers, gateways, firewalls, VMs, or dedicated hosts that need a direct reachability check.',
             },
             {
                 title: 'Fits alongside HTTP monitors',
-                description: 'Pair ping with website or endpoint monitoring to distinguish network loss from application failure.',
+                description: 'Pair ping with website or HTTP checks to distinguish network loss from application failure.',
             },
         ],
         useCases: [
@@ -179,53 +178,6 @@ export const marketingFeatures: MarketingFeature[] = [
         ],
     },
     {
-        slug: 'ssl-monitoring',
-        label: 'SSL Monitoring',
-        shortLabel: 'SSL monitoring',
-        menuDescription: 'Track TLS certificate expiry, issuer details, and domain expiry thresholds from the same monitor.',
-        icon: 'shield',
-        eyebrow: 'SSL monitoring',
-        title: 'Stay ahead of certificate and domain expiry.',
-        summary: 'RealUptime records certificate validity, issuer details, domain expiry windows, and raises incidents before expiry becomes a production issue.',
-        intro: 'SSL monitoring is built for teams that want certificate visibility without another tool. Track upcoming expiry windows and see issuer and registrar context directly in the monitor page.',
-        bullets: [
-            'SSL certificate expiry thresholds',
-            'Certificate issuer tracking',
-            'Domain expiry thresholds',
-            'Expiry incidents and notifications',
-        ],
-        benefitCards: [
-            {
-                title: 'Prevent silent certificate failures',
-                description: 'Receive alerts before TLS expiry interrupts your website, API, or internal service.',
-            },
-            {
-                title: 'Track domain ownership metadata',
-                description: 'Keep registrar and domain expiry details visible from the same place you track uptime.',
-            },
-            {
-                title: 'Use a single monitor view',
-                description: 'Combine uptime, SSL validity, and domain-expiry information in the same operational workflow.',
-            },
-        ],
-        useCases: [
-            'HTTPS websites and APIs',
-            'Custom domains for customer instances',
-            'Renewal planning for shared infrastructure',
-            'Operational checks for DNS and TLS handovers',
-        ],
-        faqs: [
-            {
-                question: 'Can I alert before a certificate expires?',
-                answer: 'Yes. You can set the threshold in days and RealUptime will open an SSL expiry incident when the monitor crosses it.',
-            },
-            {
-                question: 'Does RealUptime also track domain expiry?',
-                answer: 'Yes. HTTP, keyword, SSL, and synthetic monitors can also evaluate domain expiry and raise a separate incident when it approaches.',
-            },
-        ],
-    },
-    {
         slug: 'incidents-management',
         label: 'Incidents Management',
         shortLabel: 'Incident management',
@@ -236,7 +188,7 @@ export const marketingFeatures: MarketingFeature[] = [
         summary: 'When checks fail, RealUptime opens incidents, records retries, stores notification history, and gives operators a place to capture notes and root cause.',
         intro: 'RealUptime treats incidents as first-class records. That means your team can review what happened, when the first failure appeared, which retries happened, and how alerts were sent.',
         bullets: [
-            'Downtime, degraded-performance, SSL, and domain-expiry incidents',
+            'Downtime and degraded-performance incidents',
             'Retry timeline and latest check details',
             'Operator notes and root cause summary fields',
             'Notification history linked to each incident',
@@ -264,7 +216,7 @@ export const marketingFeatures: MarketingFeature[] = [
         faqs: [
             {
                 question: 'What types of incidents can RealUptime open?',
-                answer: 'Downtime, degraded-performance, SSL-expiry, and domain-expiry incidents are supported today, each with its own severity and timeline.',
+                answer: 'Downtime and degraded-performance incidents are supported today, each with its own severity and timeline.',
             },
             {
                 question: 'Can I add notes to an incident?',
@@ -374,31 +326,33 @@ export const marketingPlans: MarketingPlan[] = [
     {
         key: 'free',
         name: 'Free',
-        description: 'Start with the essentials and monitor the services that matter most.',
+        description: 'Start with the essentials and monitor the services that matter most with fixed defaults.',
         monthlyPriceLabel: '£0',
-        monitors: '3 monitors',
+        monitors: '10 monitors',
         interval: '5 minute checks',
         cta: 'Get started for free',
         features: [
-            { label: 'HTTP, ping, keyword, SSL, heartbeat, and synthetic monitors', included: true },
+            { label: 'HTTP, port, and ping checks', included: true },
+            { label: 'Fixed defaults for timing and alert policy', included: true },
             { label: 'Response-time charts and incident history', included: true },
-            { label: 'Email alerts to your workspace email', included: true },
             { label: 'Public status pages, maintenance, team, and integrations', included: false },
+            { label: 'Custom check configuration', included: false },
             { label: 'Downtime webhooks', included: false },
         ],
     },
     {
         key: 'premium',
         name: 'Premium',
-        description: 'Unlock the full workspace for growing production systems and teams.',
+        description: 'Unlock full check customization and the rest of the operational workspace.',
         monthlyPriceLabel: '£5.99',
         badge: 'Most popular',
-        monitors: '25 monitors',
+        monitors: '50 monitors',
         interval: '30 second checks',
         featured: true,
         cta: 'Start Premium',
         features: [
             { label: 'Everything in Free', included: true },
+            { label: 'Custom HTTP, port, and ping configuration', included: true },
             { label: 'Public status pages and incident updates', included: true },
             { label: 'Maintenance windows and notification contacts', included: true },
             { label: 'Shared workspaces, API tokens, and downtime webhooks', included: true },
@@ -425,11 +379,11 @@ export const marketingPlans: MarketingPlan[] = [
 export const marketingFaqs = [
     {
         question: 'What can I monitor with RealUptime?',
-        answer: 'RealUptime supports HTTP(S), endpoint, ping, keyword, SSL certificate, heartbeat, and synthetic transaction monitors from the same workspace.',
+        answer: 'RealUptime supports HTTP(S), port, and ping checks. Paid workspaces can customize those checks in depth, while Free workspaces use a fixed operational profile.',
     },
     {
         question: 'Do I need a paid plan to start?',
-        answer: 'No. The Free plan includes core monitoring with up to 3 monitors. Premium and Ultra unlock advanced workspace features and higher monitor limits.',
+        answer: 'No. The Free plan includes up to 10 monitors with the standard check profile. Premium and Ultra unlock full check customization, advanced workspace features, and higher monitor limits.',
     },
     {
         question: 'How are alerts delivered?',
@@ -454,9 +408,8 @@ export const footerGroups = [
         title: 'Monitoring',
         links: [
             { label: 'Website Monitoring', href: '/features/website-monitoring' },
-            { label: 'Endpoint Monitoring', href: '/features/endpoint-monitoring' },
+            { label: 'Port Monitoring', href: '/features/port-monitoring' },
             { label: 'Ping Monitoring', href: '/features/ping-monitoring' },
-            { label: 'SSL Monitoring', href: '/features/ssl-monitoring' },
             { label: 'Incident Management', href: '/features/incidents-management' },
             { label: 'Public Status Pages', href: '/features/public-status-pages' },
         ],
@@ -486,7 +439,7 @@ export const footerGroups = [
             { label: 'FAQs', href: '/pricing#faqs' },
             { label: 'Status Pages', href: '/features/public-status-pages' },
             { label: 'Alerting', href: '/features/it-alerting-software' },
-            { label: 'Synthetic Monitoring', href: '/features/endpoint-monitoring' },
+            { label: 'Port Checks', href: '/features/port-monitoring' },
         ],
     },
 ];

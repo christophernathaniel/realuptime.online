@@ -90,8 +90,10 @@ export type DetailedMonitor = {
     currentStatusLabel: string;
     currentStatusDurationValue: string;
     currentStatusDurationLabel: string;
+    last6Bars: MonitorBarState[];
     last24Bars: MonitorBarState[];
     last7Bars: MonitorBarState[];
+    last6Hours: WindowStats;
     last24Stats: WindowStats;
     last7Days: WindowStats;
     last30Days: WindowStats;
@@ -119,10 +121,15 @@ export type DetailedMonitor = {
         successRate: number | null;
     };
     domainSsl: {
+        host: string;
         domainValidUntil: string;
         domainRegistrar: string;
+        domainDaysRemaining: string;
+        domainCheckedAt: string;
         sslValidUntil: string;
         issuer: string;
+        sslDaysRemaining: string;
+        sslCheckedAt: string;
     };
     nextMaintenance: string;
     maintenanceDefaults: MaintenanceFormData;

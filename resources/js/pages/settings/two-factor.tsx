@@ -50,7 +50,7 @@ export default function TwoFactor({
                             <h2 className="text-[20px] font-semibold tracking-[-0.04em] text-white">
                                 Authentication status
                             </h2>
-                            <p className="mt-2 text-[14px] leading-6 text-[#8fa0bf]">
+                            <p className="mt-2 text-[14px] leading-6 text-[#9ca7b9]">
                                 Add a second sign-in factor before making changes to monitors, notifications, and account settings.
                             </p>
                         </div>
@@ -58,7 +58,7 @@ export default function TwoFactor({
                         <div className="flex flex-wrap items-center gap-3">
                             <span
                                 className={twoFactorEnabled
-                                    ? 'inline-flex items-center gap-2 rounded-full border border-[#3ee072]/25 bg-[#10273a] px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#dfffe9]'
+                                    ? 'inline-flex items-center gap-2 rounded-full border border-[#7c8cff]/25 bg-[#171c33] px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#dbe1ff]'
                                     : 'inline-flex items-center gap-2 rounded-full border border-[#ff6b75]/20 bg-[#2a1621] px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-[#ffe6e8]'}
                             >
                                 {twoFactorEnabled ? 'Enabled' : 'Disabled'}

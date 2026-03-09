@@ -11,12 +11,12 @@ export default function PricingPage({ canRegister = true }: { canRegister?: bool
                     <div>
                         <div className="text-[14px] font-semibold uppercase tracking-[0.22em] text-[#7083a2]">Pricing</div>
                         <h1 className="mt-5 max-w-[12ch] text-[40px] font-semibold leading-[0.9] tracking-[-0.08em] text-white sm:text-[52px] lg:text-[66px]">
-                            Affordable plans for real monitoring work<span className="text-[#42df79]">.</span>
+                            Affordable plans for real monitoring work<span className="text-[#7c8cff]">.</span>
                         </h1>
                     </div>
                     <div className="rounded-[30px] border border-white/8 bg-[#0a1730] px-6 py-6 lg:min-w-[360px]">
                         <div className="text-[30px] font-semibold tracking-[-0.06em] text-white">
-                            Simple monthly pricing<span className="text-[#42df79]">.</span>
+                            Simple monthly pricing<span className="text-[#7c8cff]">.</span>
                         </div>
                         <div className="mt-4 text-[16px] leading-7 text-[#8ea0bf]">
                             All public plans are billed monthly. Upgrade, downgrade, or cancel from the billing settings inside your account.

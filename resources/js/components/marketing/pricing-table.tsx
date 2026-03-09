@@ -14,7 +14,7 @@ export function PricingTable({
                 <div
                     key={plan.key}
                     className={cn(
-                        'relative overflow-hidden rounded-[30px] border p-7 shadow-[0_28px_80px_rgba(3,9,18,0.24)]',
+                        'relative overflow-hidden rounded-[30px] border p-7',
                         plan.featured
                             ? 'border-[#44d97b] bg-[#f5f7fb] text-[#16233c]'
                             : 'border-[#d6dce8] bg-[#f5f7fb] text-[#16233c]',

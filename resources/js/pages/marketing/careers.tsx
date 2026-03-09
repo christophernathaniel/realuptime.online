@@ -7,7 +7,7 @@ export default function CareersPage() {
                 <div className="max-w-[920px]">
                     <div className="text-[14px] font-semibold uppercase tracking-[0.22em] text-[#7083a2]">Careers</div>
                     <h1 className="mt-5 text-[40px] font-semibold leading-[0.9] tracking-[-0.08em] text-white sm:text-[52px] lg:text-[66px]">
-                        No open roles right now<span className="text-[#42df79]">.</span>
+                        No open roles right now<span className="text-[#7c8cff]">.</span>
                     </h1>
                     <p className="mt-6 max-w-[42ch] text-[21px] leading-9 text-[#97aac6]">
                         RealUptime is not actively hiring at the moment. When that changes, this page will list open roles, hiring context, and what the team is working on.
@@ -24,7 +24,7 @@ export default function CareersPage() {
                         </div>
                     ))}
                 </div>
-                <div className="mt-12 rounded-[34px] border border-[#42df79]/22 bg-[#0a1425] px-8 py-8 text-[18px] leading-8 text-[#d9e3f5]">
+                <div className="mt-12 rounded-[34px] border border-[#7c8cff]/22 bg-[#0a1425] px-8 py-8 text-[18px] leading-8 text-[#d9e3f5]">
                     There are currently no vacancies. Check back later for future opportunities across product, engineering, operations, and customer experience.
                 </div>
             </section>

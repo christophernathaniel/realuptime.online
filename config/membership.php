@@ -5,7 +5,7 @@ return [
         'free' => [
             'label' => 'Free',
             'monthly_price_pence' => 0,
-            'monitor_limit' => 3,
+            'monitor_limit' => 10,
             'minimum_interval_seconds' => 300,
             'advanced_workspace_features' => false,
             'downtime_webhooks' => false,
@@ -14,7 +14,7 @@ return [
         'premium' => [
             'label' => 'Premium',
             'monthly_price_pence' => 599,
-            'monitor_limit' => 25,
+            'monitor_limit' => 50,
             'minimum_interval_seconds' => 30,
             'advanced_workspace_features' => true,
             'downtime_webhooks' => true,

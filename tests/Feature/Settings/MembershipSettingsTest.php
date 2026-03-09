@@ -15,7 +15,7 @@ it('renders the membership settings page', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('settings/membership')
             ->where('membership.currentPlan.value', 'premium')
-            ->where('membership.currentPlan.monitorLimit', 25)
+            ->where('membership.currentPlan.monitorLimit', 50)
             ->where('membership.currentPlan.advancedFeaturesUnlocked', true));
 });
 
@@ -28,7 +28,7 @@ it('renders the actual membership plan for platform admins', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('settings/membership')
             ->where('membership.currentPlan.label', 'Free')
-            ->where('membership.currentPlan.monitorLimitLabel', '3')
+            ->where('membership.currentPlan.monitorLimitLabel', '10')
             ->where('membership.currentPlan.priceLabel', 'Free')
             ->where('membership.currentPlan.isAdmin', true));
 });

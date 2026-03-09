@@ -14,9 +14,8 @@ class MarketingPageController extends Controller
      */
     private const FEATURE_SLUGS = [
         'website-monitoring',
-        'endpoint-monitoring',
+        'port-monitoring',
         'ping-monitoring',
-        'ssl-monitoring',
         'incidents-management',
         'public-status-pages',
         'it-alerting-software',

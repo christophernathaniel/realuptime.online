@@ -1,5 +1,5 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { BellRing, CalendarDays, Copy, ExternalLink, Pause, Pencil, Play, ShieldCheck, Trash2 } from 'lucide-react';
+import { BellRing, CalendarDays, ChevronLeft, Copy, ExternalLink, Pause, Pencil, Play, ShieldCheck, Trash2 } from 'lucide-react';
 import type { ChangeEvent } from 'react';
 import { useState } from 'react';
 import { PageCard } from '@/components/monitoring/page-card';
@@ -15,12 +15,22 @@ type MonitorShowProps = {
     monitor: DetailedMonitor;
 };
 
-function StatBlock({ label, value, subtext }: { label: string; value: string; subtext: string }) {
+function StatBlock({
+    label,
+    value,
+    subtext,
+    valueClassName = 'text-[#57c7c2]',
+}: {
+    label: string;
+    value: string;
+    subtext: string;
+    valueClassName?: string;
+}) {
     return (
         <div>
-            <div className="text-[17px] text-[#cfd8ec]">{label}</div>
-            <div className="mt-3 text-[38px] font-semibold tracking-[-0.06em] text-[#3ee072] lg:text-[42px]">{value}</div>
-            <div className="mt-2 text-[15px] text-[#8fa0bf] lg:text-[16px]">{subtext}</div>
+            <div className="text-[15px] uppercase tracking-[0.18em] text-[#8e9aac]">{label}</div>
+            <div className={`mt-3 text-[38px] font-semibold tracking-[-0.06em] lg:text-[42px] ${valueClassName}`}>{value}</div>
+            <div className="mt-2 text-[15px] text-[#9ca7b9] lg:text-[16px]">{subtext}</div>
         </div>
     );
 }
@@ -28,9 +38,51 @@ function StatBlock({ label, value, subtext }: { label: string; value: string; su
 function MetricPanel({ title, value, caption }: { title: string; value: string; caption: string }) {
     return (
         <div>
-            <div className="text-[16px] text-[#cfd8ec]">{title}</div>
+            <div className="text-[14px] uppercase tracking-[0.18em] text-[#8e9aac]">{title}</div>
             <div className="mt-2 text-[30px] font-semibold tracking-[-0.05em] text-white lg:text-[34px]">{value}</div>
-            <div className="text-[15px] text-[#8fa0bf] lg:text-[16px]">{caption}</div>
+            <div className="text-[15px] text-[#9ca7b9] lg:text-[16px]">{caption}</div>
+        </div>
+    );
+}
+
+function SignalWindowCard({
+    title,
+    uptimeLabel,
+    bars,
+    incidentsCount,
+    downtimeLabel,
+    note,
+}: {
+    title: string;
+    uptimeLabel: string;
+    bars: DetailedMonitor['last24Bars'];
+    incidentsCount: number;
+    downtimeLabel: string;
+    note: string;
+}) {
+    return (
+        <PageCard className="p-5">
+            <div className="flex items-center justify-between gap-3">
+                <div className="text-[14px] uppercase tracking-[0.18em] text-[#8e9aac]">{title}</div>
+                <div className="text-[22px] font-semibold tracking-[-0.04em] text-white">{uptimeLabel}</div>
+            </div>
+            <div className="mt-5">
+                <UptimeBars bars={bars} />
+            </div>
+            <div className="mt-3 text-[13px] text-[#6d7889]">{note}</div>
+            <div className="mt-4 text-[15px] text-[#9ca7b9] lg:text-[16px]">
+                {incidentsCount} incidents, {downtimeLabel}
+            </div>
+        </PageCard>
+    );
+}
+
+function InfoTile({ label, value, hint }: { label: string; value: string; hint: string }) {
+    return (
+        <div className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4">
+            <div className="text-[13px] uppercase tracking-[0.18em] text-[#8e9aac]">{label}</div>
+            <div className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-white">{value}</div>
+            <div className="mt-1 text-[14px] text-[#9ca7b9]">{hint}</div>
         </div>
     );
 }
@@ -79,25 +131,37 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
         <MonitoringLayout>
             <Head title={monitor.name} />
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_308px]">
-                <section className="space-y-5">
-                    <div className="flex flex-wrap items-center gap-4">
+                <section className="space-y-4">
+                    <PageCard className="p-4 lg:p-5">
                         <Link
                             href="/monitors"
-                            className="inline-flex items-center gap-3 rounded-[16px] border border-white/6 bg-[#1a2339]/95 px-4 py-2.5 text-base text-[#d5def3]"
+                            className="inline-flex items-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3]"
                         >
-                            Monitoring
+                            <ChevronLeft className="size-4" />
+                            Checks
                         </Link>
-                    </div>
 
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-4">
+                        <div className="mt-4 flex items-start gap-4">
                             <StatusChip status={monitor.status} large />
                             <div className="min-w-0">
-                                <h1 className="text-[40px] font-semibold leading-none tracking-[-0.06em] text-white lg:text-[48px]">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#7f8b9b]">
+                                    Check profile
+                                </div>
+                                <h1 className="mt-2 text-[34px] font-semibold tracking-[-0.06em] text-white lg:text-[38px]">
                                     {monitor.name}
                                 </h1>
-                                <div className="mt-2 flex flex-wrap items-center gap-3 text-[16px] text-[#9eacc7] lg:text-[18px]">
-                                    <span>{monitor.typeLabel} for</span>
+                                <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[14px] text-[#cfd8ec]">
+                                    <span className="rounded-full border border-[#2b3544] bg-[#121821] px-3 py-1.5 uppercase tracking-[0.18em] text-[#aebadc]">
+                                        {monitor.typeLabel}
+                                    </span>
+                                    <span className="rounded-full border border-[#2b3544] bg-[#121821] px-3 py-1.5 uppercase tracking-[0.18em] text-[#aebadc]">
+                                        {monitor.region}
+                                    </span>
+                                    <span className="rounded-full border border-[#57c7c2]/20 bg-[#15222a] px-3 py-1.5 text-[#def8f4]">
+                                        {monitor.currentStatusLabel}
+                                    </span>
+                                </div>
+                                <div className="mt-3 flex flex-wrap items-center gap-3 text-[15px] text-[#9eacc7] lg:text-[16px]">
                                     {monitor.heartbeatUrl ? (
                                         <span className="text-[#dbe4f9]">{monitor.targetLabel}</span>
                                     ) : monitor.target ? (
@@ -105,7 +169,7 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                                             href={monitor.target}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="inline-flex items-center gap-2 text-[#3ee072] underline-offset-4 hover:underline"
+                                            className="inline-flex items-center gap-2 text-[#57c7c2] underline decoration-[#57c7c2]/25 underline-offset-4"
                                         >
                                             {monitor.target}
                                             <ExternalLink className="size-4" />
@@ -117,167 +181,180 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                             </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-3">
+                        <div className="mt-4 flex flex-wrap items-center gap-3">
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-3 rounded-[16px] border border-white/6 bg-[#1a2339]/95 px-4 py-2.5 text-base text-[#d5def3]"
+                                className="inline-flex items-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3]"
                                 onClick={() => router.post(`/monitors/${monitor.id}/run-now`)}
                             >
-                                <Play className="size-4 text-[#8fa0bf]" />
+                                <Play className="size-4 text-[#57c7c2]" />
                                 Run check
                             </button>
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-3 rounded-[16px] border border-white/6 bg-[#1a2339]/95 px-4 py-2.5 text-base text-[#d5def3]"
+                                className="inline-flex items-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3]"
                                 onClick={() => router.post(`/monitors/${monitor.id}/test-notification`)}
                             >
-                                <BellRing className="size-4 text-[#8fa0bf]" />
-                                Test Notification
+                                <BellRing className="size-4 text-[#57c7c2]" />
+                                Test alert
                             </button>
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-3 rounded-[16px] border border-white/6 bg-[#1a2339]/95 px-4 py-2.5 text-base text-[#d5def3]"
+                                className="inline-flex items-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3]"
                                 onClick={() => router.post(`/monitors/${monitor.id}/toggle`)}
                             >
-                                <Pause className="size-4 text-[#8fa0bf]" />
+                                <Pause className="size-4 text-[#7c8cff]" />
                                 {monitor.status === 'paused' ? 'Resume' : 'Pause'}
                             </button>
                             <Link
                                 href={`/monitors/${monitor.id}/edit`}
-                                className="inline-flex items-center gap-3 rounded-[16px] border border-white/6 bg-[#1a2339]/95 px-4 py-2.5 text-base text-[#d5def3]"
+                                className="inline-flex items-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3]"
                             >
-                                <Pencil className="size-4 text-[#8fa0bf]" />
+                                <Pencil className="size-4 text-[#7c8cff]" />
                                 Edit
                             </Link>
                         </div>
-                    </div>
+                    </PageCard>
 
-                    <div className="grid gap-4 xl:grid-cols-[repeat(4,minmax(0,1fr))_minmax(260px,1.35fr)]">
-                        <PageCard className="p-6 xl:col-span-1">
-                            <div className="text-[17px] text-[#d5def3]">Current status</div>
-                            <div className="mt-3 text-[38px] font-semibold tracking-[-0.06em] text-[#3ee072] lg:text-[42px]">
-                                {monitor.currentStatusLabel}
-                            </div>
-                            <div className="mt-2 text-[15px] text-[#8fa0bf] lg:text-[16px]">{monitor.currentStatusDurationLabel}</div>
+                    <div className="grid gap-4 xl:grid-cols-3">
+                        <PageCard className="p-5">
+                            <StatBlock
+                                label="Live state"
+                                value={monitor.currentStatusLabel}
+                                subtext={monitor.currentStatusDurationLabel}
+                                valueClassName="text-[#57c7c2]"
+                            />
                         </PageCard>
-
-                        <PageCard className="p-6 xl:col-span-1">
-                            <div className="text-[17px] text-[#d5def3]">Last check</div>
-                            <div className="mt-3 text-[38px] font-semibold tracking-[-0.06em] text-white lg:text-[42px]">
-                                {monitor.lastCheckLabel}
-                            </div>
-                            <div className="mt-2 text-[15px] text-[#8fa0bf] lg:text-[16px]">Checked every {monitor.checkedEveryLabel}</div>
+                        <PageCard className="p-5">
+                            <StatBlock
+                                label="Last check"
+                                value={monitor.lastCheckLabel}
+                                subtext={`Checked every ${monitor.checkedEveryLabel}`}
+                                valueClassName="text-white"
+                            />
                         </PageCard>
-
-                        <PageCard className="p-6 xl:col-span-1">
-                            <div className="flex items-center justify-between gap-3">
-                                <div className="text-[17px] text-[#d5def3]">Last 24 hours</div>
-                                <div className="text-[20px] font-semibold text-white">{monitor.last24Stats.uptimeLabel}</div>
-                            </div>
-                            <div className="mt-6">
-                                <UptimeBars bars={monitor.last24Bars} />
-                            </div>
-                            <div className="mt-4 text-[15px] text-[#8fa0bf] lg:text-[16px]">
-                                {monitor.last24Stats.incidentsCount} incidents, {monitor.last24Stats.downtimeLabel}
-                            </div>
-                        </PageCard>
-
-                        <PageCard className="p-6 xl:col-span-1">
-                            <div className="flex items-center justify-between gap-3">
-                                <div className="text-[17px] text-[#d5def3]">Last 7 days</div>
-                                <div className="text-[20px] font-semibold text-white">{monitor.last7Days.uptimeLabel}</div>
-                            </div>
-                            <div className="mt-6">
-                                <UptimeBars bars={monitor.last7Bars} />
-                            </div>
-                            <div className="mt-2 text-[13px] text-[#647391]">
-                                Four segments per day
-                            </div>
-                            <div className="mt-4 text-[15px] text-[#8fa0bf] lg:text-[16px]">
-                                {monitor.last7Days.incidentsCount} incidents, {monitor.last7Days.downtimeLabel}
-                            </div>
-                        </PageCard>
-
-                        <PageCard className="p-6 xl:col-span-1">
-                            <div className="text-[17px] font-semibold text-white">
-                                Domain &amp; SSL<span className="text-[#3ee072]">.</span>
-                            </div>
-                            <div className="mt-6 space-y-5">
-                                <div>
-                                    <div className="text-[15px] text-[#8fa0bf] lg:text-[16px]">Domain valid until</div>
-                                    <div className="mt-2 text-[19px] font-semibold text-white">{monitor.domainSsl.domainValidUntil}</div>
-                                    <div className="mt-1 text-[15px] text-[#8fa0bf]">Registrar: {monitor.domainSsl.domainRegistrar}</div>
-                                </div>
-                                <div className="border-t border-white/8 pt-5">
-                                    <div className="text-[15px] text-[#8fa0bf] lg:text-[16px]">SSL certificate valid until</div>
-                                    <div className="mt-2 text-[19px] font-semibold text-white">{monitor.domainSsl.sslValidUntil}</div>
-                                    <div className="mt-1 text-[15px] text-[#8fa0bf]">Issuer: {monitor.domainSsl.issuer}</div>
-                                </div>
-                            </div>
+                        <PageCard className="p-5">
+                            <StatBlock
+                                label="Current streak"
+                                value={monitor.currentStatusDurationValue}
+                                subtext={`${monitor.currentStatusLabel} since the last status change`}
+                                valueClassName="text-white"
+                            />
                         </PageCard>
                     </div>
 
-                    <PageCard className="grid gap-5 p-7 xl:grid-cols-[1fr_1fr_1fr_1fr_200px]">
-                        <StatBlock
-                            label="Current streak"
-                            value={monitor.currentStatusDurationValue}
-                            subtext={`${monitor.currentStatusLabel} since the last status change`}
+                    <div className="grid gap-4 xl:grid-cols-3">
+                        <SignalWindowCard
+                            title="6h signal"
+                            uptimeLabel={monitor.last6Hours.uptimeLabel}
+                            bars={monitor.last6Bars}
+                            incidentsCount={monitor.last6Hours.incidentsCount}
+                            downtimeLabel={monitor.last6Hours.downtimeLabel}
+                            note="Twelve 30-minute segments"
                         />
+                        <SignalWindowCard
+                            title="24h signal"
+                            uptimeLabel={monitor.last24Stats.uptimeLabel}
+                            bars={monitor.last24Bars}
+                            incidentsCount={monitor.last24Stats.incidentsCount}
+                            downtimeLabel={monitor.last24Stats.downtimeLabel}
+                            note="Twenty-four 1-hour segments"
+                        />
+                        <SignalWindowCard
+                            title="7d signal"
+                            uptimeLabel={monitor.last7Days.uptimeLabel}
+                            bars={monitor.last7Bars}
+                            incidentsCount={monitor.last7Days.incidentsCount}
+                            downtimeLabel={monitor.last7Days.downtimeLabel}
+                            note="Four segments per day"
+                        />
+                    </div>
+
+                    <PageCard className="p-6">
+                        <div className="text-[17px] font-semibold text-white">
+                            Domain posture<span className="text-[#7c8cff]">.</span>
+                        </div>
+                        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                            <InfoTile label="Endpoint" value={monitor.targetLabel} hint="Configured target for this check" />
+                            <InfoTile label="Observed host" value={monitor.domainSsl.host} hint="Resolved host currently being evaluated" />
+                            <InfoTile label="Registrar" value={monitor.domainSsl.domainRegistrar} hint={monitor.domainSsl.domainCheckedAt} />
+                            <InfoTile label="Domain expiry" value={monitor.domainSsl.domainValidUntil} hint={monitor.domainSsl.domainDaysRemaining} />
+                            <InfoTile label="Domain refresh" value={monitor.domainSsl.domainCheckedAt} hint={`Collected on a ${monitor.checkedEveryLabel} cadence`} />
+                            <InfoTile label="Certificate issuer" value={monitor.domainSsl.issuer} hint="Issuer on the latest successful TLS fetch" />
+                            <InfoTile label="Certificate expiry" value={monitor.domainSsl.sslValidUntil} hint={monitor.domainSsl.sslDaysRemaining} />
+                            <InfoTile label="TLS refresh" value={monitor.domainSsl.sslCheckedAt} hint="Certificate metadata refresh status" />
+                        </div>
+                    </PageCard>
+
+                    <PageCard className="grid gap-5 p-6 xl:grid-cols-[1fr_1fr_1fr_200px_200px]">
                         <StatBlock
                             label="Last 30 days"
                             value={monitor.last30Days.uptimeLabel}
                             subtext={`${monitor.last30Days.incidentsCount} incidents, ${monitor.last30Days.downtimeLabel}`}
+                            valueClassName="text-white"
                         />
                         <StatBlock
                             label="Last 365 days"
                             value={monitor.last365Days.uptimeLabel}
                             subtext={`${monitor.last365Days.incidentsCount} incidents, ${monitor.last365Days.downtimeLabel}`}
+                            valueClassName="text-white"
                         />
                         <StatBlock
                             label="Last 14 days"
                             value={monitor.customRange.uptimeLabel}
                             subtext={`${monitor.customRange.incidentsCount} incidents, ${monitor.customRange.downtimeLabel}`}
+                            valueClassName="text-white"
                         />
                         <div>
-                            <div className="text-[17px] text-[#d5def3]">MTBF</div>
-                            <div className="mt-3 text-[38px] font-semibold tracking-[-0.06em] text-[#3ee072] lg:text-[42px]">
+                            <div className="text-[15px] uppercase tracking-[0.18em] text-[#8e9aac]">MTBF</div>
+                            <div className="mt-3 text-[38px] font-semibold tracking-[-0.06em] text-[#57c7c2] lg:text-[42px]">
                                 {monitor.mtbf}
                             </div>
-                            <div className="mt-2 text-[15px] text-[#8fa0bf] lg:text-[16px]">Last 7 days</div>
+                            <div className="mt-2 text-[15px] text-[#9ca7b9] lg:text-[16px]">Last 7 days</div>
+                        </div>
+                        <div className="rounded-[20px] border border-[#2b3544] bg-[#121821] px-4 py-4">
+                            <div className="text-[15px] uppercase tracking-[0.18em] text-[#8e9aac]">Current mix</div>
+                            <div className="mt-4 flex items-center gap-3">
+                                <StatusChip status={monitor.status} />
+                                <div>
+                                    <div className="text-[18px] font-semibold text-white">{monitor.statusLabel}</div>
+                                    <div className="text-[14px] text-[#9ca7b9]">{monitor.checkedEveryLabel}</div>
+                                </div>
+                            </div>
                         </div>
                     </PageCard>
 
-                    <PageCard className="p-7">
+                    <PageCard className="p-6">
                         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                             <div>
                                 <h2 className="text-[26px] font-semibold tracking-[-0.05em] text-white lg:text-[28px]">
-                                    Response time<span className="text-[#3ee072]">.</span>
+                                    Latency profile<span className="text-[#7c8cff]">.</span>
                                 </h2>
                             </div>
                             <div className="flex flex-wrap items-center gap-3">
-                                <label className="inline-flex items-center gap-3 rounded-[14px] bg-[#0d1628] px-3 py-2 text-sm text-[#d5def3]">
-                                    <span className="text-[#8fa0bf]">Range</span>
+                                <label className="inline-flex items-center gap-3 rounded-[14px] border border-[#2b3544] bg-[#171d28] px-3 py-2 text-sm text-[#d5def3]">
+                                    <span className="text-[#8fa0bf]">Window</span>
                                     <select
                                         value={monitor.responseTimeRange}
                                         onChange={updateResponseRange}
                                         className="bg-transparent text-sm text-white outline-none"
                                     >
                                         {monitor.responseTimeRangeOptions.map((option) => (
-                                            <option key={option.value} value={option.value} className="bg-[#0d1628]">
+                                            <option key={option.value} value={option.value} className="bg-[#171d28]">
                                                 {option.label}
                                             </option>
                                         ))}
                                     </select>
                                 </label>
-                                <label className="inline-flex items-center gap-3 rounded-[14px] bg-[#0d1628] px-3 py-2 text-sm text-[#d5def3]">
-                                    <span className="text-[#8fa0bf]">Granularity</span>
+                                <label className="inline-flex items-center gap-3 rounded-[14px] border border-[#2b3544] bg-[#171d28] px-3 py-2 text-sm text-[#d5def3]">
+                                    <span className="text-[#8fa0bf]">Bucket</span>
                                     <select
                                         value={monitor.responseTimeGranularity}
                                         onChange={updateResponseGranularity}
                                         className="bg-transparent text-sm text-white outline-none"
                                     >
                                         {monitor.responseTimeGranularityOptions.map((option) => (
-                                            <option key={option.value} value={option.value} className="bg-[#0d1628]">
+                                            <option key={option.value} value={option.value} className="bg-[#171d28]">
                                                 {option.label}
                                             </option>
                                         ))}
@@ -340,40 +417,40 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                         </div>
                     </PageCard>
 
-                    <PageCard className="p-7">
+                    <PageCard className="p-6">
                         <div className="flex items-center justify-between gap-3">
                             <h2 className="text-[24px] font-semibold tracking-[-0.05em] text-white lg:text-[26px]">
-                                Incident timeline<span className="text-[#3ee072]">.</span>
+                                Recent events<span className="text-[#7c8cff]">.</span>
                             </h2>
-                            <Link href="/incidents" className="text-[15px] text-[#3ee072] lg:text-[16px]">
-                                View all incidents
+                            <Link href="/incidents" className="text-[15px] text-[#57c7c2] lg:text-[16px]">
+                                View event log
                             </Link>
                         </div>
                         <div className="mt-5 space-y-4">
                             {monitor.recentIncidents.length === 0 ? (
-                                <div className="rounded-[18px] border border-dashed border-white/10 bg-[#111a2c] px-5 py-6 text-[15px] text-[#8fa0bf] lg:text-[16px]">
-                                    No incidents recorded for this monitor.
+                                <div className="rounded-[18px] border border-dashed border-[#2b3544] bg-[#171d28] px-5 py-6 text-[15px] text-[#9ca7b9] lg:text-[16px]">
+                                    No incidents recorded for this check.
                                 </div>
                             ) : (
                                 monitor.recentIncidents.map((incident) => (
                                     <Link
                                         key={incident.id}
                                         href={incident.showUrl}
-                                        className="block rounded-[18px] border border-white/6 bg-[#111a2c] px-5 py-5 transition hover:border-[#3ee072]/25 hover:bg-[#152039]"
+                                        className="block rounded-[18px] border border-[#2b3544] bg-[#171d28] px-4 py-4 transition hover:border-[#57c7c2]/25 hover:bg-[#1b2330]"
                                     >
                                         <div className="flex flex-wrap items-center justify-between gap-3 text-[15px] text-[#dfe8fb] lg:text-[16px]">
                                             <div className="flex flex-wrap items-center gap-3">
                                                 <span>{incident.reason}</span>
-                                                <span className="rounded-full bg-[#0d1628] px-3 py-1 text-[12px] text-[#9bb4ff]">
+                                                <span className="rounded-full bg-[#121821] px-3 py-1 text-[12px] text-[#a7b6cb]">
                                                     {incident.typeLabel}
                                                 </span>
-                                                <span className="rounded-full bg-[#261826] px-3 py-1 text-[12px] text-[#ffd4d7]">
+                                                <span className="rounded-full bg-[#2a1818] px-3 py-1 text-[12px] text-[#ffd4d7]">
                                                     {incident.severityLabel}
                                                 </span>
                                             </div>
-                                            <div className="text-[#8fa0bf]">{incident.duration}</div>
+                                            <div className="text-[#9ca7b9]">{incident.duration}</div>
                                         </div>
-                                        <div className="mt-2 text-[16px] text-[#8fa0bf]">
+                                        <div className="mt-2 text-[16px] text-[#9ca7b9]">
                                             {incident.startedAt} to {incident.endedAt} • {incident.statusLabel}
                                         </div>
                                     </Link>
@@ -383,14 +460,14 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                     </PageCard>
 
                     {monitor.heartbeatUrl ? (
-                        <PageCard className="p-7">
+                        <PageCard className="p-6">
                             <div className="flex items-center justify-between gap-3">
                                 <h2 className="text-[24px] font-semibold tracking-[-0.05em] text-white lg:text-[26px]">
-                                    Heartbeat endpoint<span className="text-[#3ee072]">.</span>
+                                    Heartbeat endpoint<span className="text-[#7c8cff]">.</span>
                                 </h2>
                                 <button
                                     type="button"
-                                    className="inline-flex items-center gap-2 rounded-[14px] bg-[#0d1628] px-4 py-2 text-sm text-[#dce6fb]"
+                                    className="inline-flex items-center gap-2 rounded-[14px] border border-[#2b3544] bg-[#171d28] px-4 py-2 text-sm text-[#dce6fb]"
                                     onClick={() => {
                                         if (monitor.heartbeatUrl) {
                                             void navigator.clipboard.writeText(monitor.heartbeatUrl);
@@ -401,23 +478,23 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                                     Copy endpoint
                                 </button>
                             </div>
-                            <div className="mt-5 rounded-[18px] bg-[#111a2c] px-5 py-4">
+                            <div className="mt-5 rounded-[18px] bg-[#171d28] px-4 py-3.5">
                                 <div className="text-xs uppercase tracking-[0.22em] text-[#7f8eab]">POST URL</div>
                                 <code className="mt-3 block break-all text-[15px] text-[#dce6fb]">{monitor.heartbeatUrl}</code>
                             </div>
                             <div className="mt-5 grid gap-4 md:grid-cols-2">
-                                <div className="rounded-[18px] bg-[#111a2c] px-5 py-4">
-                                    <div className="text-sm text-[#8fa0bf]">Last heartbeat</div>
+                                <div className="rounded-[18px] bg-[#171d28] px-4 py-3.5">
+                                    <div className="text-sm text-[#9ca7b9]">Last heartbeat</div>
                                     <div className="mt-2 text-[20px] font-semibold text-white">{monitor.lastHeartbeatLabel}</div>
                                 </div>
-                                <div className="rounded-[18px] bg-[#111a2c] px-5 py-4">
-                                    <div className="text-sm text-[#8fa0bf]">Next expected deadline</div>
+                                <div className="rounded-[18px] bg-[#171d28] px-4 py-3.5">
+                                    <div className="text-sm text-[#9ca7b9]">Next expected deadline</div>
                                     <div className="mt-2 text-[20px] font-semibold text-white">
                                         {monitor.nextHeartbeatDeadlineLabel ?? 'Waiting for first ping'}
                                     </div>
                                 </div>
                             </div>
-                            <div className="mt-5 rounded-[18px] border border-white/6 bg-[#0d1628] px-5 py-4 text-[14px] text-[#9eacc7]">
+                            <div className="mt-5 rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-3.5 text-[14px] text-[#9eacc7]">
                                 Send a `POST` request from your cron job or worker after it completes:
                                 <code className="mt-2 block break-all text-[#dce6fb]">{`curl -X POST "${monitor.heartbeatUrl}"`}</code>
                             </div>
@@ -429,29 +506,29 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                     <PageCard className="p-6">
                         <div className="flex items-center justify-between gap-3">
                             <div className="text-[17px] font-semibold text-white">
-                                Next maintenance<span className="text-[#3ee072]">.</span>
+                                Change window<span className="text-[#7c8cff]">.</span>
                             </div>
                             <CalendarDays className="size-4 text-[#7d8aa7]" />
                         </div>
-                        <div className="mt-5 text-[15px] text-[#8fa0bf] lg:text-[16px]">{monitor.nextMaintenance}</div>
+                        <div className="mt-5 text-[15px] text-[#9ca7b9] lg:text-[16px]">{monitor.nextMaintenance}</div>
                         <div className="mt-5 flex gap-3">
                             <button
                                 type="button"
-                                className="inline-flex flex-1 items-center justify-center rounded-[16px] bg-[#0d1628] px-5 py-3 text-base text-white"
+                                className="inline-flex flex-1 items-center justify-center rounded-[16px] border border-[#2b3544] bg-[#171d28] px-5 py-3 text-base text-white"
                                 onClick={() => setShowMaintenanceForm((current) => !current)}
                             >
                                 {showMaintenanceForm ? 'Hide form' : 'Set up maintenance'}
                             </button>
                             <Link
                                 href={`/maintenance?monitor_id=${monitor.id}`}
-                                className="inline-flex items-center justify-center rounded-[16px] border border-white/8 px-4 py-3 text-sm text-[#d5def3]"
+                                className="inline-flex items-center justify-center rounded-[16px] border border-[#2b3544] px-4 py-3 text-sm text-[#d5def3]"
                             >
                                 Manage all
                             </Link>
                         </div>
                         {showMaintenanceForm ? (
                             <form
-                                className="mt-5 space-y-4 rounded-[18px] bg-[#111a2c] px-4 py-4"
+                                className="mt-5 space-y-4 rounded-[18px] bg-[#171d28] px-4 py-3.5"
                                 onSubmit={(event) => {
                                     event.preventDefault();
                                     maintenanceForm.post('/maintenance-windows', {
@@ -464,7 +541,7 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                                 }}
                             >
                                 {Object.values(maintenanceForm.errors).length > 0 ? (
-                                    <div className="rounded-[14px] border border-[#ff6269]/20 bg-[#2a1621] px-3 py-3 text-sm text-[#ffd4d7]">
+                                    <div className="rounded-[14px] border border-[#ff7a72]/20 bg-[#2a1818] px-3 py-3 text-sm text-[#ffd4d7]">
                                         {Object.values(maintenanceForm.errors).join(' ')}
                                     </div>
                                 ) : null}
@@ -516,7 +593,7 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                                 </label>
                                 <button
                                     type="submit"
-                                    className="inline-flex w-full items-center justify-center rounded-[14px] bg-[#352ef6] px-4 py-2.5 text-sm font-medium text-white"
+                                    className="inline-flex w-full items-center justify-center rounded-[14px] bg-[#7c8cff] px-4 py-2.5 text-sm font-medium text-white"
                                 >
                                     Schedule maintenance
                                 </button>
@@ -525,10 +602,10 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                         {monitor.maintenanceWindows.length > 0 ? (
                             <div className="mt-5 space-y-3">
                                 {monitor.maintenanceWindows.map((window) => (
-                                    <div key={window.id} className="rounded-[16px] bg-[#111a2c] px-4 py-4">
+                                    <div key={window.id} className="rounded-[16px] bg-[#171d28] px-4 py-3.5">
                                         <div className="flex items-center justify-between gap-3 text-[14px] text-white">
                                             <span>{window.title}</span>
-                                            <span className="text-[#9bb4ff]">{window.status}</span>
+                                            <span className="text-[#57c7c2]">{window.status}</span>
                                         </div>
                                         <div className="mt-2 text-[13px] text-[#7f8eab]">
                                             {window.startsAt} to {window.endsAt}
@@ -541,9 +618,9 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
 
                     <PageCard className="p-6">
                         <div className="text-[17px] font-semibold text-white">
-                            Regions<span className="text-[#3ee072]">.</span>
+                            Coverage region<span className="text-[#7c8cff]">.</span>
                         </div>
-                        <div className="mt-5 rounded-[22px] bg-[#121c30] p-4">
+                        <div className="mt-5 rounded-[22px] bg-[#171d28] p-4">
                             <RegionMap region={monitor.region} />
                         </div>
                         <div className="mt-4 text-[30px] font-semibold tracking-[-0.05em] text-white lg:text-[34px]">
@@ -553,11 +630,11 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
 
                     <PageCard className="p-6">
                         <div className="text-[17px] font-semibold text-white">
-                            Public status pages<span className="text-[#3ee072]">.</span>
+                            Published status<span className="text-[#7c8cff]">.</span>
                         </div>
                         <div className="mt-5 space-y-3">
                             {monitor.statusPages.length === 0 ? (
-                                <div className="text-[15px] text-[#8fa0bf]">This monitor is not currently published on any status page.</div>
+                                <div className="text-[15px] text-[#9ca7b9]">This check is not currently published on any status page.</div>
                             ) : (
                                 monitor.statusPages.map((page) => (
                                     <a
@@ -565,7 +642,7 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                                         href={page.publicUrl}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="block rounded-[16px] bg-[#111a2c] px-4 py-4 transition hover:bg-[#162139]"
+                                        className="block rounded-[16px] bg-[#171d28] px-4 py-4 transition hover:bg-[#1b2330]"
                                     >
                                         <div className="flex items-center justify-between gap-3 text-[15px] text-white">
                                             <span>{page.name}</span>
@@ -583,19 +660,19 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                     <PageCard className="p-6">
                         <div className="flex items-center justify-between gap-3">
                             <div className="text-[17px] font-semibold text-white">
-                                Notification log<span className="text-[#3ee072]">.</span>
+                                Delivery log<span className="text-[#7c8cff]">.</span>
                             </div>
                             <ShieldCheck className="size-4 text-[#7d8aa7]" />
                         </div>
                         <div className="mt-5 space-y-4">
                             {monitor.notificationLog.length === 0 ? (
-                                <div className="text-[15px] text-[#8fa0bf] lg:text-[16px]">No notification deliveries have been recorded yet.</div>
+                                <div className="text-[15px] text-[#9ca7b9] lg:text-[16px]">No delivery attempts have been recorded yet.</div>
                             ) : (
                                 monitor.notificationLog.map((entry) => (
-                                    <div key={`${entry.time}-${entry.subject}`} className="rounded-[18px] bg-[#111a2c] px-4 py-4">
+                                    <div key={`${entry.time}-${entry.subject}`} className="rounded-[18px] bg-[#171d28] px-4 py-4">
                                         <div className="flex items-center justify-between gap-3 text-[15px] text-white">
                                             <span>{entry.type}</span>
-                                            <span className="text-[#3ee072]">{entry.status}</span>
+                                            <span className="text-[#57c7c2]">{entry.status}</span>
                                         </div>
                                         <div className="mt-2 flex items-center gap-2 text-[12px] uppercase tracking-[0.18em] text-[#7f8eab]">
                                             <span>{entry.channel}</span>
@@ -611,14 +688,14 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
 
                     <PageCard className="p-6">
                         <div className="text-[17px] font-semibold text-white">
-                            Danger zone<span className="text-[#3ee072]">.</span>
+                            Destructive actions<span className="text-[#7c8cff]">.</span>
                         </div>
-                        <div className="mt-3 text-[14px] text-[#8fa0bf]">
-                            Deleting a monitor removes its checks, incidents, and notification history.
+                        <div className="mt-3 text-[14px] text-[#9ca7b9]">
+                            Deleting this check removes its checks, incidents, and notification history.
                         </div>
                         <button
                             type="button"
-                            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[16px] border border-[#ff6269]/25 bg-[#231320] px-5 py-3 text-sm font-medium text-[#ffd4d7]"
+                            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[16px] border border-[#ff7a72]/25 bg-[#231817] px-5 py-3 text-sm font-medium text-[#ffd4d7]"
                             onClick={() => {
                                 if (window.confirm(`Delete monitor "${monitor.name}"? This cannot be undone.`)) {
                                     router.delete(`/monitors/${monitor.id}`);
@@ -626,7 +703,7 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                             }}
                         >
                             <Trash2 className="size-4" />
-                            Delete monitor
+                            Delete check
                         </button>
                     </PageCard>
                 </aside>

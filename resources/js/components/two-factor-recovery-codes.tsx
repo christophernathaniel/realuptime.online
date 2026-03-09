@@ -56,10 +56,10 @@ export default function TwoFactorRecoveryCodes({
             <div className="space-y-6">
                 <div>
                     <div className="flex items-center gap-3 text-[20px] font-semibold tracking-[-0.04em] text-white">
-                        <LockKeyhole className="size-5 text-[#3ee072]" />
+                        <LockKeyhole className="size-5 text-[#7c8cff]" />
                         2FA recovery codes
                     </div>
-                    <p className="mt-2 text-[14px] leading-6 text-[#8fa0bf]">
+                    <p className="mt-2 text-[14px] leading-6 text-[#9ca7b9]">
                         Recovery codes let you regain access if you lose your authenticator device. Store them in a secure password manager.
                     </p>
                 </div>

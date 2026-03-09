@@ -124,7 +124,7 @@ export default function TwoFactorChallenge() {
                                 Or{' '}
                                 <button
                                     type="button"
-                                    className="cursor-pointer text-[#3ee072] underline decoration-[#3ee072]/35 underline-offset-4 transition-colors hover:text-[#7ff3a0]"
+                                    className="cursor-pointer text-[#57c7c2] underline decoration-[#57c7c2]/35 underline-offset-4 transition-colors hover:text-[#86e4de]"
                                     onClick={() => toggleRecoveryMode(clearErrors)}
                                 >
                                     {authConfigContent.toggleText}

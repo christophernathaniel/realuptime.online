@@ -27,23 +27,28 @@ type IncidentsPageProps = {
 export default function IncidentsPage({ summary, incidents }: IncidentsPageProps) {
     return (
         <MonitoringLayout>
-            <Head title="Incidents" />
+            <Head title="Event log" />
             <div className="space-y-6">
-                <h1 className="text-[56px] font-semibold tracking-[-0.06em] text-white">
-                    Incidents<span className="text-[#3ee072]">.</span>
-                </h1>
+                <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#7f8b9b]">
+                        Incident response
+                    </div>
+                    <h1 className="text-[56px] font-semibold tracking-[-0.06em] text-white">
+                        Event log<span className="text-[#7c8cff]">.</span>
+                    </h1>
+                </div>
 
                 <div className="grid gap-4 md:grid-cols-3">
                     <PageCard className="p-7">
-                        <div className="text-lg text-[#8fa0bf]">Open</div>
+                        <div className="text-lg text-[#9ca7b9]">Open</div>
                         <div className="mt-3 text-[52px] font-semibold tracking-[-0.05em] text-white">{summary.open}</div>
                     </PageCard>
                     <PageCard className="p-7">
-                        <div className="text-lg text-[#8fa0bf]">Resolved</div>
+                        <div className="text-lg text-[#9ca7b9]">Resolved</div>
                         <div className="mt-3 text-[52px] font-semibold tracking-[-0.05em] text-white">{summary.resolved}</div>
                     </PageCard>
                     <PageCard className="p-7">
-                        <div className="text-lg text-[#8fa0bf]">Last 7 days</div>
+                        <div className="text-lg text-[#9ca7b9]">Last 7 days</div>
                         <div className="mt-3 text-[52px] font-semibold tracking-[-0.05em] text-white">{summary.last7Days}</div>
                     </PageCard>
                 </div>
@@ -51,16 +56,16 @@ export default function IncidentsPage({ summary, incidents }: IncidentsPageProps
                 <PageCard className="p-8">
                     <div className="space-y-4">
                         {incidents.length === 0 ? (
-                            <div className="text-[18px] text-[#8fa0bf]">No incidents have been recorded yet.</div>
+                            <div className="text-[18px] text-[#9ca7b9]">No incidents have been recorded yet.</div>
                         ) : (
                             incidents.map((incident) => (
-                                <div key={incident.id} className="rounded-[20px] bg-[#111a2c] px-5 py-5 transition hover:bg-[#162139]">
+                                <div key={incident.id} className="rounded-[20px] bg-[#171d28] px-5 py-5 transition hover:bg-[#162139]">
                                     <div className="flex flex-wrap items-center justify-between gap-3 text-[20px] text-white">
                                         <span className="flex flex-wrap items-center gap-3">
-                                            <Link href={incident.monitorUrl} className="hover:text-[#3ee072]">
+                                            <Link href={incident.monitorUrl} className="hover:text-[#7c8cff]">
                                                 {incident.monitor}
                                             </Link>
-                                            <span className="rounded-full bg-[#0d1628] px-3 py-1 text-[12px] text-[#9bb4ff]">
+                                            <span className="rounded-full bg-[#121821] px-3 py-1 text-[12px] text-[#9bb4ff]">
                                                 {incident.typeLabel}
                                             </span>
                                             <span className="rounded-full bg-[#261826] px-3 py-1 text-[12px] text-[#ffd4d7]">
@@ -68,7 +73,7 @@ export default function IncidentsPage({ summary, incidents }: IncidentsPageProps
                                             </span>
                                         </span>
                                         <div className="flex items-center gap-4">
-                                            <div className="text-[#3ee072]">{incident.status}</div>
+                                            <div className="text-[#7c8cff]">{incident.status}</div>
                                             <button
                                                 type="button"
                                                 className="inline-flex items-center gap-1.5 text-[14px] text-[#ff9ca3] transition hover:text-white"
@@ -87,7 +92,7 @@ export default function IncidentsPage({ summary, incidents }: IncidentsPageProps
                                         </div>
                                     </div>
                                     <div className="mt-2 text-[18px] text-[#d9e3f8]">{incident.reason}</div>
-                                    <div className="mt-2 text-[16px] text-[#8fa0bf]">
+                                    <div className="mt-2 text-[16px] text-[#9ca7b9]">
                                         {incident.startedAt} to {incident.endedAt} • {incident.duration}
                                     </div>
                                 </div>

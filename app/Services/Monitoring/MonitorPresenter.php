@@ -97,8 +97,10 @@ class MonitorPresenter
                 'currentStatusDurationLabel' => $monitor->last_status_changed_at
                     ? sprintf('Currently %s for %s', $monitor->status, $this->durationLabel($monitor->last_status_changed_at->diffInSeconds(now())))
                     : 'No status changes recorded',
+                'last6Bars' => $this->uptimeBars($monitor, 6, 12),
                 'last24Bars' => $this->uptimeBars($monitor, 24, 24),
                 'last7Bars' => $this->uptimeBars($monitor, 24 * 7, 28),
+                'last6Hours' => $this->windowStatsByHours($monitor, 6),
                 'last24Stats' => $this->windowStats($monitor, 1),
                 'last7Days' => $this->windowStats($monitor, 7),
                 'last30Days' => $this->windowStats($monitor, 30),
@@ -115,10 +117,15 @@ class MonitorPresenter
                 'responseTimeStats' => $responseTimeData['stats'],
                 'responseTimeSignals' => $responseTimeData['signals'],
                 'domainSsl' => [
+                    'host' => $this->targetHost($monitor),
                     'domainValidUntil' => $monitor->domain_expires_at?->format('M j, Y') ?? 'Unavailable',
                     'domainRegistrar' => $monitor->domain_registrar ?? 'Unavailable',
+                    'domainDaysRemaining' => $this->daysRemainingLabel($monitor->domain_expires_at),
+                    'domainCheckedAt' => $monitor->domain_checked_at ? 'Refreshed '.$this->timeAgo($monitor->domain_checked_at) : 'No domain refresh yet',
                     'sslValidUntil' => $monitor->ssl_expires_at?->format('M j, Y') ?? 'Unavailable',
                     'issuer' => $monitor->ssl_issuer ?? 'Unavailable',
+                    'sslDaysRemaining' => $this->daysRemainingLabel($monitor->ssl_expires_at),
+                    'sslCheckedAt' => $monitor->ssl_checked_at ? 'Refreshed '.$this->timeAgo($monitor->ssl_checked_at) : 'No TLS refresh yet',
                 ],
                 'nextMaintenance' => $nextMaintenance ? $this->maintenanceWindowLabel($nextMaintenance) : 'No maintenance planned.',
                 'maintenanceDefaults' => [
@@ -215,11 +222,8 @@ class MonitorPresenter
             'options' => [
                 'types' => [
                     ['value' => Monitor::TYPE_HTTP, 'label' => 'HTTP(S) Monitor'],
+                    ['value' => Monitor::TYPE_PORT, 'label' => 'Port Monitor'],
                     ['value' => Monitor::TYPE_PING, 'label' => 'Ping Monitor'],
-                    ['value' => Monitor::TYPE_KEYWORD, 'label' => 'Keyword Monitor'],
-                    ['value' => Monitor::TYPE_SSL, 'label' => 'SSL Certificate Monitor'],
-                    ['value' => Monitor::TYPE_HEARTBEAT, 'label' => 'Heartbeat Monitor'],
-                    ['value' => Monitor::TYPE_SYNTHETIC, 'label' => 'Synthetic Transaction Monitor'],
                 ],
                 'methods' => ['GET', 'POST'],
                 'intervals' => collect([30, 60, 300, 1800, 3600, 43200, 86400])
@@ -750,7 +754,16 @@ class MonitorPresenter
 
     protected function windowStats(Monitor $monitor, int $days): array
     {
-        $from = CarbonImmutable::now()->subDays($days);
+        return $this->windowStatsSince($monitor, CarbonImmutable::now()->subDays($days), $days.'d');
+    }
+
+    protected function windowStatsByHours(Monitor $monitor, int $hours): array
+    {
+        return $this->windowStatsSince($monitor, CarbonImmutable::now()->subHours($hours), $hours.'h');
+    }
+
+    protected function windowStatsSince(Monitor $monitor, CarbonImmutable $from, string $withoutIncidentsLabel): array
+    {
         $results = $monitor->checkResults->filter(fn ($result) => $result->checked_at?->gte($from));
         $incidents = $monitor->incidents->filter(fn ($incident) => $incident->started_at?->gte($from));
         $effectiveIntervalSeconds = $this->effectiveIntervalSeconds($monitor);
@@ -766,7 +779,7 @@ class MonitorPresenter
             'uptimeLabel' => rtrim(rtrim(number_format($uptimeValue, 2), '0'), '.').'%',
             'incidentsCount' => $incidents->count(),
             'downtimeLabel' => $downtimeMinutes > 0 ? $downtimeMinutes.'m down' : '0m down',
-            'withoutIncidentsLabel' => $incidents->isEmpty() ? $days.'d' : '0d',
+            'withoutIncidentsLabel' => $incidents->isEmpty() ? $withoutIncidentsLabel : '0'.$this->windowLabelSuffix($withoutIncidentsLabel),
         ];
     }
 
@@ -832,6 +845,27 @@ class MonitorPresenter
         };
     }
 
+    protected function daysRemainingLabel($time): string
+    {
+        if (! $time) {
+            return 'Unavailable';
+        }
+
+        $days = CarbonImmutable::parse($time)->startOfDay()->diffInDays(CarbonImmutable::now()->startOfDay(), false) * -1;
+
+        return match (true) {
+            $days < 0 => abs($days).' days overdue',
+            $days === 0 => 'Expires today',
+            $days === 1 => '1 day left',
+            default => $days.' days left',
+        };
+    }
+
+    protected function windowLabelSuffix(string $label): string
+    {
+        return str_ends_with($label, 'h') ? 'h' : 'd';
+    }
+
     protected function effectiveIntervalSeconds(Monitor $monitor): int
     {
         $user = $monitor->relationLoaded('user') ? $monitor->user : $monitor->user()->first();
@@ -881,6 +915,7 @@ class MonitorPresenter
     {
         return match ($monitor->type) {
             Monitor::TYPE_HTTP => 'HTTP(S) Monitor',
+            Monitor::TYPE_PORT => 'Port Monitor',
             Monitor::TYPE_PING => 'Ping Monitor',
             Monitor::TYPE_KEYWORD => 'Keyword Monitor',
             Monitor::TYPE_SSL => 'SSL Certificate Monitor',

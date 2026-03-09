@@ -133,6 +133,7 @@ class MonitorRunner
         return match ($monitor->type) {
             Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD => $this->checkHttp($monitor, $checkedAt, $attempt),
             Monitor::TYPE_PING => $this->checkPing($monitor, $checkedAt, $attempt),
+            Monitor::TYPE_PORT => $this->checkPort($monitor, $checkedAt, $attempt),
             Monitor::TYPE_SSL => $this->checkSsl($monitor, $checkedAt, $attempt),
             Monitor::TYPE_HEARTBEAT => $this->checkHeartbeat($monitor, $checkedAt, $attempt),
             Monitor::TYPE_SYNTHETIC => $this->checkSynthetic($monitor, $checkedAt, $attempt),
@@ -255,6 +256,54 @@ class MonitorRunner
         }
 
         return MonitorCheckOutcome::up($checkedAt, $attempt, $avgLatency, null, null, ['raw_output' => $output]);
+    }
+
+    protected function checkPort(Monitor $monitor, CarbonImmutable $checkedAt, int $attempt): MonitorCheckOutcome
+    {
+        [$host, $port] = $this->parsePortTarget((string) ($monitor->target ?? ''));
+
+        if (! $host || ! $port) {
+            return MonitorCheckOutcome::down($checkedAt, $attempt, 'invalid_target', 'Port monitors require a target in the format host:port.');
+        }
+
+        $started = microtime(true);
+        $socket = $this->openTcpSocket($host, $port, max(1, $monitor->timeout_seconds), $errno, $errorMessage);
+        $responseTime = (int) round((microtime(true) - $started) * 1000);
+
+        if (! is_resource($socket)) {
+            return MonitorCheckOutcome::down(
+                $checkedAt,
+                $attempt,
+                'port_unreachable',
+                trim(($errorMessage ?: 'TCP connection failed.').' ('.$host.':'.$port.')'),
+                $responseTime,
+            );
+        }
+
+        fclose($socket);
+
+        return MonitorCheckOutcome::up(
+            $checkedAt,
+            $attempt,
+            $responseTime,
+            null,
+            null,
+            [
+                ...$this->responseAlertMeta($monitor, $responseTime, $checkedAt),
+                'port' => $port,
+            ],
+        );
+    }
+
+    protected function openTcpSocket(string $host, int $port, int $timeoutSeconds, ?int &$errno = 0, ?string &$errorMessage = null)
+    {
+        return @stream_socket_client(
+            sprintf('tcp://%s:%d', $host, $port),
+            $errno,
+            $errorMessage,
+            $timeoutSeconds,
+            STREAM_CLIENT_CONNECT
+        );
     }
 
     protected function checkSsl(Monitor $monitor, CarbonImmutable $checkedAt, int $attempt): MonitorCheckOutcome
@@ -647,6 +696,12 @@ class MonitorRunner
 
     protected function monitorHost(Monitor $monitor): ?string
     {
+        if ($monitor->type === Monitor::TYPE_PORT) {
+            [$host] = $this->parsePortTarget((string) ($monitor->target ?? ''));
+
+            return $host;
+        }
+
         $host = parse_url((string) ($monitor->target ?? ''), PHP_URL_HOST);
 
         if (is_string($host) && $host !== '') {
@@ -1011,7 +1066,38 @@ class MonitorRunner
 
     protected function supportsLatencyAlerts(Monitor $monitor): bool
     {
-        return in_array($monitor->type, [Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD, Monitor::TYPE_PING, Monitor::TYPE_SYNTHETIC], true);
+        return in_array($monitor->type, [Monitor::TYPE_HTTP, Monitor::TYPE_PORT, Monitor::TYPE_KEYWORD, Monitor::TYPE_PING, Monitor::TYPE_SYNTHETIC], true);
+    }
+
+    /**
+     * @return array{0:?string,1:?int}
+     */
+    protected function parsePortTarget(string $target): array
+    {
+        $target = trim($target);
+
+        if ($target === '') {
+            return [null, null];
+        }
+
+        if (preg_match('/^\[([^\]]+)\]:(\d+)$/', $target, $matches) === 1) {
+            return [$matches[1], (int) $matches[2]];
+        }
+
+        $lastColon = strrpos($target, ':');
+
+        if ($lastColon === false) {
+            return [null, null];
+        }
+
+        $host = trim(substr($target, 0, $lastColon));
+        $port = (int) trim(substr($target, $lastColon + 1));
+
+        if ($host === '' || $port < 1 || $port > 65535) {
+            return [null, null];
+        }
+
+        return [$host, $port];
     }
 
     /**

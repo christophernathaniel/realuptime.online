@@ -5,7 +5,7 @@ export function PageCard({ className, ...props }: ComponentProps<'div'>) {
     return (
         <div
             className={cn(
-                'rounded-[18px] border border-white/6 bg-[#1a2339]/95 shadow-[0_15px_36px_rgba(0,0,0,0.18)] backdrop-blur-sm',
+                'rounded-[20px] border border-[#2a3342] bg-[linear-gradient(180deg,rgba(20,26,37,0.97)_0%,rgba(17,22,31,0.97)_100%)]',
                 className,
             )}
             {...props}

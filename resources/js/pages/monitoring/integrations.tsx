@@ -16,14 +16,14 @@ import type {
 function MetricCard({ label, value, tone = 'default' }: { label: string; value: string | number; tone?: 'default' | 'good' | 'warning' | 'danger' }) {
     const toneClass = {
         default: 'text-white',
-        good: 'text-[#3ee072]',
-        warning: 'text-[#ffb454]',
+        good: 'text-[#7c8cff]',
+        warning: 'text-[#7c8cff]',
         danger: 'text-[#ff7f87]',
     }[tone];
 
     return (
         <PageCard className="px-5 py-4">
-            <div className="text-sm text-[#8fa0bf]">{label}</div>
+            <div className="text-sm text-[#9ca7b9]">{label}</div>
             <div className={`mt-1 text-[28px] font-semibold ${toneClass}`}>{value}</div>
         </PageCard>
     );
@@ -31,8 +31,8 @@ function MetricCard({ label, value, tone = 'default' }: { label: string; value: 
 
 function RuntimeRow({ label, value }: { label: string; value: string | number }) {
     return (
-        <div className="flex items-center justify-between gap-4 rounded-[14px] bg-[#111a2c] px-4 py-3">
-            <div className="text-[14px] text-[#8fa0bf]">{label}</div>
+        <div className="flex items-center justify-between gap-4 rounded-[14px] bg-[#171d28] px-4 py-3">
+            <div className="text-[14px] text-[#9ca7b9]">{label}</div>
             <div className="text-right text-[14px] font-medium text-white">{value}</div>
         </div>
     );
@@ -60,7 +60,7 @@ function ContactEditor({ contact }: { contact: IntegrationContact }) {
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                 <div>
                     <div className="text-[18px] font-semibold text-white">{contact.name}</div>
-                    <div className="mt-1 text-[14px] text-[#8fa0bf]">
+                    <div className="mt-1 text-[14px] text-[#9ca7b9]">
                         {contact.logsCount} notification logs • {contact.monitorNames.join(', ') || 'Not assigned'}
                     </div>
                 </div>
@@ -108,27 +108,27 @@ function ContactEditor({ contact }: { contact: IntegrationContact }) {
                     </label>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                    <label className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#111a2c] px-4 py-3 text-sm text-[#dce6fb]">
+                    <label className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#171d28] px-4 py-3 text-sm text-[#dce6fb]">
                         <input
                             type="checkbox"
                             checked={form.data.enabled}
                             onChange={(event) => form.setData('enabled', event.target.checked)}
-                            className="size-4 rounded border-white/15 bg-[#091426]"
+                            className="size-4 rounded border-white/15 bg-[#121821]"
                         />
                         Receive notifications
                     </label>
-                    <label className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#111a2c] px-4 py-3 text-sm text-[#dce6fb]">
+                    <label className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#171d28] px-4 py-3 text-sm text-[#dce6fb]">
                         <input
                             type="checkbox"
                             checked={form.data.is_primary}
                             onChange={(event) => form.setData('is_primary', event.target.checked)}
-                            className="size-4 rounded border-white/15 bg-[#091426]"
+                            className="size-4 rounded border-white/15 bg-[#121821]"
                         />
                         Set as primary contact
                     </label>
                 </div>
                 <div className="flex justify-end">
-                    <button type="submit" className="inline-flex items-center gap-2 rounded-[14px] bg-[#352ef6] px-4 py-2.5 text-sm font-medium text-white">
+                    <button type="submit" className="inline-flex items-center gap-2 rounded-[14px] bg-[#7c8cff] px-4 py-2.5 text-sm font-medium text-white">
                         <Save className="size-4" />
                         Save contact
                     </button>
@@ -175,14 +175,14 @@ export default function IntegrationsPage({
 
     return (
         <MonitoringLayout>
-            <Head title="Integrations & API" />
+            <Head title="Automation & API" />
             <div className="space-y-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div>
                         <h1 className="text-[40px] font-semibold tracking-[-0.06em] text-white lg:text-[46px]">
-                            Integrations &amp; API<span className="text-[#3ee072]">.</span>
+                            Automation &amp; API<span className="text-[#7c8cff]">.</span>
                         </h1>
-                        <div className="mt-2 max-w-[820px] text-[16px] text-[#8fa0bf]">
+                        <div className="mt-2 max-w-[820px] text-[16px] text-[#9ca7b9]">
                             Manage email contacts, issue API tokens for automation, and verify that queues, workers, and mail delivery are configured correctly before deployment.
                         </div>
                     </div>
@@ -200,10 +200,10 @@ export default function IntegrationsPage({
                     <section className="space-y-4">
                         <PageCard className="space-y-5 p-6">
                             <div className="flex items-center gap-3 text-[22px] font-semibold text-white">
-                                <KeyRound className="size-5 text-[#3ee072]" />
+                                <KeyRound className="size-5 text-[#7c8cff]" />
                                 API access
                             </div>
-                            <div className="text-[15px] text-[#8fa0bf]">
+                            <div className="text-[15px] text-[#9ca7b9]">
                                 Generate bearer tokens for scripts, CI pipelines, or external dashboards. Tokens are only shown once.
                             </div>
                             <form
@@ -226,7 +226,7 @@ export default function IntegrationsPage({
                                     />
                                 </label>
                                 <div className="flex items-end">
-                                    <button type="submit" className="inline-flex h-11 items-center gap-2 rounded-[14px] bg-[#352ef6] px-4 text-sm font-medium text-white">
+                                    <button type="submit" className="inline-flex h-11 items-center gap-2 rounded-[14px] bg-[#7c8cff] px-4 text-sm font-medium text-white">
                                         <KeyRound className="size-4" />
                                         Create token
                                     </button>
@@ -239,7 +239,7 @@ export default function IntegrationsPage({
                             ) : null}
 
                             {revealedToken ? (
-                                <div className="rounded-[18px] border border-[#3ee072]/20 bg-[#10273a] p-5">
+                                <div className="rounded-[18px] border border-[#7c8cff]/20 bg-[#171c33] p-5">
                                     <div className="flex items-start justify-between gap-4">
                                         <div>
                                             <div className="text-[15px] font-medium text-white">New token created: {revealedToken.name}</div>
@@ -262,15 +262,15 @@ export default function IntegrationsPage({
 
                             <div className="space-y-3">
                                 {apiTokens.length === 0 ? (
-                                    <div className="rounded-[16px] bg-[#111a2c] px-4 py-4 text-[14px] text-[#8fa0bf]">
+                                    <div className="rounded-[16px] bg-[#171d28] px-4 py-4 text-[14px] text-[#9ca7b9]">
                                         No API tokens issued yet.
                                     </div>
                                 ) : (
                                     apiTokens.map((token) => (
-                                        <div key={token.id} className="flex flex-col gap-3 rounded-[16px] bg-[#111a2c] px-4 py-4 md:flex-row md:items-center md:justify-between">
+                                        <div key={token.id} className="flex flex-col gap-3 rounded-[16px] bg-[#171d28] px-4 py-4 md:flex-row md:items-center md:justify-between">
                                             <div>
                                                 <div className="text-[15px] font-medium text-white">{token.name}</div>
-                                                <div className="mt-1 text-[13px] text-[#8fa0bf]">Created {token.createdAt ?? 'Unknown'} • {token.lastUsedLabel}</div>
+                                                <div className="mt-1 text-[13px] text-[#9ca7b9]">Created {token.createdAt ?? 'Unknown'} • {token.lastUsedLabel}</div>
                                             </div>
                                             <button
                                                 type="button"
@@ -292,7 +292,7 @@ export default function IntegrationsPage({
 
                         <PageCard className="space-y-5 p-6">
                             <div className="flex items-center gap-3 text-[22px] font-semibold text-white">
-                                <Mail className="size-5 text-[#3ee072]" />
+                                <Mail className="size-5 text-[#7c8cff]" />
                                 Add notification contact
                             </div>
                             <form
@@ -331,27 +331,27 @@ export default function IntegrationsPage({
                                     </label>
                                 </div>
                                 <div className="grid gap-3 md:grid-cols-2">
-                                    <label className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#111a2c] px-4 py-3 text-sm text-[#dce6fb]">
+                                    <label className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#171d28] px-4 py-3 text-sm text-[#dce6fb]">
                                         <input
                                             type="checkbox"
                                             checked={contactForm.data.enabled}
                                             onChange={(event) => contactForm.setData('enabled', event.target.checked)}
-                                            className="size-4 rounded border-white/15 bg-[#091426]"
+                                            className="size-4 rounded border-white/15 bg-[#121821]"
                                         />
                                         Receive notifications
                                     </label>
-                                    <label className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#111a2c] px-4 py-3 text-sm text-[#dce6fb]">
+                                    <label className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#171d28] px-4 py-3 text-sm text-[#dce6fb]">
                                         <input
                                             type="checkbox"
                                             checked={contactForm.data.is_primary}
                                             onChange={(event) => contactForm.setData('is_primary', event.target.checked)}
-                                            className="size-4 rounded border-white/15 bg-[#091426]"
+                                            className="size-4 rounded border-white/15 bg-[#121821]"
                                         />
                                         Set as primary contact
                                     </label>
                                 </div>
                                 <div className="flex justify-end">
-                                    <button type="submit" className="inline-flex items-center gap-2 rounded-[14px] bg-[#352ef6] px-4 py-2.5 text-sm font-medium text-white">
+                                    <button type="submit" className="inline-flex items-center gap-2 rounded-[14px] bg-[#7c8cff] px-4 py-2.5 text-sm font-medium text-white">
                                         <Save className="size-4" />
                                         Add contact
                                     </button>
@@ -361,7 +361,7 @@ export default function IntegrationsPage({
 
                         <div className="space-y-4">
                             {contacts.length === 0 ? (
-                                <PageCard className="p-6 text-[15px] text-[#8fa0bf]">
+                                <PageCard className="p-6 text-[15px] text-[#9ca7b9]">
                                     No contacts yet. Add at least one email address to receive alerts.
                                 </PageCard>
                             ) : (
@@ -373,7 +373,7 @@ export default function IntegrationsPage({
                     <aside className="space-y-4">
                         <PageCard className="space-y-4 p-6">
                             <div className="flex items-center gap-3 text-[22px] font-semibold text-white">
-                                <ServerCog className="size-5 text-[#3ee072]" />
+                                <ServerCog className="size-5 text-[#7c8cff]" />
                                 Runtime readiness
                             </div>
                             <div className="space-y-3">
@@ -392,7 +392,7 @@ export default function IntegrationsPage({
                             </div>
                             <div className="rounded-[16px] border border-white/8 bg-[#0b1425] p-4">
                                 <div className="flex items-center gap-2 text-[14px] font-medium text-white">
-                                    <Activity className="size-4 text-[#3ee072]" />
+                                    <Activity className="size-4 text-[#7c8cff]" />
                                     API example
                                 </div>
                                 <div className="mt-3 overflow-x-auto rounded-[14px] bg-[#081428] px-4 py-3 font-mono text-[12px] text-[#dce6fb]">
@@ -411,21 +411,21 @@ export default function IntegrationsPage({
 
                         <PageCard className="space-y-4 p-6">
                             <div className="flex items-center gap-3 text-[22px] font-semibold text-white">
-                                <Mail className="size-5 text-[#3ee072]" />
+                                <Mail className="size-5 text-[#7c8cff]" />
                                 Email delivery log
                             </div>
                             {recentLogs.length === 0 ? (
-                                <div className="text-[15px] text-[#8fa0bf]">No notifications have been recorded yet.</div>
+                                <div className="text-[15px] text-[#9ca7b9]">No notifications have been recorded yet.</div>
                             ) : (
                                 recentLogs.map((log) => {
                                     const toneClass = log.status === 'Sent'
-                                        ? 'text-[#3ee072]'
+                                        ? 'text-[#7c8cff]'
                                         : log.status === 'Failed'
                                           ? 'text-[#ff7f87]'
-                                          : 'text-[#ffb454]';
+                                          : 'text-[#7c8cff]';
 
                                     return (
-                                        <div key={`${log.subject}-${log.sentAt}`} className="rounded-[16px] bg-[#111a2c] px-4 py-4">
+                                        <div key={`${log.subject}-${log.sentAt}`} className="rounded-[16px] bg-[#171d28] px-4 py-4">
                                             <div className="flex items-center justify-between gap-3 text-[14px] text-white">
                                                 <span>{log.type}</span>
                                                 <span className={toneClass}>{log.status}</span>

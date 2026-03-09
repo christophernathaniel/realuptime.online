@@ -36,7 +36,7 @@ export default function AppearanceToggleTab({
                         className={cn(
                             'flex items-center gap-3 rounded-[20px] border px-4 py-4 text-left transition',
                             active
-                                ? 'border-[#3ee072]/25 bg-[#10273a] text-white shadow-[inset_0_0_0_1px_rgba(62,224,114,0.06)]'
+                                ? 'border-[#7c8cff]/25 bg-[#171c33] text-white'
                                 : 'border-white/8 bg-[#101b2f] text-[#c9d5ec] hover:bg-[#16253f] hover:text-white',
                         )}
                     >
@@ -44,7 +44,7 @@ export default function AppearanceToggleTab({
                             className={cn(
                                 'inline-flex size-10 items-center justify-center rounded-[14px] border',
                                 active
-                                    ? 'border-[#3ee072]/30 bg-[#0a1324] text-[#3ee072]'
+                                    ? 'border-[#7c8cff]/30 bg-[#0a1324] text-[#7c8cff]'
                                     : 'border-white/8 bg-[#081428] text-[#7687a8]',
                             )}
                         >

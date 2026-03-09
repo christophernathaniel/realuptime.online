@@ -42,7 +42,7 @@ export default function PrivacyPage() {
                 <div className="max-w-[860px]">
                     <div className="text-[14px] font-semibold uppercase tracking-[0.22em] text-[#7083a2]">Privacy policy</div>
                     <h1 className="mt-5 text-[40px] font-semibold leading-[0.9] tracking-[-0.08em] text-white sm:text-[50px] lg:text-[62px]">
-                        How RealUptime handles account, monitoring, and public status data<span className="text-[#42df79]">.</span>
+                        How RealUptime handles account, monitoring, and public status data<span className="text-[#7c8cff]">.</span>
                     </h1>
                     <p className="mt-6 text-[20px] leading-9 text-[#97aac6]">
                         This notice explains what personal data RealUptime processes, why it is used, how it may be shared, and the rights available under applicable privacy laws.
