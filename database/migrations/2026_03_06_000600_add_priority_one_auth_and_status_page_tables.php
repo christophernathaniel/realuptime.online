@@ -79,7 +79,7 @@ return new class extends Migration
             $table->text('message');
             $table->timestamps();
 
-            $table->index(['status_page_incident_id', 'created_at']);
+            $table->index(['status_page_incident_id', 'created_at'], 'spi_updates_incident_created_idx');
         });
     }
 
