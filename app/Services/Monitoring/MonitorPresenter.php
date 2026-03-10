@@ -19,6 +19,21 @@ use Illuminate\Support\Number;
 
 class MonitorPresenter
 {
+    /**
+     * @var array<string, array{
+     *     incidents: \Illuminate\Support\Collection<int, Incident>,
+     *     monitoringStart: CarbonImmutable|null,
+     *     monitoredSeconds: int,
+     *     downtimeSeconds: int
+     * }>
+     */
+    protected array $downtimeWindowCache = [];
+
+    /**
+     * @var array<string, Collection<int, CheckResult>>
+     */
+    protected array $windowCheckResultCache = [];
+
     public function index(User $user, ?User $actor = null): array
     {
         $monitors = $user->monitors()
@@ -992,9 +1007,14 @@ class MonitorPresenter
         }
 
         $stats = $monitors->map(fn (Monitor $monitor) => $this->windowStats($monitor, $days));
+        $monitoredSeconds = (int) $stats->sum('monitoredSeconds');
+        $downtimeSeconds = (int) $stats->sum('downtimeSeconds');
+        $uptimeValue = $monitoredSeconds > 0
+            ? round((max(0, $monitoredSeconds - $downtimeSeconds) / $monitoredSeconds) * 100, 2)
+            : 0.0;
 
         return [
-            'uptimeLabel' => sprintf('%d%%', (int) round($stats->avg('uptimeValue'))),
+            'uptimeLabel' => $this->formatUptimeLabel($uptimeValue),
             'mtbfLabel' => $monitors->contains(fn (Monitor $monitor) => $this->mtbfLabel($monitor, $days) !== 'N/A')
                 ? $monitors->map(fn (Monitor $monitor) => $this->mtbfLabel($monitor, $days))->first(fn (string $value) => $value !== 'N/A')
                 : 'N/A',
@@ -1015,47 +1035,202 @@ class MonitorPresenter
 
     protected function windowStatsSince(Monitor $monitor, CarbonImmutable $from, string $withoutIncidentsLabel): array
     {
-        $results = $monitor->checkResults->filter(fn ($result) => $result->checked_at?->gte($from));
-        $incidents = $monitor->incidents->filter(fn ($incident) => $incident->started_at?->gte($from));
-        $effectiveIntervalSeconds = $this->effectiveIntervalSeconds($monitor);
+        $to = CarbonImmutable::now();
+        $window = $this->downtimeWindowData($monitor, $from, $to);
+        $monitoredSeconds = $window['monitoredSeconds'];
+        $downtimeSeconds = min($window['downtimeSeconds'], $monitoredSeconds);
+        $uptimeValue = $monitoredSeconds > 0
+            ? round((max(0, $monitoredSeconds - $downtimeSeconds) / $monitoredSeconds) * 100, 2)
+            : 0.0;
+        $incidents = $window['incidents'];
 
-        $total = max(1, $results->count());
-        $up = $results->where('status', 'up')->count();
-        $down = $results->where('status', 'down')->count();
-        $uptimeValue = round(($up / $total) * 100, 2);
-        $downtimeMinutes = (int) round(($down * $effectiveIntervalSeconds) / 60);
+        if ($incidents->isEmpty()) {
+            $results = $this->windowCheckResults($monitor, $from, $to);
+            $downResults = $results->where('status', 'down')->count();
+
+            if ($downResults > 0) {
+                $effectiveIntervalSeconds = $this->effectiveIntervalSeconds($monitor);
+                $totalResults = max(1, $results->count());
+                $monitoredSeconds = max($monitoredSeconds, $totalResults * $effectiveIntervalSeconds);
+                $uptimeValue = round((($totalResults - $downResults) / $totalResults) * 100, 2);
+                $downtimeSeconds = min($downResults * $effectiveIntervalSeconds, $monitoredSeconds);
+            }
+        }
 
         return [
             'uptimeValue' => $uptimeValue,
-            'uptimeLabel' => rtrim(rtrim(number_format($uptimeValue, 2), '0'), '.').'%',
+            'uptimeLabel' => $this->formatUptimeLabel($uptimeValue),
             'incidentsCount' => $incidents->count(),
-            'downtimeLabel' => $downtimeMinutes > 0 ? $downtimeMinutes.'m down' : '0m down',
+            'downtimeLabel' => $this->downtimeLabel($downtimeSeconds),
             'withoutIncidentsLabel' => $incidents->isEmpty() ? $withoutIncidentsLabel : '0'.$this->windowLabelSuffix($withoutIncidentsLabel),
+            'monitoredSeconds' => $monitoredSeconds,
+            'downtimeSeconds' => $downtimeSeconds,
         ];
     }
 
     protected function uptimeBars(Monitor $monitor, int $hours, int $segments): array
     {
         $from = CarbonImmutable::now()->subHours($hours);
-        $results = $monitor->checkResults->filter(fn ($result) => $result->checked_at?->gte($from))->sortBy('checked_at')->values();
+        $to = CarbonImmutable::now();
+        $window = $this->downtimeWindowData($monitor, $from, $to);
+        $fallbackResults = $window['incidents']->isEmpty()
+            ? $this->windowCheckResults($monitor, $from, $to)
+            : collect();
 
-        if ($results->isEmpty()) {
+        if (! $window['monitoringStart']) {
             return array_fill(0, $segments, 'unknown');
         }
 
         $segmentLength = max(1, (int) floor(($hours * 3600) / $segments));
 
-        return collect(range(0, $segments - 1))->map(function (int $segment) use ($from, $segmentLength, $results) {
+        return collect(range(0, $segments - 1))->map(function (int $segment) use ($from, $to, $segmentLength, $segments, $window) {
             $start = $from->addSeconds($segment * $segmentLength);
-            $end = $start->addSeconds($segmentLength);
-            $slice = $results->filter(fn ($result) => $result->checked_at?->betweenIncluded($start, $end));
+            $end = $segment === $segments - 1
+                ? $to
+                : $start->addSeconds($segmentLength);
 
-            if ($slice->isEmpty()) {
+            if ($end->lessThanOrEqualTo($window['monitoringStart'])) {
                 return 'unknown';
             }
 
-            return $slice->contains(fn ($result) => $result->status === 'down') ? 'down' : 'up';
+            if ($window['incidents']->isEmpty() && $fallbackResults->where('status', 'down')->isNotEmpty()) {
+                $slice = $fallbackResults->filter(fn (CheckResult $result) => $result->checked_at?->betweenIncluded($start, $end));
+
+                if ($slice->isEmpty()) {
+                    return 'unknown';
+                }
+
+                return $slice->contains(fn (CheckResult $result) => $result->status === 'down') ? 'down' : 'up';
+            }
+
+            return $this->incidentOverlapSeconds($window['incidents'], $start, $end) > 0 ? 'down' : 'up';
         })->all();
+    }
+
+    /**
+     * @return array{
+     *     incidents: Collection<int, Incident>,
+     *     monitoringStart: CarbonImmutable|null,
+     *     monitoredSeconds: int,
+     *     downtimeSeconds: int
+     * }
+     */
+    protected function downtimeWindowData(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $cacheKey = implode(':', [$monitor->id, $from->timestamp, $to->timestamp]);
+
+        if (array_key_exists($cacheKey, $this->downtimeWindowCache)) {
+            return $this->downtimeWindowCache[$cacheKey];
+        }
+
+        $incidents = Incident::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('type', Incident::TYPE_DOWNTIME)
+            ->where('started_at', '<', $to)
+            ->where(function ($query) use ($from): void {
+                $query->whereNull('resolved_at')
+                    ->orWhere('resolved_at', '>', $from);
+            })
+            ->orderBy('started_at')
+            ->get();
+
+        $createdAt = CarbonImmutable::parse($monitor->created_at);
+        $firstCheckAtValue = CheckResult::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('checked_at', '>=', $from)
+            ->where('checked_at', '<', $to)
+            ->min('checked_at');
+        $firstCheckAt = $firstCheckAtValue ? CarbonImmutable::parse($firstCheckAtValue) : null;
+        $firstIncidentAt = $incidents->isNotEmpty()
+            ? CarbonImmutable::parse($incidents->min('started_at'))
+            : null;
+
+        $evidenceStart = collect([$createdAt, $firstCheckAt, $firstIncidentAt])
+            ->filter()
+            ->sortBy(fn (CarbonImmutable $time) => $time->timestamp)
+            ->first() ?? $createdAt;
+        $monitoringStart = $evidenceStart->greaterThan($from) ? $evidenceStart : $from;
+
+        if ($monitoringStart->greaterThanOrEqualTo($to) || (! $monitor->last_checked_at && $incidents->isEmpty() && ! $firstCheckAt)) {
+            return $this->downtimeWindowCache[$cacheKey] = [
+                'incidents' => $incidents,
+                'monitoringStart' => null,
+                'monitoredSeconds' => 0,
+                'downtimeSeconds' => 0,
+            ];
+        }
+
+        $monitoredSeconds = $monitoringStart->diffInSeconds($to);
+        $downtimeSeconds = $this->incidentOverlapSeconds($incidents, $monitoringStart, $to);
+
+        return $this->downtimeWindowCache[$cacheKey] = [
+            'incidents' => $incidents,
+            'monitoringStart' => $monitoringStart,
+            'monitoredSeconds' => $monitoredSeconds,
+            'downtimeSeconds' => min($downtimeSeconds, $monitoredSeconds),
+        ];
+    }
+
+    /**
+     * @param  Collection<int, Incident>  $incidents
+     */
+    protected function incidentOverlapSeconds(Collection $incidents, CarbonImmutable $from, CarbonImmutable $to): int
+    {
+        return (int) $incidents->sum(fn (Incident $incident) => $this->incidentWindowOverlapSeconds($incident, $from, $to));
+    }
+
+    /**
+     * @return Collection<int, CheckResult>
+     */
+    protected function windowCheckResults(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to): Collection
+    {
+        $cacheKey = implode(':', ['results', $monitor->id, $from->timestamp, $to->timestamp]);
+
+        if (array_key_exists($cacheKey, $this->windowCheckResultCache)) {
+            return $this->windowCheckResultCache[$cacheKey];
+        }
+
+        return $this->windowCheckResultCache[$cacheKey] = CheckResult::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('checked_at', '>=', $from)
+            ->where('checked_at', '<', $to)
+            ->orderBy('checked_at')
+            ->get();
+    }
+
+    protected function incidentWindowOverlapSeconds(Incident $incident, CarbonImmutable $from, CarbonImmutable $to): int
+    {
+        $startsAt = CarbonImmutable::parse($incident->started_at);
+        $endsAt = $incident->resolved_at
+            ? CarbonImmutable::parse($incident->resolved_at)
+            : $to;
+
+        if ($endsAt->lessThanOrEqualTo($from) || $startsAt->greaterThanOrEqualTo($to)) {
+            return 0;
+        }
+
+        $overlapStart = $startsAt->greaterThan($from) ? $startsAt : $from;
+        $overlapEnd = $endsAt->lessThan($to) ? $endsAt : $to;
+
+        return max(0, $overlapStart->diffInSeconds($overlapEnd));
+    }
+
+    protected function formatUptimeLabel(float $uptimeValue): string
+    {
+        return rtrim(rtrim(number_format($uptimeValue, 2), '0'), '.').'%';
+    }
+
+    protected function downtimeLabel(int $seconds): string
+    {
+        if ($seconds <= 0) {
+            return '0m down';
+        }
+
+        if ($seconds < 3600) {
+            return (int) round($seconds / 60).'m down';
+        }
+
+        return $this->durationLabel($seconds).' down';
     }
 
     protected function mtbfLabel(Monitor $monitor, int $days): string

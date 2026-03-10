@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Capability;
+use App\Models\Incident;
 use App\Models\Monitor;
 use App\Models\NotificationContact;
 use App\Models\User;
@@ -51,6 +52,60 @@ it('renders the monitors index for authenticated users', function () {
         ->assertInertia(fn ($page) => $page
             ->component('monitors/index')
             ->where('monitors.0.name', 'API health'));
+});
+
+it('keeps dashboard uptime percentages aligned with downtime duration when healthy ping results are sampled', function () {
+    CarbonImmutable::setTestNow('2026-03-10 12:00:00');
+
+    $user = User::factory()->create();
+
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Edge ping',
+        'type' => Monitor::TYPE_PING,
+        'status' => Monitor::STATUS_UP,
+        'target' => '1.1.1.1',
+        'interval_seconds' => 60,
+        'timeout_seconds' => 5,
+        'retry_limit' => 0,
+        'packet_count' => 1,
+        'region' => 'North America',
+        'last_checked_at' => now()->subMinute(),
+        'last_status_changed_at' => now()->subHours(2),
+    ]);
+    $monitor->forceFill([
+        'created_at' => now()->subDays(2),
+        'updated_at' => now()->subMinute(),
+    ])->save();
+
+    $monitor->checkResults()->create([
+        'status' => 'up',
+        'checked_at' => now()->subMinute(),
+        'attempts' => 1,
+        'response_time_ms' => 18,
+        'meta' => ['raw_output' => 'simulated'],
+    ]);
+
+    Incident::query()->create([
+        'monitor_id' => $monitor->id,
+        'started_at' => now()->subHours(3)->subMinutes(15),
+        'resolved_at' => now()->subHours(3),
+        'duration_seconds' => 15 * 60,
+        'type' => Incident::TYPE_DOWNTIME,
+        'severity' => Incident::SEVERITY_MAJOR,
+        'reason' => 'Packet loss',
+    ]);
+
+    $dashboard = app(MonitorPresenter::class)->index($user);
+    $detail = app(MonitorPresenter::class)->show($monitor->fresh());
+
+    expect($dashboard['monitors'][0]['uptimePercentLabel'])->toBe('98.96%');
+    expect($dashboard['last24Hours']['uptimeLabel'])->toBe('98.96%');
+    expect($detail['monitor']['last24Stats']['uptimeLabel'])->toBe('98.96%');
+    expect($detail['monitor']['last24Stats']['downtimeLabel'])->toBe('15m down');
+    expect(collect($dashboard['monitors'][0]['bars'])->filter(fn (string $bar) => $bar === 'down'))->toHaveCount(1);
+
+    CarbonImmutable::setTestNow();
 });
 
 it('stores a new monitor and attaches selected email contacts', function () {

@@ -144,7 +144,7 @@ it('renders public status pages from live monitor checks and active maintenance 
             ->where('statusPage.updatedLabel', 'Updated 5m ago')
             ->where('statusPage.monitors.0.status', 'Maintenance')
             ->where('statusPage.monitors.0.statusTone', 'maintenance')
-            ->where('statusPage.monitors.0.uptimeLabel', '69.69%'));
+            ->where('statusPage.monitors.0.uptimeLabel', '69.44%'));
 
     Carbon::setTestNow();
 });
