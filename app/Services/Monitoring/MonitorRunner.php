@@ -1038,7 +1038,7 @@ class MonitorRunner
             'critical_alert_sent_at' => $checkedAt,
         ])->save();
 
-        $this->notifications->sendCriticalAlert($monitor->fresh(['notificationContacts', 'user']), $incident);
+        // Reserved by policy: prolonged downtime changes severity, but does not trigger another email.
     }
 
     protected function openIncidentForType(Monitor $monitor, string $type): ?Incident
@@ -1085,13 +1085,6 @@ class MonitorRunner
                 $this->notifications->sendDownAlert($monitor, $incident);
                 $this->webhooks->sendDownAlert($monitor, $incident);
                 break;
-            case 'degraded':
-                $this->notifications->sendDegradedAlert($monitor, $incident);
-                break;
-            case 'ssl_expiry':
-            case 'domain_expiry':
-                $this->notifications->sendExpiryAlert($monitor, $incident);
-                break;
         }
     }
 
@@ -1103,11 +1096,7 @@ class MonitorRunner
 
         if ($incident->type === Incident::TYPE_DOWNTIME) {
             $this->notifications->sendRecoveryAlert($monitor, $incident);
-
-            return;
         }
-
-        $this->notifications->sendResolutionAlert($monitor, $incident);
     }
 
     protected function supportsLatencyAlerts(Monitor $monitor): bool

@@ -76,6 +76,8 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
     const form = useForm<MonitorFormData>(monitor);
     const minimumAllowedInterval = options.intervals[0] ?? form.data.interval_seconds;
     const intervalIndex = Math.max(0, options.intervals.findIndex((value) => value === form.data.interval_seconds));
+    const selectedContactsCount = form.data.contact_ids.length;
+    const reachedContactLimit = selectedContactsCount >= options.guardrails.maxContactsPerMonitor;
     const title = mode === 'create' ? 'Create check' : `Edit ${monitor.name}`;
     const customizationLocked = !membership.advancedFeaturesUnlocked;
     const isHttp = form.data.type === 'http';
@@ -134,7 +136,7 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
                             </div>
                             <div className="mt-2 text-[14px] text-[#9ca7b9]">
                                 {customizationLocked
-                                    ? 'Free workspaces use the standard check profile: North America, 5-minute cadence, 30-second timeout, and 2 retries.'
+                                    ? membership.standardProfileLabel
                                     : 'Custom check configuration and advanced workspace tooling are unlocked on this workspace.'}
                             </div>
                             {subscriptionRequiredToCreate ? (
@@ -276,10 +278,13 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
                                             <Input
                                                 type="number"
                                                 min={0}
-                                                max={5}
+                                                max={options.guardrails.maxRetryLimit}
                                                 value={form.data.retry_limit}
                                                 onChange={(event) => form.setData('retry_limit', Number(event.target.value))}
                                             />
+                                            <div className="text-sm text-[#9ca7b9]">
+                                                Keep retry fan-out tight. Up to {options.guardrails.maxRetryLimit} retries per check.
+                                            </div>
                                         </div>
                                     </div>
 
@@ -332,19 +337,6 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
                                         </div>
                                     ) : null}
 
-                                    {isPing ? (
-                                        <div className="space-y-3">
-                                            <FieldLabel>Packet count</FieldLabel>
-                                            <Input
-                                                type="number"
-                                                min={1}
-                                                max={10}
-                                                value={form.data.packet_count}
-                                                onChange={(event) => form.setData('packet_count', Number(event.target.value))}
-                                            />
-                                        </div>
-                                    ) : null}
-
                                     <div className="space-y-3">
                                         <FieldLabel>Critical downtime alert after (minutes)</FieldLabel>
                                         <Input
@@ -394,6 +386,9 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
                                                     onChange={(event) => form.setData('custom_headers', event.target.value)}
                                                     placeholder={'{\n  "X-Env": "production"\n}'}
                                                 />
+                                                <div className="text-sm text-[#9ca7b9]">
+                                                    Up to {options.guardrails.maxCustomHeaderCount} headers. Values are capped at {options.guardrails.maxCustomHeaderValueLength} characters each.
+                                                </div>
                                                 {form.errors.custom_headers ? <div className="text-sm text-[#ff7f86]">{form.errors.custom_headers}</div> : null}
                                             </div>
                                         </>
@@ -407,22 +402,27 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
                                 <div>
                                     <div className="text-[26px] font-semibold tracking-[-0.05em] text-white lg:text-[28px]">How will we notify you?</div>
                                     <div className="mt-2 text-[15px] text-[#9ca7b9] lg:text-[16px]">
-                                        Email is the only alert channel in this build. Select the contacts that should receive incident and recovery emails.
+                                        Email is the only alert channel in this build. Select up to {options.guardrails.maxContactsPerMonitor} contacts that should receive downtime and recovery emails.
                                     </div>
                                 </div>
 
                                 <div className="grid gap-4 lg:grid-cols-2">
                                     {contacts.map((contact) => {
                                         const checked = form.data.contact_ids.includes(contact.id);
+                                        const disableUncheckedContact = !checked && reachedContactLimit;
 
                                         return (
                                             <label
                                                 key={contact.id}
-                                                className="flex items-start gap-4 rounded-[20px] border border-[#2b3544] bg-[#171d28] px-4 py-4 text-left"
+                                                className={cn(
+                                                    'flex items-start gap-4 rounded-[20px] border border-[#2b3544] bg-[#171d28] px-4 py-4 text-left',
+                                                    disableUncheckedContact && 'opacity-50',
+                                                )}
                                             >
                                                 <input
                                                     type="checkbox"
                                                     checked={checked}
+                                                    disabled={disableUncheckedContact}
                                                     onChange={(event) => {
                                                         form.setData(
                                                             'contact_ids',
@@ -441,6 +441,9 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
                                         );
                                     })}
                                 </div>
+                                <div className="text-sm text-[#9ca7b9]">
+                                    {selectedContactsCount} of {options.guardrails.maxContactsPerMonitor} contacts selected for this check.
+                                </div>
                             </PageCard>
                         ) : null}
 
@@ -449,7 +452,7 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
                                 <div>
                                     <div className="text-[26px] font-semibold tracking-[-0.05em] text-white lg:text-[28px]">Downtime webhooks</div>
                                     <div className="mt-2 text-[15px] text-[#9ca7b9] lg:text-[16px]">
-                                        Add one URL per line to receive a JSON POST when this check goes down.
+                                        Add one URL per line to receive a JSON POST when this check goes down. Keep fan-out tight to avoid delivery storms.
                                     </div>
                                 </div>
 
@@ -463,7 +466,7 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
                                         className={cn(downtimeWebhookLocked && 'cursor-not-allowed opacity-60')}
                                     />
                                     <div className="text-sm text-[#9ca7b9]">
-                                        RealUptime sends a `monitor.down` payload with the check, incident, and workspace context. Up to 5 endpoints per check.
+                                        RealUptime sends a `monitor.down` payload with the check, incident, and workspace context. Up to {options.guardrails.maxDowntimeWebhookUrls} endpoints per check.
                                     </div>
                                     {form.errors.downtime_webhook_urls ? (
                                         <div className="text-sm text-[#ff7f86]">{form.errors.downtime_webhook_urls}</div>
@@ -525,20 +528,26 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
                                         <Input
                                             type="number"
                                             min={1}
-                                            max={60}
+                                            max={options.guardrails.maxTimeoutSeconds}
                                             value={form.data.timeout_seconds}
                                             onChange={(event) => form.setData('timeout_seconds', Number(event.target.value))}
                                         />
+                                        <div className="text-sm text-[#9ca7b9]">
+                                            Cap request hold time at {options.guardrails.maxTimeoutSeconds} seconds to keep worker pressure predictable.
+                                        </div>
                                     </div>
                                     <div className="space-y-3">
                                         <FieldLabel>Retries</FieldLabel>
                                         <Input
                                             type="number"
                                             min={0}
-                                            max={5}
+                                            max={options.guardrails.maxRetryLimit}
                                             value={form.data.retry_limit}
                                             onChange={(event) => form.setData('retry_limit', Number(event.target.value))}
                                         />
+                                        <div className="text-sm text-[#9ca7b9]">
+                                            Retry bursts are capped at {options.guardrails.maxRetryLimit} to stop a single noisy check multiplying load.
+                                        </div>
                                     </div>
                                 </div>
                             </PageCard>

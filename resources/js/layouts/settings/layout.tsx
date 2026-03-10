@@ -80,9 +80,9 @@ export default function SettingsLayout({
                 </p>
             </div>
 
-            <div className="grid items-start gap-6 lg:grid-cols-[250px,minmax(0,1fr)] xl:grid-cols-[260px,minmax(0,1fr)]">
-                <aside className="w-full lg:sticky lg:top-6">
-                    <PageCard className="h-fit w-full max-w-[280px] p-3 lg:max-w-none">
+            <div className="grid items-start gap-6 md:grid-cols-[260px,minmax(0,1fr)] xl:grid-cols-[280px,minmax(0,1fr)]">
+                <aside className="w-full self-start md:sticky md:top-6">
+                    <PageCard className="h-fit w-full p-3">
                         <div className="mb-3 px-2 pt-2">
                             <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#61718f]">
                                 Account center
@@ -138,7 +138,7 @@ export default function SettingsLayout({
                     </PageCard>
                 </aside>
 
-                <div className="space-y-6">{children}</div>
+                <div className="min-w-0 space-y-6">{children}</div>
             </div>
         </div>
     );

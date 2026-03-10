@@ -34,8 +34,9 @@ export default function ForgotPassword({ status }: { status?: string }) {
                                 </Label>
                                 <Input
                                     id="email"
-                                    type="email"
+                                    type="text"
                                     name="email"
+                                    inputMode="email"
                                     autoComplete="off"
                                     autoFocus
                                     placeholder="email@example.com"

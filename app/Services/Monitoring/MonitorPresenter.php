@@ -194,6 +194,13 @@ class MonitorPresenter
         $minimumInterval = $user->minimumMonitorIntervalSeconds();
         $selectedInterval = max($monitor?->interval_seconds ?? 300, $minimumInterval);
         $plan = $user->membershipPlan();
+        $guardrails = config('realuptime.guardrails');
+        $maxTimeoutSeconds = (int) ($guardrails['max_timeout_seconds'] ?? 15);
+        $maxRetryLimit = (int) ($guardrails['max_retry_limit'] ?? 2);
+        $maxContactsPerMonitor = (int) ($guardrails['max_contacts_per_monitor'] ?? 5);
+        $maxDowntimeWebhookUrls = (int) ($guardrails['max_downtime_webhook_urls'] ?? 2);
+        $maxCustomHeaderCount = (int) ($guardrails['max_custom_header_count'] ?? 8);
+        $maxCustomHeaderValueLength = (int) ($guardrails['max_custom_header_value_length'] ?? 256);
 
         return [
             'monitor' => [
@@ -203,8 +210,8 @@ class MonitorPresenter
                 'target' => $monitor?->target ?? 'https://',
                 'request_method' => $monitor?->request_method ?? 'GET',
                 'interval_seconds' => $selectedInterval,
-                'timeout_seconds' => $monitor?->timeout_seconds ?? 30,
-                'retry_limit' => $monitor?->retry_limit ?? 2,
+                'timeout_seconds' => min($monitor?->timeout_seconds ?? $maxTimeoutSeconds, $maxTimeoutSeconds),
+                'retry_limit' => min($monitor?->retry_limit ?? $maxRetryLimit, $maxRetryLimit),
                 'follow_redirects' => $monitor?->follow_redirects ?? true,
                 'custom_headers' => $monitor?->custom_headers ? json_encode($monitor->custom_headers, JSON_PRETTY_PRINT) : '',
                 'auth_username' => $monitor?->auth_username ?? '',
@@ -245,6 +252,14 @@ class MonitorPresenter
                 'regions' => ['North America', 'Europe', 'Asia Pacific'],
                 'existingCapabilities' => $user->capabilities()->orderBy('name')->pluck('name')->all(),
                 'keywordMatchTypes' => ['contains', 'exact', 'regex'],
+                'guardrails' => [
+                    'maxTimeoutSeconds' => $maxTimeoutSeconds,
+                    'maxRetryLimit' => $maxRetryLimit,
+                    'maxContactsPerMonitor' => $maxContactsPerMonitor,
+                    'maxDowntimeWebhookUrls' => $maxDowntimeWebhookUrls,
+                    'maxCustomHeaderCount' => $maxCustomHeaderCount,
+                    'maxCustomHeaderValueLength' => $maxCustomHeaderValueLength,
+                ],
             ],
             'membership' => [
                 'planLabel' => $plan->label(),
@@ -258,6 +273,11 @@ class MonitorPresenter
                 'supportsDowntimeWebhooks' => $user->supportsDowntimeWebhooks(),
                 'manageUrl' => $actor && $actor->id !== $user->id ? null : route('membership.show'),
                 'canCreate' => ! $user->hasReachedMonitorLimit() || $monitor !== null,
+                'standardProfileLabel' => sprintf(
+                    'Free workspaces use the standard check profile: North America, 5-minute cadence, %d-second timeout, and %d retries.',
+                    $maxTimeoutSeconds,
+                    $maxRetryLimit,
+                ),
             ],
         ];
     }

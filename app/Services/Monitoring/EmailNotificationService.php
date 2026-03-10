@@ -9,7 +9,6 @@ use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
 use App\Models\NotificationContact;
 use App\Models\NotificationLog;
-use Illuminate\Support\Collection;
 
 class EmailNotificationService
 {
@@ -30,63 +29,27 @@ class EmailNotificationService
 
     public function sendCriticalAlert(Monitor $monitor, Incident $incident): void
     {
-        $this->dispatch($monitor, 'critical', $incident);
+        // Reserved by policy: only downtime-open and downtime-recovered emails are sent automatically.
     }
 
     public function sendDegradedAlert(Monitor $monitor, Incident $incident): void
     {
-        $this->dispatch($monitor, 'degraded', $incident);
+        // Reserved by policy: degraded incidents should not generate email.
     }
 
     public function sendExpiryAlert(Monitor $monitor, Incident $incident): void
     {
-        $type = $incident->type === Incident::TYPE_DOMAIN_EXPIRY ? 'domain_expiry' : 'ssl_expiry';
-
-        $this->dispatch($monitor, $type, $incident);
+        // Reserved by policy: expiry incidents should not generate email.
     }
 
     public function sendResolutionAlert(Monitor $monitor, Incident $incident): void
     {
-        $this->dispatch($monitor, 'resolved', $incident);
+        // Reserved by policy: only downtime recovery sends email.
     }
 
     public function sendMaintenanceScheduled(MaintenanceWindow $window): void
     {
-        $window->loadMissing([
-            'user.notificationContacts',
-            'monitors.notificationContacts',
-        ]);
-
-        /** @var Collection<int, NotificationContact> $contacts */
-        $contacts = $window->monitors
-            ->flatMap(fn (Monitor $monitor) => $monitor->notificationContacts->where('enabled', true))
-            ->unique('id')
-            ->values();
-
-        if ($contacts->isEmpty()) {
-            $contacts = $window->user?->notificationContacts
-                ? $window->user->notificationContacts->where('enabled', true)->values()
-                : collect();
-        }
-
-        if ($contacts->isEmpty() && $window->user?->email) {
-            $contacts = collect([
-                $window->user->notificationContacts()->firstOrCreate(
-                    ['email' => $window->user->email],
-                    ['name' => $window->user->name, 'enabled' => true, 'is_primary' => true],
-                ),
-            ]);
-        }
-
-        $primaryMonitor = $window->monitors->first();
-
-        if (! $primaryMonitor) {
-            return;
-        }
-
-        foreach ($contacts as $contact) {
-            $this->sendMaintenanceToContact($primaryMonitor, $window, $contact);
-        }
+        // Reserved by policy: scheduled maintenance should not generate email.
     }
 
     protected function dispatch(Monitor $monitor, string $type, ?Incident $incident = null): void

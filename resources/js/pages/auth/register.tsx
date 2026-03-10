@@ -80,9 +80,10 @@ export default function Register({ oauthProviders }: Props) {
                                 </Label>
                                 <Input
                                     id="email"
-                                    type="email"
+                                    type="text"
                                     required
                                     tabIndex={2}
+                                    inputMode="email"
                                     autoComplete="email"
                                     name="email"
                                     placeholder="email@example.com"

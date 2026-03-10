@@ -17,7 +17,9 @@ Set these before production traffic:
 - `APP_URL=https://your-domain.example`
 - `QUEUE_CONNECTION=redis`
 - `CACHE_STORE=redis`
-- `MAIL_MAILER`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`
+- `MAIL_MAILER`, `MAIL_FROM_ADDRESS`
+- `RESEND_API_KEY` if using the official Resend driver
+- `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` if using SMTP instead
 - `REALUPTIME_MONITOR_QUEUE=monitor-checks`
 - `REALUPTIME_NOTIFICATION_QUEUE=notifications`
 - `REALUPTIME_DISPATCH_BATCH_SIZE=250`
@@ -37,6 +39,38 @@ php artisan migrate --force
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
+```
+
+## Mail providers
+
+RealUptime supports Laravel mail transports, including the official Resend driver.
+
+### Resend
+
+Use this when you want API-backed transactional mail without managing SMTP credentials:
+
+```env
+MAIL_MAILER=resend
+MAIL_FROM_ADDRESS=no-reply@realuptime.online
+MAIL_FROM_NAME="RealUptime"
+RESEND_API_KEY=re_xxxxxxxxx
+```
+
+You must also verify the sending domain in Resend and publish the DNS records it provides.
+
+### SMTP
+
+If you prefer SMTP instead:
+
+```env
+MAIL_MAILER=smtp
+MAIL_SCHEME=tls
+MAIL_HOST=smtp.your-provider.com
+MAIL_PORT=587
+MAIL_USERNAME=your-user
+MAIL_PASSWORD=your-password
+MAIL_FROM_ADDRESS=no-reply@realuptime.online
+MAIL_FROM_NAME="RealUptime"
 ```
 
 ## Long-running processes

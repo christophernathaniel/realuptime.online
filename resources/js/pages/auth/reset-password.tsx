@@ -39,8 +39,9 @@ export default function ResetPassword({ token, email }: Props) {
                             </Label>
                             <Input
                                 id="email"
-                                type="email"
+                                type="text"
                                 name="email"
+                                inputMode="email"
                                 autoComplete="email"
                                 value={email}
                                 readOnly

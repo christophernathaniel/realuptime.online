@@ -213,6 +213,14 @@ export type MonitorFormOptions = {
     regions: string[];
     existingCapabilities: string[];
     keywordMatchTypes: string[];
+    guardrails: {
+        maxTimeoutSeconds: number;
+        maxRetryLimit: number;
+        maxContactsPerMonitor: number;
+        maxDowntimeWebhookUrls: number;
+        maxCustomHeaderCount: number;
+        maxCustomHeaderValueLength: number;
+    };
 };
 
 export type MonitorFormMembership = {
@@ -227,6 +235,7 @@ export type MonitorFormMembership = {
     supportsDowntimeWebhooks: boolean;
     manageUrl: string | null;
     canCreate: boolean;
+    standardProfileLabel: string;
 };
 
 export type NotificationContactOption = {

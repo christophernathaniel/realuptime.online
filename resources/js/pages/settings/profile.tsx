@@ -96,7 +96,8 @@ export default function Profile({
                                             </Label>
                                             <Input
                                                 id="email"
-                                                type="email"
+                                                type="text"
+                                                inputMode="email"
                                                 className={surfaceInputClass}
                                                 defaultValue={user.email}
                                                 name="email"
