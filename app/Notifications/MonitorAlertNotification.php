@@ -41,63 +41,20 @@ class MonitorAlertNotification extends Notification
             default => sprintf('Test notification for %s', $this->monitor->name),
         };
 
-        $mail = (new MailMessage)
+        return (new MailMessage)
             ->subject($subject)
-            ->greeting('Monitoring update')
-            ->line(sprintf('Monitor: %s', $this->monitor->name))
-            ->line(sprintf('Type: %s', strtoupper($this->monitor->type)))
-            ->line(sprintf('Target: %s', $this->monitor->target ?? 'Heartbeat monitor'));
-
-        if ($this->type === 'test') {
-            return $mail
-                ->line('This is a test email from your monitoring dashboard.')
-                ->line('Email notifications are configured correctly.');
-        }
-
-        if ($this->incident) {
-            $mail->line(sprintf('Incident started: %s', $this->incident->started_at?->timezone(config('app.timezone'))->format('M j, Y H:i:s')));
-            $mail->line(sprintf('Incident type: %s', $this->incidentTypeLabel()));
-            $mail->line(sprintf('Severity: %s', ucfirst($this->incident->severity)));
-        }
-
-        if ($this->type === 'down') {
-            return $mail
-                ->line(sprintf('Current status: %s', strtoupper($this->monitor->status)))
-                ->line(sprintf('Reason: %s', $this->monitor->last_error_message ?? 'The latest check failed.'))
-                ->line('The monitor will keep retrying based on the configured interval and retry limit.');
-        }
-
-        if ($this->type === 'critical') {
-            return $mail
-                ->line(sprintf(
-                    'The monitor has remained down for at least %d minute(s).',
-                    max(1, (int) ($this->monitor->critical_alert_after_minutes ?? 0)),
-                ))
-                ->line(sprintf('Reason: %s', $this->incident?->reason ?? $this->monitor->last_error_message ?? 'The latest check failed.'));
-        }
-
-        if ($this->type === 'degraded') {
-            return $mail
-                ->line(sprintf('Response time threshold: %s', $this->monitor->latency_threshold_ms ? $this->monitor->latency_threshold_ms.' ms' : 'Not configured'))
-                ->line(sprintf('Current response time: %s', $this->monitor->last_response_time_ms ? $this->monitor->last_response_time_ms.' ms' : 'n/a'))
-                ->line(sprintf('Reason: %s', $this->incident?->reason ?? 'Latency remained above the configured warning threshold.'));
-        }
-
-        if (in_array($this->type, ['ssl_expiry', 'domain_expiry'], true)) {
-            return $mail
-                ->line(sprintf('Reason: %s', $this->incident?->reason ?? 'The latest expiry threshold was breached.'))
-                ->line(sprintf('Target host: %s', $this->monitor->target ?? 'n/a'));
-        }
-
-        if ($this->type === 'resolved') {
-            return $mail
-                ->line(sprintf('The %s incident has cleared.', $this->incidentTypeLabel()))
-                ->line(sprintf('Latest response time: %s', $this->monitor->last_response_time_ms ? $this->monitor->last_response_time_ms.' ms' : 'n/a'));
-        }
-
-        return $mail
-            ->line('The monitor recovered successfully.')
-            ->line(sprintf('Latest response time: %s', $this->monitor->last_response_time_ms ? $this->monitor->last_response_time_ms.' ms' : 'n/a'));
+            ->view('emails.monitor-alert', [
+                'subject' => $subject,
+                'preheader' => $this->preheader(),
+                'eyebrow' => 'RealUptime notification',
+                'title' => $this->title(),
+                'intro' => $this->intro(),
+                'toneLabel' => $this->toneLabel(),
+                'details' => $this->details(),
+                'buttonLabel' => 'Open check',
+                'buttonUrl' => route('monitors.show', $this->monitor),
+                'footnote' => 'You are receiving this email because this address is attached to an active RealUptime notification contact.',
+            ]);
     }
 
     protected function incidentTypeLabel(): string
@@ -108,5 +65,79 @@ class MonitorAlertNotification extends Notification
             Incident::TYPE_DOMAIN_EXPIRY => 'Domain expiry',
             default => 'Downtime',
         };
+    }
+
+    protected function title(): string
+    {
+        return match ($this->type) {
+            'down' => 'A check has gone down',
+            'recovered' => 'A check has recovered',
+            default => 'Email notifications are active',
+        };
+    }
+
+    protected function intro(): string
+    {
+        return match ($this->type) {
+            'down' => $this->incident?->reason ?? $this->monitor->last_error_message ?? 'RealUptime detected a downtime event and opened an incident.',
+            'recovered' => 'The downtime incident has ended and the latest check is reporting healthy again.',
+            default => 'This is a test message from RealUptime. Delivery is working and your notification pipeline is ready.',
+        };
+    }
+
+    protected function preheader(): string
+    {
+        return match ($this->type) {
+            'down' => sprintf('%s is down.', $this->monitor->name),
+            'recovered' => sprintf('%s has recovered.', $this->monitor->name),
+            default => 'RealUptime test email.',
+        };
+    }
+
+    protected function toneLabel(): string
+    {
+        return match ($this->type) {
+            'down' => 'Downtime',
+            'recovered' => 'Recovered',
+            default => 'Test',
+        };
+    }
+
+    /**
+     * @return array<int, array{label:string,value:string}>
+     */
+    protected function details(): array
+    {
+        $details = [
+            ['label' => 'Check', 'value' => $this->monitor->name],
+            ['label' => 'Type', 'value' => strtoupper($this->monitor->type)],
+            ['label' => 'Target', 'value' => $this->monitor->target ?? 'Heartbeat check'],
+        ];
+
+        if ($this->incident?->started_at) {
+            $details[] = [
+                'label' => 'Started',
+                'value' => $this->incident->started_at->timezone(config('app.timezone'))->format('M j, Y H:i:s'),
+            ];
+        }
+
+        if ($this->incident) {
+            $details[] = ['label' => 'Incident', 'value' => $this->incidentTypeLabel()];
+            $details[] = ['label' => 'Severity', 'value' => ucfirst($this->incident->severity)];
+        }
+
+        if ($this->type === 'down') {
+            $details[] = ['label' => 'Status', 'value' => strtoupper($this->monitor->status)];
+            $details[] = ['label' => 'Reason', 'value' => $this->monitor->last_error_message ?? 'The latest check failed.'];
+        }
+
+        if ($this->type === 'recovered') {
+            $details[] = [
+                'label' => 'Latest response',
+                'value' => $this->monitor->last_response_time_ms ? $this->monitor->last_response_time_ms.' ms' : 'n/a',
+            ];
+        }
+
+        return $details;
     }
 }

@@ -28,4 +28,10 @@ return [
         'max_custom_headers_payload_length' => (int) env('REALUPTIME_MAX_CUSTOM_HEADERS_PAYLOAD_LENGTH', 4096),
         'max_webhook_url_length' => (int) env('REALUPTIME_MAX_WEBHOOK_URL_LENGTH', 2048),
     ],
+
+    'retention' => [
+        'notification_logs_days' => (int) env('REALUPTIME_NOTIFICATION_LOG_RETENTION_DAYS', 30),
+        'healthy_check_results_days' => (int) env('REALUPTIME_HEALTHY_CHECK_RESULT_RETENTION_DAYS', 30),
+        'prune_chunk_size' => (int) env('REALUPTIME_PRUNE_CHUNK_SIZE', 1000),
+    ],
 ];

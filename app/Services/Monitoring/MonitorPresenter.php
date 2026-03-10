@@ -13,6 +13,7 @@ use App\Models\StatusPageIncident;
 use App\Models\User;
 use App\Models\WorkspaceMembership;
 use Carbon\CarbonImmutable;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Number;
 
@@ -282,22 +283,25 @@ class MonitorPresenter
         ];
     }
 
-    public function incidents(User $user): array
+    public function incidents(User $user, int $page = 1): array
     {
         $incidents = Incident::query()
             ->whereHas('monitor', fn ($query) => $query->where('user_id', $user->id))
             ->with('monitor.capabilities')
             ->latest('started_at')
-            ->limit(20)
-            ->get();
+            ->paginate(12, ['*'], 'page', $page)
+            ->withQueryString();
+
+        $summaryQuery = Incident::query()
+            ->whereHas('monitor', fn ($query) => $query->where('user_id', $user->id));
 
         return [
             'summary' => [
-                'open' => $incidents->whereNull('resolved_at')->count(),
-                'resolved' => $incidents->whereNotNull('resolved_at')->count(),
-                'last7Days' => $incidents->filter(fn ($incident) => $incident->started_at?->gte(now()->subDays(7)))->count(),
+                'open' => (clone $summaryQuery)->whereNull('resolved_at')->count(),
+                'resolved' => (clone $summaryQuery)->whereNotNull('resolved_at')->count(),
+                'last7Days' => (clone $summaryQuery)->where('started_at', '>=', now()->subDays(7))->count(),
             ],
-            'incidents' => $incidents->map(fn (Incident $incident) => [
+            'incidents' => $this->paginateData($incidents, fn (Incident $incident) => [
                 'id' => $incident->id,
                 'monitor' => $incident->monitor->name,
                 'monitorUrl' => route('monitors.show', $incident->monitor),
@@ -310,7 +314,7 @@ class MonitorPresenter
                 'typeLabel' => $this->incidentTypeLabel($incident),
                 'severityLabel' => ucfirst($incident->severity),
                 'capabilities' => $incident->monitor?->capabilities->pluck('name')->values()->all() ?? [],
-            ])->all(),
+            ]),
         ];
     }
 
@@ -486,7 +490,7 @@ class MonitorPresenter
         ];
     }
 
-    public function integrations(User $user): array
+    public function integrations(User $user, int $logsPage = 1): array
     {
         $contacts = $user->notificationContacts()
             ->withCount('notificationLogs')
@@ -504,8 +508,8 @@ class MonitorPresenter
 
         $recentLogs = (clone $logQuery)
             ->latest()
-            ->limit(15)
-            ->get();
+            ->paginate(10, ['*'], 'logs_page', $logsPage)
+            ->withQueryString();
         $staleBefore = CarbonImmutable::now()
             ->subSeconds(max(60, (int) config('realuptime.dispatch.claim_ttl_seconds', 600)));
 
@@ -553,7 +557,7 @@ class MonitorPresenter
                 'logsCount' => $contact->notification_logs_count,
                 'monitorNames' => $contact->monitors->pluck('name')->take(3)->values()->all(),
             ])->all(),
-            'recentLogs' => $recentLogs->map(fn ($log) => [
+            'recentLogs' => $this->paginateData($recentLogs, fn (NotificationLog $log) => [
                 'monitor' => $log->monitor?->name,
                 'contact' => $log->notificationContact?->email,
                 'type' => ucfirst(str_replace('_', ' ', $log->type)),
@@ -561,7 +565,7 @@ class MonitorPresenter
                 'subject' => $log->subject,
                 'failureMessage' => $log->failure_message,
                 'sentAt' => $log->sent_at?->format('M j, Y H:i') ?? $log->created_at->format('M j, Y H:i'),
-            ])->all(),
+            ]),
             'apiTokens' => $apiTokens->map(fn ($token) => [
                 'id' => $token->id,
                 'name' => $token->name,
@@ -578,6 +582,39 @@ class MonitorPresenter
             'tokenFormDefaults' => [
                 'name' => 'Primary automation',
             ],
+        ];
+    }
+
+    /**
+     * @template TModel of mixed
+     * @template TItem of array<string, mixed>
+     *
+     * @param  LengthAwarePaginator<TModel>  $paginator
+     * @param  callable(TModel):TItem  $mapper
+     * @return array{
+     *     data: array<int, TItem>,
+     *     currentPage: int,
+     *     lastPage: int,
+     *     perPage: int,
+     *     total: int,
+     *     from: int|null,
+     *     to: int|null,
+     *     previousPageUrl: string|null,
+     *     nextPageUrl: string|null
+     * }
+     */
+    protected function paginateData(LengthAwarePaginator $paginator, callable $mapper): array
+    {
+        return [
+            'data' => collect($paginator->items())->map($mapper)->values()->all(),
+            'currentPage' => $paginator->currentPage(),
+            'lastPage' => $paginator->lastPage(),
+            'perPage' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'from' => $paginator->firstItem(),
+            'to' => $paginator->lastItem(),
+            'previousPageUrl' => $paginator->previousPageUrl(),
+            'nextPageUrl' => $paginator->nextPageUrl(),
         ];
     }
 

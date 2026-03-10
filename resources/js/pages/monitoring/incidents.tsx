@@ -1,7 +1,9 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { Trash2 } from 'lucide-react';
+import { PaginationStrip } from '@/components/monitoring/pagination-strip';
 import { PageCard } from '@/components/monitoring/page-card';
 import MonitoringLayout from '@/layouts/monitoring-layout';
+import type { PaginatedData } from '@/types/monitoring';
 
 type IncidentsPageProps = {
     summary: {
@@ -9,7 +11,7 @@ type IncidentsPageProps = {
         resolved: number;
         last7Days: number;
     };
-    incidents: Array<{
+    incidents: PaginatedData<{
         id: number;
         monitor: string;
         monitorUrl: string;
@@ -56,10 +58,10 @@ export default function IncidentsPage({ summary, incidents }: IncidentsPageProps
 
                 <PageCard className="p-8">
                     <div className="space-y-4">
-                        {incidents.length === 0 ? (
+                        {incidents.data.length === 0 ? (
                             <div className="text-[18px] text-[#9ca7b9]">No incidents have been recorded yet.</div>
                         ) : (
-                            incidents.map((incident) => (
+                            incidents.data.map((incident) => (
                                 <div key={incident.id} className="rounded-[20px] bg-[#171d28] px-5 py-5 transition hover:bg-[#162139]">
                                     <div className="flex flex-wrap items-center justify-between gap-3 text-[20px] text-white">
                                         <span className="flex flex-wrap items-center gap-3">
@@ -109,6 +111,16 @@ export default function IncidentsPage({ summary, incidents }: IncidentsPageProps
                             ))
                         )}
                     </div>
+                    <PaginationStrip
+                        className="mt-6"
+                        currentPage={incidents.currentPage}
+                        lastPage={incidents.lastPage}
+                        from={incidents.from}
+                        to={incidents.to}
+                        total={incidents.total}
+                        previousPageUrl={incidents.previousPageUrl}
+                        nextPageUrl={incidents.nextPageUrl}
+                    />
                 </PageCard>
             </div>
         </MonitoringLayout>

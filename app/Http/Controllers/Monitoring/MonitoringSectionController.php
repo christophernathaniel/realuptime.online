@@ -18,7 +18,10 @@ class MonitoringSectionController extends Controller
 
     public function incidents(Request $request): Response
     {
-        return Inertia::render('monitoring/incidents', $this->presenter->incidents($this->workspaces->current($request)));
+        return Inertia::render('monitoring/incidents', $this->presenter->incidents(
+            $this->workspaces->current($request),
+            max(1, $request->integer('page', 1)),
+        ));
     }
 
     public function statusPages(Request $request): Response
@@ -44,6 +47,9 @@ class MonitoringSectionController extends Controller
 
     public function integrations(Request $request): Response
     {
-        return Inertia::render('monitoring/integrations', $this->presenter->integrations($this->workspaces->current($request)));
+        return Inertia::render('monitoring/integrations', $this->presenter->integrations(
+            $this->workspaces->current($request),
+            max(1, $request->integer('logs_page', 1)),
+        ));
     }
 }

@@ -2,6 +2,7 @@ import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { Activity, Copy, KeyRound, Mail, Save, ServerCog, Trash2, TriangleAlert } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { PageCard } from '@/components/monitoring/page-card';
+import { PaginationStrip } from '@/components/monitoring/pagination-strip';
 import MonitoringLayout from '@/layouts/monitoring-layout';
 import type {
     ApiTokenFormData,
@@ -11,6 +12,7 @@ import type {
     IntegrationRuntime,
     IntegrationSummary,
     NotificationLogItem,
+    PaginatedData,
 } from '@/types/monitoring';
 
 function MetricCard({ label, value, tone = 'default' }: { label: string; value: string | number; tone?: 'default' | 'good' | 'warning' | 'danger' }) {
@@ -142,7 +144,7 @@ type IntegrationsPageProps = {
     summary: IntegrationSummary;
     runtime: IntegrationRuntime;
     contacts: IntegrationContact[];
-    recentLogs: NotificationLogItem[];
+    recentLogs: PaginatedData<NotificationLogItem>;
     apiTokens: ApiTokenItem[];
     formDefaults: ContactFormData;
     tokenFormDefaults: ApiTokenFormData;
@@ -414,10 +416,10 @@ export default function IntegrationsPage({
                                 <Mail className="size-5 text-[#7c8cff]" />
                                 Email delivery log
                             </div>
-                            {recentLogs.length === 0 ? (
+                            {recentLogs.data.length === 0 ? (
                                 <div className="text-[15px] text-[#9ca7b9]">No notifications have been recorded yet.</div>
                             ) : (
-                                recentLogs.map((log) => {
+                                recentLogs.data.map((log) => {
                                     const toneClass = log.status === 'Sent'
                                         ? 'text-[#7c8cff]'
                                         : log.status === 'Failed'
@@ -443,6 +445,15 @@ export default function IntegrationsPage({
                                     );
                                 })
                             )}
+                            <PaginationStrip
+                                currentPage={recentLogs.currentPage}
+                                lastPage={recentLogs.lastPage}
+                                from={recentLogs.from}
+                                to={recentLogs.to}
+                                total={recentLogs.total}
+                                previousPageUrl={recentLogs.previousPageUrl}
+                                nextPageUrl={recentLogs.nextPageUrl}
+                            />
                         </PageCard>
                     </aside>
                 </div>

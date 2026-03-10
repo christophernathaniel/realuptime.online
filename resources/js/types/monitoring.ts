@@ -342,6 +342,18 @@ export type NotificationLogItem = {
     sentAt: string;
 };
 
+export type PaginatedData<T> = {
+    data: T[];
+    currentPage: number;
+    lastPage: number;
+    perPage: number;
+    total: number;
+    from: number | null;
+    to: number | null;
+    previousPageUrl: string | null;
+    nextPageUrl: string | null;
+};
+
 export type ApiTokenItem = {
     id: number;
     name: string;

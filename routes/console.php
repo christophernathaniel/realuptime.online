@@ -12,3 +12,8 @@ Schedule::command('monitors:run-due')
     ->everyThirtySeconds()
     ->withoutOverlapping()
     ->onOneServer();
+
+Schedule::command('realuptime:prune-monitoring-data')
+    ->dailyAt('03:15')
+    ->withoutOverlapping()
+    ->onOneServer();
