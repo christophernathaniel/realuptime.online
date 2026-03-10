@@ -1083,7 +1083,7 @@ class MonitorPresenter
 
         $segmentLength = max(1, (int) floor(($hours * 3600) / $segments));
 
-        return collect(range(0, $segments - 1))->map(function (int $segment) use ($from, $to, $segmentLength, $segments, $window) {
+        return collect(range(0, $segments - 1))->map(function (int $segment) use ($from, $to, $segmentLength, $segments, $window, $fallbackResults) {
             $start = $from->addSeconds($segment * $segmentLength);
             $end = $segment === $segments - 1
                 ? $to
