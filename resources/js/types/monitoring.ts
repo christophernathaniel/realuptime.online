@@ -90,21 +90,7 @@ export type StatusPageLink = {
     publicUrl: string;
 };
 
-export type DetailedMonitor = {
-    id: number;
-    name: string;
-    type: string;
-    typeLabel: string;
-    status: string;
-    statusLabel: string;
-    target: string | null;
-    targetLabel: string;
-    targetHost: string;
-    lastCheckLabel: string;
-    checkedEveryLabel: string;
-    currentStatusLabel: string;
-    currentStatusDurationValue: string;
-    currentStatusDurationLabel: string;
+export type MonitorHistory = {
     last6Bars: MonitorBarState[];
     last24Bars: MonitorBarState[];
     last7Bars: MonitorBarState[];
@@ -136,6 +122,23 @@ export type DetailedMonitor = {
         slowChecks: number;
         successRate: number | null;
     };
+};
+
+export type DetailedMonitor = {
+    id: number;
+    name: string;
+    type: string;
+    typeLabel: string;
+    status: string;
+    statusLabel: string;
+    target: string | null;
+    targetLabel: string;
+    targetHost: string;
+    lastCheckLabel: string;
+    checkedEveryLabel: string;
+    currentStatusLabel: string;
+    currentStatusDurationValue: string;
+    currentStatusDurationLabel: string;
     domainSsl: {
         host: string;
         domainValidUntil: string;
@@ -174,7 +177,6 @@ export type DetailedMonitor = {
         time: string;
     }>;
     statusPages: StatusPageLink[];
-    capabilities: CapabilityHealth[];
 };
 
 export type MonitorFormData = {

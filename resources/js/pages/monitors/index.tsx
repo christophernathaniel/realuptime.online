@@ -1,4 +1,4 @@
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Deferred, Head, Link, usePage } from '@inertiajs/react';
 import {
     ArrowUpDown,
     Filter,
@@ -22,7 +22,7 @@ import type {
 type MonitorsIndexProps = {
     summary: MonitorSummary;
     last24Hours: AggregateWindowStats;
-    capabilities: CapabilityHealth[];
+    capabilities?: CapabilityHealth[];
     monitors: MonitorListItem[];
 };
 
@@ -153,41 +153,58 @@ export default function MonitorsIndex({
                             </div>
                         </div>
 
-                        {capabilities.length === 0 ? (
-                            <div className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4 text-sm text-[#9ca7b9]">
-                                No capabilities have been mapped yet. Add capability labels from a check editor to build an impact-oriented status layer.
-                            </div>
-                        ) : (
-                            <div className="grid gap-4 xl:grid-cols-3">
-                                {capabilities.slice(0, 6).map((capability) => (
-                                    <div key={capability.id} className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <div className="text-[17px] font-semibold text-white">{capability.name}</div>
-                                                <div className="mt-1 text-sm text-[#9ca7b9]">{capability.regions}</div>
+                        <Deferred
+                            data="capabilities"
+                            fallback={
+                                <div className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4 text-sm text-[#9ca7b9]">
+                                    Loading customer impact view…
+                                </div>
+                            }
+                        >
+                            {(() => {
+                                const capabilityList = capabilities ?? [];
+
+                                if (capabilityList.length === 0) {
+                                    return (
+                                        <div className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4 text-sm text-[#9ca7b9]">
+                                            No capabilities have been mapped yet. Add capability labels from a check editor to build an impact-oriented status layer.
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div className="grid gap-4 xl:grid-cols-3">
+                                        {capabilityList.slice(0, 6).map((capability) => (
+                                            <div key={capability.id} className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <div className="text-[17px] font-semibold text-white">{capability.name}</div>
+                                                        <div className="mt-1 text-sm text-[#9ca7b9]">{capability.regions}</div>
+                                                    </div>
+                                                    <span
+                                                        className={cn(
+                                                            'rounded-full px-3 py-1 text-xs font-medium',
+                                                            capability.tone === 'up' && 'bg-[#57c7c2]/15 text-[#57c7c2]',
+                                                            capability.tone === 'down' && 'bg-[#ff7a72]/15 text-[#ffb2ad]',
+                                                            capability.tone === 'warning' && 'bg-[#7c8cff]/15 text-[#d0d8ff]',
+                                                            capability.tone === 'maintenance' && 'bg-[#7483a5]/15 text-[#bfc9da]',
+                                                        )}
+                                                    >
+                                                        {capability.status}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-3 text-sm text-[#dce6fb]">{capability.customerImpact}</div>
+                                                <div className="mt-3 text-sm text-[#9ca7b9]">{capability.summary}</div>
+                                                <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#aebadc]">
+                                                    <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.linkedChecks} linked checks</span>
+                                                    <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.openIncidents} open incidents</span>
+                                                </div>
                                             </div>
-                                            <span
-                                                className={cn(
-                                                    'rounded-full px-3 py-1 text-xs font-medium',
-                                                    capability.tone === 'up' && 'bg-[#57c7c2]/15 text-[#57c7c2]',
-                                                    capability.tone === 'down' && 'bg-[#ff7a72]/15 text-[#ffb2ad]',
-                                                    capability.tone === 'warning' && 'bg-[#7c8cff]/15 text-[#d0d8ff]',
-                                                    capability.tone === 'maintenance' && 'bg-[#7483a5]/15 text-[#bfc9da]',
-                                                )}
-                                            >
-                                                {capability.status}
-                                            </span>
-                                        </div>
-                                        <div className="mt-3 text-sm text-[#dce6fb]">{capability.customerImpact}</div>
-                                        <div className="mt-3 text-sm text-[#9ca7b9]">{capability.summary}</div>
-                                        <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#aebadc]">
-                                            <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.linkedChecks} linked checks</span>
-                                            <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.openIncidents} open incidents</span>
-                                        </div>
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
-                        )}
+                                );
+                            })()}
+                        </Deferred>
                     </PageCard>
 
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-end">

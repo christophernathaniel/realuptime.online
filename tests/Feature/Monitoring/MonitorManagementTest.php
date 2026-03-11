@@ -55,6 +55,36 @@ it('renders the monitors index for authenticated users', function () {
             ->where('monitors.0.name', 'API health'));
 });
 
+it('defers capability insights on the monitors index', function () {
+    $user = User::factory()->premium()->create();
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Checkout API',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com/checkout',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 2,
+        'region' => 'North America',
+    ]);
+    $capability = Capability::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Checkout',
+        'slug' => 'checkout',
+    ]);
+    $monitor->capabilities()->attach($capability);
+
+    $this->actingAs($user)
+        ->get('/monitors')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('monitors/index')
+            ->missing('capabilities'))
+        ->assertViewHas('page.deferredProps.monitor-insights', fn (array $props) => $props === ['capabilities']);
+});
+
 it('keeps the monitors index presenter query count effectively flat as monitor volume grows', function () {
     CarbonImmutable::setTestNow('2026-03-10 12:00:00');
 
@@ -117,6 +147,47 @@ it('keeps the monitors index presenter query count effectively flat as monitor v
 
     expect($threeMonitorQueryCount - $singleMonitorQueryCount)->toBeLessThanOrEqual(1);
     expect($threeMonitorQueryCount)->toBeLessThanOrEqual(10);
+});
+
+it('defers monitor history and capability insights on the detail page', function () {
+    $user = User::factory()->premium()->create();
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Website',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 2,
+        'region' => 'Europe',
+        'last_checked_at' => now()->subMinute(),
+        'last_status_changed_at' => now()->subMinutes(5),
+    ]);
+    $monitor->checkResults()->create([
+        'status' => 'up',
+        'checked_at' => now()->subMinute(),
+        'attempts' => 1,
+        'response_time_ms' => 220,
+        'http_status_code' => 200,
+    ]);
+    $capability = Capability::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Checkout',
+        'slug' => 'checkout',
+    ]);
+    $monitor->capabilities()->attach($capability);
+
+    $this->actingAs($user)
+        ->get("/monitors/{$monitor->id}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('monitors/show')
+            ->where('monitor.name', 'Website')
+            ->where('monitor.region', 'Europe')
+            ->missingAll('monitorHistory', 'monitorCapabilities'))
+        ->assertViewHas('page.deferredProps.monitor-insights', fn (array $props) => $props === ['monitorHistory', 'monitorCapabilities']);
 });
 
 it('keeps dashboard uptime percentages aligned with downtime duration when healthy ping results are sampled', function () {
@@ -961,7 +1032,7 @@ it('keeps the default monitor detail presenter query count bounded', function ()
     DB::disableQueryLog();
     CarbonImmutable::setTestNow();
 
-    expect($queryCount)->toBeLessThanOrEqual(15);
+    expect($queryCount)->toBeLessThanOrEqual(16);
 });
 
 it('supports changing response time granularity on the monitor detail page', function () {

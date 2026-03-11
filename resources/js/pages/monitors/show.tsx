@@ -1,4 +1,4 @@
-import { Head, Link, router, useForm } from '@inertiajs/react';
+import { Deferred, Head, Link, router, useForm } from '@inertiajs/react';
 import { BellRing, CalendarDays, ChevronLeft, Copy, ExternalLink, Pause, Pencil, Play, ShieldCheck, Trash2 } from 'lucide-react';
 import type { ChangeEvent } from 'react';
 import { useState } from 'react';
@@ -9,10 +9,12 @@ import { StatusChip } from '@/components/monitoring/status-chip';
 import { UptimeBars } from '@/components/monitoring/uptime-bars';
 import { usePageAutoRefresh } from '@/hooks/use-page-auto-refresh';
 import MonitoringLayout from '@/layouts/monitoring-layout';
-import type { DetailedMonitor, MaintenanceFormData } from '@/types/monitoring';
+import type { CapabilityHealth, DetailedMonitor, MaintenanceFormData, MonitorHistory } from '@/types/monitoring';
 
 type MonitorShowProps = {
     monitor: DetailedMonitor;
+    monitorHistory?: MonitorHistory;
+    monitorCapabilities?: CapabilityHealth[];
 };
 
 function StatBlock({
@@ -55,7 +57,7 @@ function SignalWindowCard({
 }: {
     title: string;
     uptimeLabel: string;
-    bars: DetailedMonitor['last24Bars'];
+    bars: MonitorHistory['last24Bars'];
     incidentsCount: number;
     downtimeLabel: string;
     note: string;
@@ -87,6 +89,23 @@ function InfoTile({ label, value, hint }: { label: string; value: string; hint: 
     );
 }
 
+function LoadingPanel({
+    title,
+    description,
+    className = 'p-6',
+}: {
+    title: string;
+    description: string;
+    className?: string;
+}) {
+    return (
+        <PageCard className={className}>
+            <div className="text-[17px] font-semibold text-white">{title}</div>
+            <div className="mt-2 text-sm text-[#9ca7b9]">{description}</div>
+        </PageCard>
+    );
+}
+
 function formatMilliseconds(value: number | null) {
     return value !== null ? `${value} ms` : 'N/A';
 }
@@ -99,31 +118,39 @@ function formatPercentage(value: number | null) {
     return `${value.toFixed(value % 1 === 0 ? 0 : 2)}%`;
 }
 
-export default function MonitorShow({ monitor }: MonitorShowProps) {
+export default function MonitorShow({ monitor, monitorHistory, monitorCapabilities }: MonitorShowProps) {
     const [showMaintenanceForm, setShowMaintenanceForm] = useState(false);
     const maintenanceForm = useForm<MaintenanceFormData>(monitor.maintenanceDefaults);
 
     usePageAutoRefresh({ only: ['monitor'] });
 
     const updateResponseRange = (event: ChangeEvent<HTMLSelectElement>) => {
+        if (!monitorHistory) {
+            return;
+        }
+
         router.get(
             `/monitors/${monitor.id}`,
             {
                 response_range: event.target.value,
-                response_granularity: monitor.responseTimeGranularity,
+                response_granularity: monitorHistory.responseTimeGranularity,
             },
-            { preserveScroll: true, preserveState: true, replace: true },
+            { only: ['monitorHistory'], preserveScroll: true, preserveState: true, replace: true },
         );
     };
 
     const updateResponseGranularity = (event: ChangeEvent<HTMLSelectElement>) => {
+        if (!monitorHistory) {
+            return;
+        }
+
         router.get(
             `/monitors/${monitor.id}`,
             {
-                response_range: monitor.responseTimeRange,
+                response_range: monitorHistory.responseTimeRange,
                 response_granularity: event.target.value,
             },
-            { preserveScroll: true, preserveState: true, replace: true },
+            { only: ['monitorHistory'], preserveScroll: true, preserveState: true, replace: true },
         );
     };
 
@@ -243,83 +270,112 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                         </PageCard>
                     </div>
 
-                    <div className="grid gap-4 xl:grid-cols-3">
-                        <SignalWindowCard
-                            title="6h signal"
-                            uptimeLabel={monitor.last6Hours.uptimeLabel}
-                            bars={monitor.last6Bars}
-                            incidentsCount={monitor.last6Hours.incidentsCount}
-                            downtimeLabel={monitor.last6Hours.downtimeLabel}
-                            note="Twelve 30-minute segments"
-                        />
-                        <SignalWindowCard
-                            title="24h signal"
-                            uptimeLabel={monitor.last24Stats.uptimeLabel}
-                            bars={monitor.last24Bars}
-                            incidentsCount={monitor.last24Stats.incidentsCount}
-                            downtimeLabel={monitor.last24Stats.downtimeLabel}
-                            note="Twenty-four 1-hour segments"
-                        />
-                        <SignalWindowCard
-                            title="7d signal"
-                            uptimeLabel={monitor.last7Days.uptimeLabel}
-                            bars={monitor.last7Bars}
-                            incidentsCount={monitor.last7Days.incidentsCount}
-                            downtimeLabel={monitor.last7Days.downtimeLabel}
-                            note="Four segments per day"
-                        />
-                    </div>
-
-                    <PageCard className="p-6">
-                        <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-                            <div>
-                                <div className="text-[17px] font-semibold text-white">
-                                    Customer-facing capabilities<span className="text-[#7c8cff]">.</span>
-                                </div>
-                                <div className="mt-1 text-sm text-[#9ca7b9]">
-                                    Use capabilities to understand which customer workflows are impacted when this check changes state.
-                                </div>
+                    <Deferred
+                        data="monitorHistory"
+                        fallback={
+                            <div className="grid gap-4 xl:grid-cols-3">
+                                <LoadingPanel title="6h signal" description="Loading recent uptime segments…" className="p-5" />
+                                <LoadingPanel title="24h signal" description="Loading daily uptime segments…" className="p-5" />
+                                <LoadingPanel title="7d signal" description="Loading weekly uptime segments…" className="p-5" />
                             </div>
-                        </div>
-
-                        {monitor.capabilities.length === 0 ? (
-                            <div className="mt-5 rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4 text-sm text-[#9ca7b9]">
-                                This check is not mapped to a customer-facing capability yet. Add capability labels from the check editor to connect it to sign in, checkout, API delivery, or any other user-facing workflow.
+                        }
+                    >
+                        {monitorHistory ? (
+                            <div className="grid gap-4 xl:grid-cols-3">
+                                <SignalWindowCard
+                                    title="6h signal"
+                                    uptimeLabel={monitorHistory.last6Hours.uptimeLabel}
+                                    bars={monitorHistory.last6Bars}
+                                    incidentsCount={monitorHistory.last6Hours.incidentsCount}
+                                    downtimeLabel={monitorHistory.last6Hours.downtimeLabel}
+                                    note="Twelve 30-minute segments"
+                                />
+                                <SignalWindowCard
+                                    title="24h signal"
+                                    uptimeLabel={monitorHistory.last24Stats.uptimeLabel}
+                                    bars={monitorHistory.last24Bars}
+                                    incidentsCount={monitorHistory.last24Stats.incidentsCount}
+                                    downtimeLabel={monitorHistory.last24Stats.downtimeLabel}
+                                    note="Twenty-four 1-hour segments"
+                                />
+                                <SignalWindowCard
+                                    title="7d signal"
+                                    uptimeLabel={monitorHistory.last7Days.uptimeLabel}
+                                    bars={monitorHistory.last7Bars}
+                                    incidentsCount={monitorHistory.last7Days.incidentsCount}
+                                    downtimeLabel={monitorHistory.last7Days.downtimeLabel}
+                                    note="Four segments per day"
+                                />
                             </div>
-                        ) : (
-                            <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                                {monitor.capabilities.map((capability) => (
-                                    <div key={capability.id} className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <div className="text-[18px] font-semibold text-white">{capability.name}</div>
-                                                <div className="mt-1 text-sm text-[#9ca7b9]">{capability.regions}</div>
+                        ) : null}
+                    </Deferred>
+
+                    <Deferred
+                        data="monitorCapabilities"
+                        fallback={
+                            <LoadingPanel
+                                title="Customer-facing capabilities."
+                                description="Loading capability impact for this check…"
+                            />
+                        }
+                    >
+                        {(() => {
+                            const capabilities = monitorCapabilities ?? [];
+
+                            return (
+                                <PageCard className="p-6">
+                                    <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+                                        <div>
+                                            <div className="text-[17px] font-semibold text-white">
+                                                Customer-facing capabilities<span className="text-[#7c8cff]">.</span>
                                             </div>
-                                            <span
-                                                className={
-                                                    capability.tone === 'up'
-                                                        ? 'rounded-full bg-[#57c7c2]/15 px-3 py-1 text-xs font-medium text-[#57c7c2]'
-                                                        : capability.tone === 'down'
-                                                          ? 'rounded-full bg-[#ff7a72]/15 px-3 py-1 text-xs font-medium text-[#ffb2ad]'
-                                                          : capability.tone === 'maintenance'
-                                                            ? 'rounded-full bg-[#7483a5]/15 px-3 py-1 text-xs font-medium text-[#bfc9da]'
-                                                            : 'rounded-full bg-[#7c8cff]/15 px-3 py-1 text-xs font-medium text-[#d0d8ff]'
-                                                }
-                                            >
-                                                {capability.status}
-                                            </span>
-                                        </div>
-                                        <div className="mt-3 text-sm text-[#dce6fb]">{capability.customerImpact}</div>
-                                        <div className="mt-3 text-sm text-[#9ca7b9]">{capability.summary}</div>
-                                        <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#aebadc]">
-                                            <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.linkedChecks} linked checks</span>
-                                            <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.openIncidents} open incidents</span>
+                                            <div className="mt-1 text-sm text-[#9ca7b9]">
+                                                Use capabilities to understand which customer workflows are impacted when this check changes state.
+                                            </div>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        )}
-                    </PageCard>
+
+                                    {capabilities.length === 0 ? (
+                                        <div className="mt-5 rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4 text-sm text-[#9ca7b9]">
+                                            This check is not mapped to a customer-facing capability yet. Add capability labels from the check editor to connect it to sign in, checkout, API delivery, or any other user-facing workflow.
+                                        </div>
+                                    ) : (
+                                        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                                            {capabilities.map((capability) => (
+                                                <div key={capability.id} className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4">
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div>
+                                                            <div className="text-[18px] font-semibold text-white">{capability.name}</div>
+                                                            <div className="mt-1 text-sm text-[#9ca7b9]">{capability.regions}</div>
+                                                        </div>
+                                                        <span
+                                                            className={
+                                                                capability.tone === 'up'
+                                                                    ? 'rounded-full bg-[#57c7c2]/15 px-3 py-1 text-xs font-medium text-[#57c7c2]'
+                                                                    : capability.tone === 'down'
+                                                                      ? 'rounded-full bg-[#ff7a72]/15 px-3 py-1 text-xs font-medium text-[#ffb2ad]'
+                                                                      : capability.tone === 'maintenance'
+                                                                        ? 'rounded-full bg-[#7483a5]/15 px-3 py-1 text-xs font-medium text-[#bfc9da]'
+                                                                        : 'rounded-full bg-[#7c8cff]/15 px-3 py-1 text-xs font-medium text-[#d0d8ff]'
+                                                            }
+                                                        >
+                                                            {capability.status}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-3 text-sm text-[#dce6fb]">{capability.customerImpact}</div>
+                                                    <div className="mt-3 text-sm text-[#9ca7b9]">{capability.summary}</div>
+                                                    <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#aebadc]">
+                                                        <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.linkedChecks} linked checks</span>
+                                                        <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.openIncidents} open incidents</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </PageCard>
+                            );
+                        })()}
+                    </Deferred>
 
                     <PageCard className="p-6">
                         <div className="text-[17px] font-semibold text-white">
@@ -337,141 +393,155 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                         </div>
                     </PageCard>
 
-                    <PageCard className="grid gap-5 p-6 xl:grid-cols-[1fr_1fr_1fr_200px_200px]">
-                        <StatBlock
-                            label="Last 30 days"
-                            value={monitor.last30Days.uptimeLabel}
-                            subtext={`${monitor.last30Days.incidentsCount} incidents, ${monitor.last30Days.downtimeLabel}`}
-                            valueClassName="text-white"
-                        />
-                        <StatBlock
-                            label="Last 365 days"
-                            value={monitor.last365Days.uptimeLabel}
-                            subtext={`${monitor.last365Days.incidentsCount} incidents, ${monitor.last365Days.downtimeLabel}`}
-                            valueClassName="text-white"
-                        />
-                        <StatBlock
-                            label="Last 14 days"
-                            value={monitor.customRange.uptimeLabel}
-                            subtext={`${monitor.customRange.incidentsCount} incidents, ${monitor.customRange.downtimeLabel}`}
-                            valueClassName="text-white"
-                        />
-                        <div>
-                            <div className="text-[15px] uppercase tracking-[0.18em] text-[#8e9aac]">MTBF</div>
-                            <div className="mt-3 text-[38px] font-semibold tracking-[-0.06em] text-[#57c7c2] lg:text-[42px]">
-                                {monitor.mtbf}
-                            </div>
-                            <div className="mt-2 text-[15px] text-[#9ca7b9] lg:text-[16px]">Last 7 days</div>
-                        </div>
-                        <div className="rounded-[20px] border border-[#2b3544] bg-[#121821] px-4 py-4">
-                            <div className="text-[15px] uppercase tracking-[0.18em] text-[#8e9aac]">Current mix</div>
-                            <div className="mt-4 flex items-center gap-3">
-                                <StatusChip status={monitor.status} />
-                                <div>
-                                    <div className="text-[18px] font-semibold text-white">{monitor.statusLabel}</div>
-                                    <div className="text-[14px] text-[#9ca7b9]">{monitor.checkedEveryLabel}</div>
-                                </div>
-                            </div>
-                        </div>
-                    </PageCard>
+                    <Deferred
+                        data="monitorHistory"
+                        fallback={
+                            <>
+                                <LoadingPanel title="Historical reliability." description="Loading longer-range uptime summaries…" />
+                                <LoadingPanel title="Latency profile." description="Loading response-time history…" />
+                            </>
+                        }
+                    >
+                        {monitorHistory ? (
+                            <>
+                                <PageCard className="grid gap-5 p-6 xl:grid-cols-[1fr_1fr_1fr_200px_200px]">
+                                    <StatBlock
+                                        label="Last 30 days"
+                                        value={monitorHistory.last30Days.uptimeLabel}
+                                        subtext={`${monitorHistory.last30Days.incidentsCount} incidents, ${monitorHistory.last30Days.downtimeLabel}`}
+                                        valueClassName="text-white"
+                                    />
+                                    <StatBlock
+                                        label="Last 365 days"
+                                        value={monitorHistory.last365Days.uptimeLabel}
+                                        subtext={`${monitorHistory.last365Days.incidentsCount} incidents, ${monitorHistory.last365Days.downtimeLabel}`}
+                                        valueClassName="text-white"
+                                    />
+                                    <StatBlock
+                                        label="Last 14 days"
+                                        value={monitorHistory.customRange.uptimeLabel}
+                                        subtext={`${monitorHistory.customRange.incidentsCount} incidents, ${monitorHistory.customRange.downtimeLabel}`}
+                                        valueClassName="text-white"
+                                    />
+                                    <div>
+                                        <div className="text-[15px] uppercase tracking-[0.18em] text-[#8e9aac]">MTBF</div>
+                                        <div className="mt-3 text-[38px] font-semibold tracking-[-0.06em] text-[#57c7c2] lg:text-[42px]">
+                                            {monitorHistory.mtbf}
+                                        </div>
+                                        <div className="mt-2 text-[15px] text-[#9ca7b9] lg:text-[16px]">Last 7 days</div>
+                                    </div>
+                                    <div className="rounded-[20px] border border-[#2b3544] bg-[#121821] px-4 py-4">
+                                        <div className="text-[15px] uppercase tracking-[0.18em] text-[#8e9aac]">Current mix</div>
+                                        <div className="mt-4 flex items-center gap-3">
+                                            <StatusChip status={monitor.status} />
+                                            <div>
+                                                <div className="text-[18px] font-semibold text-white">{monitor.statusLabel}</div>
+                                                <div className="text-[14px] text-[#9ca7b9]">{monitor.checkedEveryLabel}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </PageCard>
 
-                    <PageCard className="p-6">
-                        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                                <h2 className="text-[26px] font-semibold tracking-[-0.05em] text-white lg:text-[28px]">
-                                    Latency profile<span className="text-[#7c8cff]">.</span>
-                                </h2>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-3">
-                                <label className="inline-flex items-center gap-3 rounded-[14px] border border-[#2b3544] bg-[#171d28] px-3 py-2 text-sm text-[#d5def3]">
-                                    <span className="text-[#8fa0bf]">Window</span>
-                                    <select
-                                        value={monitor.responseTimeRange}
-                                        onChange={updateResponseRange}
-                                        className="bg-transparent text-sm text-white outline-none"
-                                    >
-                                        {monitor.responseTimeRangeOptions.map((option) => (
-                                            <option key={option.value} value={option.value} className="bg-[#171d28]">
-                                                {option.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-                                <label className="inline-flex items-center gap-3 rounded-[14px] border border-[#2b3544] bg-[#171d28] px-3 py-2 text-sm text-[#d5def3]">
-                                    <span className="text-[#8fa0bf]">Bucket</span>
-                                    <select
-                                        value={monitor.responseTimeGranularity}
-                                        onChange={updateResponseGranularity}
-                                        className="bg-transparent text-sm text-white outline-none"
-                                    >
-                                        {monitor.responseTimeGranularityOptions.map((option) => (
-                                            <option key={option.value} value={option.value} className="bg-[#171d28]">
-                                                {option.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-                            </div>
-                        </div>
+                                <PageCard className="p-6">
+                                    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                                        <div>
+                                            <h2 className="text-[26px] font-semibold tracking-[-0.05em] text-white lg:text-[28px]">
+                                                Latency profile<span className="text-[#7c8cff]">.</span>
+                                            </h2>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <label className="inline-flex items-center gap-3 rounded-[14px] border border-[#2b3544] bg-[#171d28] px-3 py-2 text-sm text-[#d5def3]">
+                                                <span className="text-[#8fa0bf]">Window</span>
+                                                <select
+                                                    value={monitorHistory.responseTimeRange}
+                                                    onChange={updateResponseRange}
+                                                    className="bg-transparent text-sm text-white outline-none"
+                                                >
+                                                    {monitorHistory.responseTimeRangeOptions.map((option) => (
+                                                        <option key={option.value} value={option.value} className="bg-[#171d28]">
+                                                            {option.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                            <label className="inline-flex items-center gap-3 rounded-[14px] border border-[#2b3544] bg-[#171d28] px-3 py-2 text-sm text-[#d5def3]">
+                                                <span className="text-[#8fa0bf]">Bucket</span>
+                                                <select
+                                                    value={monitorHistory.responseTimeGranularity}
+                                                    onChange={updateResponseGranularity}
+                                                    className="bg-transparent text-sm text-white outline-none"
+                                                >
+                                                    {monitorHistory.responseTimeGranularityOptions.map((option) => (
+                                                        <option key={option.value} value={option.value} className="bg-[#171d28]">
+                                                            {option.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                        </div>
+                                    </div>
 
-                        <ResponseTimeChart points={monitor.responseTimeChart} />
+                                    <ResponseTimeChart points={monitorHistory.responseTimeChart} />
 
-                        <div className="mt-7 grid gap-5 md:grid-cols-2 xl:grid-cols-5">
-                            <MetricPanel
-                                title="Average"
-                                value={formatMilliseconds(monitor.responseTimeStats.average)}
-                                caption={`Across ${monitor.responseTimeRangeLabel.toLowerCase()} in ${monitor.responseTimeGranularityLabel.toLowerCase()} buckets`}
-                            />
-                            <MetricPanel
-                                title="Median"
-                                value={formatMilliseconds(monitor.responseTimeStats.median)}
-                                caption={`Middle response across ${monitor.responseTimeRangeLabel.toLowerCase()}`}
-                            />
-                            <MetricPanel
-                                title="Minimum"
-                                value={formatMilliseconds(monitor.responseTimeStats.minimum)}
-                                caption={`Best observed in ${monitor.responseTimeRangeLabel.toLowerCase()}`}
-                            />
-                            <MetricPanel
-                                title="Maximum"
-                                value={formatMilliseconds(monitor.responseTimeStats.maximum)}
-                                caption={`Slowest observed in ${monitor.responseTimeRangeLabel.toLowerCase()}`}
-                            />
-                            <MetricPanel
-                                title="95th percentile"
-                                value={formatMilliseconds(monitor.responseTimeStats.p95)}
-                                caption={`Tail latency for ${monitor.responseTimeRangeLabel.toLowerCase()}`}
-                            />
-                        </div>
+                                    <div className="mt-7 grid gap-5 md:grid-cols-2 xl:grid-cols-5">
+                                        <MetricPanel
+                                            title="Average"
+                                            value={formatMilliseconds(monitorHistory.responseTimeStats.average)}
+                                            caption={`Across ${monitorHistory.responseTimeRangeLabel.toLowerCase()} in ${monitorHistory.responseTimeGranularityLabel.toLowerCase()} buckets`}
+                                        />
+                                        <MetricPanel
+                                            title="Median"
+                                            value={formatMilliseconds(monitorHistory.responseTimeStats.median)}
+                                            caption={`Middle response across ${monitorHistory.responseTimeRangeLabel.toLowerCase()}`}
+                                        />
+                                        <MetricPanel
+                                            title="Minimum"
+                                            value={formatMilliseconds(monitorHistory.responseTimeStats.minimum)}
+                                            caption={`Best observed in ${monitorHistory.responseTimeRangeLabel.toLowerCase()}`}
+                                        />
+                                        <MetricPanel
+                                            title="Maximum"
+                                            value={formatMilliseconds(monitorHistory.responseTimeStats.maximum)}
+                                            caption={`Slowest observed in ${monitorHistory.responseTimeRangeLabel.toLowerCase()}`}
+                                        />
+                                        <MetricPanel
+                                            title="95th percentile"
+                                            value={formatMilliseconds(monitorHistory.responseTimeStats.p95)}
+                                            caption={`Tail latency for ${monitorHistory.responseTimeRangeLabel.toLowerCase()}`}
+                                        />
+                                    </div>
 
-                        <div className="mt-7 grid gap-4 border-t border-white/8 pt-6 md:grid-cols-2 xl:grid-cols-4">
-                            <MetricPanel
-                                title="Samples"
-                                value={monitor.responseTimeSignals.sampleCount.toString()}
-                                caption={`Checks captured in ${monitor.responseTimeRangeLabel.toLowerCase()}`}
-                            />
-                            <MetricPanel
-                                title="Failed checks"
-                                value={monitor.responseTimeSignals.failedChecks.toString()}
-                                caption="Down results in the selected range"
-                            />
-                            <MetricPanel
-                                title="Slow checks"
-                                value={monitor.responseTimeSignals.slowChecks.toString()}
-                                caption="Checks flagged above the latency threshold"
-                            />
-                            <MetricPanel
-                                title="Success rate"
-                                value={formatPercentage(monitor.responseTimeSignals.successRate)}
-                                caption="Healthy checks versus total samples"
-                            />
-                            <MetricPanel
-                                title="Downtime"
-                                value={monitor.responseTimeStats.downtimeLabel}
-                                caption={`Total downtime in ${monitor.responseTimeRangeLabel.toLowerCase()}`}
-                            />
-                        </div>
-                    </PageCard>
+                                    <div className="mt-7 grid gap-4 border-t border-white/8 pt-6 md:grid-cols-2 xl:grid-cols-4">
+                                        <MetricPanel
+                                            title="Samples"
+                                            value={monitorHistory.responseTimeSignals.sampleCount.toString()}
+                                            caption={`Checks captured in ${monitorHistory.responseTimeRangeLabel.toLowerCase()}`}
+                                        />
+                                        <MetricPanel
+                                            title="Failed checks"
+                                            value={monitorHistory.responseTimeSignals.failedChecks.toString()}
+                                            caption="Down results in the selected range"
+                                        />
+                                        <MetricPanel
+                                            title="Slow checks"
+                                            value={monitorHistory.responseTimeSignals.slowChecks.toString()}
+                                            caption="Checks flagged above the latency threshold"
+                                        />
+                                        <MetricPanel
+                                            title="Success rate"
+                                            value={formatPercentage(monitorHistory.responseTimeSignals.successRate)}
+                                            caption="Healthy checks versus total samples"
+                                        />
+                                        <MetricPanel
+                                            title="Downtime"
+                                            value={monitorHistory.responseTimeStats.downtimeLabel}
+                                            caption={`Total downtime in ${monitorHistory.responseTimeRangeLabel.toLowerCase()}`}
+                                        />
+                                    </div>
+                                </PageCard>
+                            </>
+                        ) : null}
+                    </Deferred>
 
                     <PageCard className="p-6">
                         <div className="flex items-center justify-between gap-3">

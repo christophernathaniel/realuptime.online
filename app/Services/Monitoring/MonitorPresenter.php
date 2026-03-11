@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\WorkspaceMembership;
 use App\Support\MonitorQueueResolver;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Number;
@@ -62,6 +63,14 @@ class MonitorPresenter
 
     public function index(User $user, ?User $actor = null): array
     {
+        return [
+            ...$this->indexPage($user, $actor),
+            'capabilities' => $this->indexCapabilities($user),
+        ];
+    }
+
+    public function indexPage(User $user, ?User $actor = null): array
+    {
         $monitors = $user->monitors()
             ->with([
                 'user',
@@ -92,10 +101,14 @@ class MonitorPresenter
                 ),
                 'canCreate' => ! $user->hasReachedMonitorLimit(),
             ],
-            'capabilities' => $this->capabilityOverview($user),
             'last24Hours' => $this->aggregateMonitorWindow($monitors, 1),
             'monitors' => $monitors->map(fn (Monitor $monitor) => $this->monitorListItem($monitor))->values()->all(),
         ];
+    }
+
+    public function indexCapabilities(User $user): array
+    {
+        return $this->capabilityOverview($user);
     }
 
     public function show(Monitor $monitor, ?string $responseRange = null, ?string $responseGranularity = null): array
@@ -103,26 +116,93 @@ class MonitorPresenter
         $responseRange = $this->normalizeResponseRange($responseRange);
         $responseGranularity = $this->normalizeResponseGranularity($responseGranularity, $responseRange);
 
+        $monitor = $this->loadMonitorShowCoreRelations($monitor);
+        $monitor = $this->loadMonitorShowHistoryRelations($monitor);
+        $monitor = $this->loadMonitorShowCapabilityRelations($monitor);
+
+        return [
+            'monitor' => [
+                ...$this->monitorCorePayload($monitor),
+                ...$this->monitorHistoryPayload($monitor, $responseRange, $responseGranularity),
+                'capabilities' => $this->monitorCapabilityOverview($monitor),
+            ],
+        ];
+    }
+
+    public function showPage(Monitor $monitor): array
+    {
+        return [
+            'monitor' => $this->monitorCorePayload(
+                $this->loadMonitorShowCoreRelations($monitor)
+            ),
+        ];
+    }
+
+    public function showHistory(Monitor $monitor, ?string $responseRange = null, ?string $responseGranularity = null): array
+    {
+        $responseRange = $this->normalizeResponseRange($responseRange);
+        $responseGranularity = $this->normalizeResponseGranularity($responseGranularity, $responseRange);
+
+        return [
+            'monitorHistory' => $this->monitorHistoryPayload(
+                $this->loadMonitorShowHistoryRelations($monitor),
+                $responseRange,
+                $responseGranularity,
+            ),
+        ];
+    }
+
+    public function showCapabilities(Monitor $monitor): array
+    {
+        return [
+            'monitorCapabilities' => $this->monitorCapabilityOverview(
+                $this->loadMonitorShowCapabilityRelations($monitor)
+            ),
+        ];
+    }
+
+    protected function loadMonitorShowCoreRelations(Monitor $monitor): Monitor
+    {
         $monitor->load([
             'user',
             'incidents' => fn ($query) => $query->latest('started_at')->limit(10),
-            'notificationLogs' => fn ($query) => $query->latest()->limit(8),
-            'notificationContacts',
+            'notificationLogs' => fn ($query) => $query->with('notificationContact')->latest()->limit(8),
             'heartbeatEvents' => fn ($query) => $query->latest('received_at')->limit(1),
-            'maintenanceWindows' => fn ($query) => $query->orderBy('starts_at'),
+            'maintenanceWindows' => fn ($query) => $query->with('monitors:id,name')->orderBy('starts_at'),
             'statusPages',
+        ]);
+
+        return $monitor;
+    }
+
+    protected function loadMonitorShowHistoryRelations(Monitor $monitor): Monitor
+    {
+        $monitor->load([
+            'user',
+            'incidents' => fn ($query) => $query->latest('started_at')->limit(10),
+        ]);
+
+        return $monitor;
+    }
+
+    protected function loadMonitorShowCapabilityRelations(Monitor $monitor): Monitor
+    {
+        $monitor->load([
             'capabilities' => fn ($query) => $query
                 ->with([
-                    'monitors' => fn ($monitorQuery) => $monitorQuery->with(['openIncidents', 'maintenanceWindows']),
+                    'monitors' => fn ($monitorQuery) => $this->applyCapabilityMonitorSummaryQuery($monitorQuery),
                 ])
                 ->orderBy('name'),
         ]);
-        $now = $this->currentTime();
 
-        $this->preloadDowntimeIncidents(collect([$monitor]), $now->subYear(), $now);
-        $this->preloadCheckResults(collect([$monitor]), $now->subDays(7), $now);
+        return $monitor;
+    }
 
-        $responseTimeData = $this->responseTimeData($monitor, $responseRange, $responseGranularity);
+    /**
+     * @return array<string, mixed>
+     */
+    protected function monitorCorePayload(Monitor $monitor): array
+    {
         $nextMaintenance = $this->nextMaintenanceForMonitor($monitor);
         $effectiveIntervalSeconds = $this->effectiveIntervalSeconds($monitor);
         $heartbeatBaseline = $monitor->last_heartbeat_at
@@ -133,106 +213,127 @@ class MonitorPresenter
             : null;
 
         return [
-            'monitor' => [
-                'id' => $monitor->id,
-                'name' => $monitor->name,
-                'type' => strtoupper($monitor->type === Monitor::TYPE_HTTP ? 'http/s' : $monitor->type),
-                'typeLabel' => $this->typeLabel($monitor),
-                'status' => $monitor->status,
-                'statusLabel' => ucfirst($monitor->status),
-                'target' => $monitor->target,
-                'targetLabel' => $monitor->target ?: 'Heartbeat monitor',
-                'targetHost' => $this->targetHost($monitor),
-                'lastCheckLabel' => $monitor->last_checked_at ? $this->timeAgo($monitor->last_checked_at) : 'Never checked',
-                'checkedEveryLabel' => $this->intervalLabel($effectiveIntervalSeconds),
-                'currentStatusLabel' => ucfirst($monitor->status),
-                'currentStatusDurationValue' => $monitor->last_status_changed_at
-                    ? $this->durationLabel($monitor->last_status_changed_at->diffInSeconds(now()))
-                    : 'N/A',
-                'currentStatusDurationLabel' => $monitor->last_status_changed_at
-                    ? sprintf('Currently %s for %s', $monitor->status, $this->durationLabel($monitor->last_status_changed_at->diffInSeconds(now())))
-                    : 'No status changes recorded',
-                'last6Bars' => $this->uptimeBars($monitor, 6, 12),
-                'last24Bars' => $this->uptimeBars($monitor, 24, 24),
-                'last7Bars' => $this->uptimeBars($monitor, 24 * 7, 28),
-                'last6Hours' => $this->windowStatsByHours($monitor, 6),
-                'last24Stats' => $this->windowStats($monitor, 1),
-                'last7Days' => $this->windowStats($monitor, 7),
-                'last30Days' => $this->windowStats($monitor, 30),
-                'last365Days' => $this->windowStats($monitor, 365),
-                'customRange' => $this->windowStats($monitor, 14),
-                'mtbf' => $this->mtbfLabel($monitor, 7),
-                'responseTimeRange' => $responseRange,
-                'responseTimeRangeLabel' => $responseTimeData['label'],
-                'responseTimeRangeOptions' => $this->responseTimeRangeOptions(),
-                'responseTimeGranularity' => $responseGranularity,
-                'responseTimeGranularityLabel' => $responseTimeData['granularity_label'],
-                'responseTimeGranularityOptions' => $this->responseTimeGranularityOptions($responseRange),
-                'responseTimeChart' => $responseTimeData['points'],
-                'responseTimeStats' => $responseTimeData['stats'],
-                'responseTimeSignals' => $responseTimeData['signals'],
-                'domainSsl' => [
-                    'host' => $this->targetHost($monitor),
-                    'domainValidUntil' => $monitor->domain_expires_at?->format('M j, Y') ?? 'Unavailable',
-                    'domainRegistrar' => $monitor->domain_registrar ?? 'Unavailable',
-                    'domainDaysRemaining' => $this->daysRemainingLabel($monitor->domain_expires_at),
-                    'domainCheckedAt' => $monitor->domain_checked_at ? 'Refreshed '.$this->timeAgo($monitor->domain_checked_at) : 'No domain refresh yet',
-                    'sslValidUntil' => $monitor->ssl_expires_at?->format('M j, Y') ?? 'Unavailable',
-                    'issuer' => $monitor->ssl_issuer ?? 'Unavailable',
-                    'sslDaysRemaining' => $this->daysRemainingLabel($monitor->ssl_expires_at),
-                    'sslCheckedAt' => $monitor->ssl_checked_at ? 'Refreshed '.$this->timeAgo($monitor->ssl_checked_at) : 'No TLS refresh yet',
-                ],
-                'nextMaintenance' => $nextMaintenance ? $this->maintenanceWindowLabel($nextMaintenance) : 'No maintenance planned.',
-                'maintenanceDefaults' => [
-                    'title' => '',
-                    'message' => sprintf('Planned maintenance for %s.', $monitor->name),
-                    'starts_at' => now()->addHour()->format('Y-m-d\TH:i'),
-                    'ends_at' => now()->addHours(2)->format('Y-m-d\TH:i'),
-                    'notify_contacts' => false,
-                    'monitor_ids' => [$monitor->id],
-                ],
-                'maintenanceWindows' => $monitor->maintenanceWindows
-                    ->filter(fn (MaintenanceWindow $window) => $window->ends_at?->gte(now()->subDays(1)))
-                    ->values()
-                    ->map(fn (MaintenanceWindow $window) => $this->maintenanceWindowItem($window))
-                    ->all(),
-                'region' => $monitor->region,
-                'heartbeatUrl' => $monitor->heartbeat_token ? route('heartbeat.store', $monitor->heartbeat_token) : null,
-                'lastHeartbeatLabel' => $monitor->type === Monitor::TYPE_HEARTBEAT
-                    ? ($monitor->last_heartbeat_at ? $this->timeAgo($monitor->last_heartbeat_at) : 'No heartbeat received yet')
-                    : null,
-                'nextHeartbeatDeadlineLabel' => $heartbeatDeadline?->format('M j, Y H:i'),
-                'recentIncidents' => $monitor->incidents->map(fn (Incident $incident) => [
-                    'id' => $incident->id,
-                    'startedAt' => $incident->started_at?->format('M j, Y H:i'),
-                    'endedAt' => $incident->resolved_at?->format('M j, Y H:i') ?? 'Open',
-                    'duration' => $incident->duration_seconds !== null ? $this->durationLabel((int) $incident->duration_seconds) : 'Open',
-                    'reason' => $incident->reason,
-                    'typeLabel' => $this->incidentTypeLabel($incident),
-                    'severityLabel' => ucfirst($incident->severity),
-                    'statusLabel' => $this->incidentStatusLabel($incident),
-                    'showUrl' => route('incidents.show', $incident),
-                ])->all(),
-                'notificationLog' => $monitor->notificationLogs->map(fn ($log) => [
-                    'type' => ucfirst(str_replace('_', ' ', $log->type)),
-                    'channel' => ucfirst($log->channel),
-                    'status' => ucfirst($log->status),
-                    'subject' => $log->subject,
-                    'recipient' => $log->notificationContact?->email ?? data_get($log->payload, 'url'),
-                    'time' => $log->created_at->format('M j, H:i'),
-                ])->all(),
-                'statusPages' => $monitor->statusPages->map(fn (StatusPage $statusPage) => [
-                    'name' => $statusPage->name,
-                    'slug' => $statusPage->slug,
-                    'published' => $statusPage->published,
-                    'publicUrl' => $this->publicStatusPageUrl($statusPage),
-                ])->all(),
-                'capabilities' => $monitor->capabilities
-                    ->map(fn (Capability $capability) => $this->capabilityItem($capability))
-                    ->values()
-                    ->all(),
+            'id' => $monitor->id,
+            'name' => $monitor->name,
+            'type' => strtoupper($monitor->type === Monitor::TYPE_HTTP ? 'http/s' : $monitor->type),
+            'typeLabel' => $this->typeLabel($monitor),
+            'status' => $monitor->status,
+            'statusLabel' => ucfirst($monitor->status),
+            'target' => $monitor->target,
+            'targetLabel' => $monitor->target ?: 'Heartbeat monitor',
+            'targetHost' => $this->targetHost($monitor),
+            'lastCheckLabel' => $monitor->last_checked_at ? $this->timeAgo($monitor->last_checked_at) : 'Never checked',
+            'checkedEveryLabel' => $this->intervalLabel($effectiveIntervalSeconds),
+            'currentStatusLabel' => ucfirst($monitor->status),
+            'currentStatusDurationValue' => $monitor->last_status_changed_at
+                ? $this->durationLabel($monitor->last_status_changed_at->diffInSeconds(now()))
+                : 'N/A',
+            'currentStatusDurationLabel' => $monitor->last_status_changed_at
+                ? sprintf('Currently %s for %s', $monitor->status, $this->durationLabel($monitor->last_status_changed_at->diffInSeconds(now())))
+                : 'No status changes recorded',
+            'domainSsl' => [
+                'host' => $this->targetHost($monitor),
+                'domainValidUntil' => $monitor->domain_expires_at?->format('M j, Y') ?? 'Unavailable',
+                'domainRegistrar' => $monitor->domain_registrar ?? 'Unavailable',
+                'domainDaysRemaining' => $this->daysRemainingLabel($monitor->domain_expires_at),
+                'domainCheckedAt' => $monitor->domain_checked_at ? 'Refreshed '.$this->timeAgo($monitor->domain_checked_at) : 'No domain refresh yet',
+                'sslValidUntil' => $monitor->ssl_expires_at?->format('M j, Y') ?? 'Unavailable',
+                'issuer' => $monitor->ssl_issuer ?? 'Unavailable',
+                'sslDaysRemaining' => $this->daysRemainingLabel($monitor->ssl_expires_at),
+                'sslCheckedAt' => $monitor->ssl_checked_at ? 'Refreshed '.$this->timeAgo($monitor->ssl_checked_at) : 'No TLS refresh yet',
             ],
+            'nextMaintenance' => $nextMaintenance ? $this->maintenanceWindowLabel($nextMaintenance) : 'No maintenance planned.',
+            'maintenanceDefaults' => [
+                'title' => '',
+                'message' => sprintf('Planned maintenance for %s.', $monitor->name),
+                'starts_at' => now()->addHour()->format('Y-m-d\TH:i'),
+                'ends_at' => now()->addHours(2)->format('Y-m-d\TH:i'),
+                'notify_contacts' => false,
+                'monitor_ids' => [$monitor->id],
+            ],
+            'maintenanceWindows' => $monitor->maintenanceWindows
+                ->filter(fn (MaintenanceWindow $window) => $window->ends_at?->gte(now()->subDays(1)))
+                ->values()
+                ->map(fn (MaintenanceWindow $window) => $this->maintenanceWindowItem($window))
+                ->all(),
+            'region' => $monitor->region,
+            'heartbeatUrl' => $monitor->heartbeat_token ? route('heartbeat.store', $monitor->heartbeat_token) : null,
+            'lastHeartbeatLabel' => $monitor->type === Monitor::TYPE_HEARTBEAT
+                ? ($monitor->last_heartbeat_at ? $this->timeAgo($monitor->last_heartbeat_at) : 'No heartbeat received yet')
+                : null,
+            'nextHeartbeatDeadlineLabel' => $heartbeatDeadline?->format('M j, Y H:i'),
+            'recentIncidents' => $monitor->incidents->map(fn (Incident $incident) => [
+                'id' => $incident->id,
+                'startedAt' => $incident->started_at?->format('M j, Y H:i'),
+                'endedAt' => $incident->resolved_at?->format('M j, Y H:i') ?? 'Open',
+                'duration' => $incident->duration_seconds !== null ? $this->durationLabel((int) $incident->duration_seconds) : 'Open',
+                'reason' => $incident->reason,
+                'typeLabel' => $this->incidentTypeLabel($incident),
+                'severityLabel' => ucfirst($incident->severity),
+                'statusLabel' => $this->incidentStatusLabel($incident),
+                'showUrl' => route('incidents.show', $incident),
+            ])->all(),
+            'notificationLog' => $monitor->notificationLogs->map(fn ($log) => [
+                'type' => ucfirst(str_replace('_', ' ', $log->type)),
+                'channel' => ucfirst($log->channel),
+                'status' => ucfirst($log->status),
+                'subject' => $log->subject,
+                'recipient' => $log->notificationContact?->email ?? data_get($log->payload, 'url'),
+                'time' => $log->created_at->format('M j, H:i'),
+            ])->all(),
+            'statusPages' => $monitor->statusPages->map(fn (StatusPage $statusPage) => [
+                'name' => $statusPage->name,
+                'slug' => $statusPage->slug,
+                'published' => $statusPage->published,
+                'publicUrl' => $this->publicStatusPageUrl($statusPage),
+            ])->all(),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function monitorHistoryPayload(Monitor $monitor, string $responseRange, string $responseGranularity): array
+    {
+        $now = $this->currentTime();
+
+        $this->preloadDowntimeIncidents(collect([$monitor]), $now->subYear(), $now);
+        $this->preloadCheckResults(collect([$monitor]), $now->subDays(7), $now);
+
+        $responseTimeData = $this->responseTimeData($monitor, $responseRange, $responseGranularity);
+
+        return [
+            'last6Bars' => $this->uptimeBars($monitor, 6, 12),
+            'last24Bars' => $this->uptimeBars($monitor, 24, 24),
+            'last7Bars' => $this->uptimeBars($monitor, 24 * 7, 28),
+            'last6Hours' => $this->windowStatsByHours($monitor, 6),
+            'last24Stats' => $this->windowStats($monitor, 1),
+            'last7Days' => $this->windowStats($monitor, 7),
+            'last30Days' => $this->windowStats($monitor, 30),
+            'last365Days' => $this->windowStats($monitor, 365),
+            'customRange' => $this->windowStats($monitor, 14),
+            'mtbf' => $this->mtbfLabel($monitor, 7),
+            'responseTimeRange' => $responseRange,
+            'responseTimeRangeLabel' => $responseTimeData['label'],
+            'responseTimeRangeOptions' => $this->responseTimeRangeOptions(),
+            'responseTimeGranularity' => $responseGranularity,
+            'responseTimeGranularityLabel' => $responseTimeData['granularity_label'],
+            'responseTimeGranularityOptions' => $this->responseTimeGranularityOptions($responseRange),
+            'responseTimeChart' => $responseTimeData['points'],
+            'responseTimeStats' => $responseTimeData['stats'],
+            'responseTimeSignals' => $responseTimeData['signals'],
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    protected function monitorCapabilityOverview(Monitor $monitor): array
+    {
+        return $monitor->capabilities
+            ->map(fn (Capability $capability) => $this->capabilityItem($capability))
+            ->values()
+            ->all();
     }
 
     protected function currentTime(): CarbonImmutable
@@ -1039,7 +1140,7 @@ class MonitorPresenter
     {
         return $user->capabilities()
             ->with([
-                'monitors' => fn ($query) => $query->with(['openIncidents', 'maintenanceWindows'])->orderBy('name'),
+                'monitors' => fn (Builder $query) => $this->applyCapabilityMonitorSummaryQuery($query),
             ])
             ->orderBy('name')
             ->get()
@@ -1050,10 +1151,29 @@ class MonitorPresenter
     protected function capabilityItem(Capability $capability): array
     {
         $capability->loadMissing([
-            'monitors' => fn ($query) => $query->with(['openIncidents', 'maintenanceWindows'])->orderBy('name'),
+            'monitors' => fn (Builder $query) => $this->applyCapabilityMonitorSummaryQuery($query),
         ]);
 
         return $this->capabilityItemFromMonitors($capability, $capability->monitors->unique('id')->values());
+    }
+
+    protected function applyCapabilityMonitorSummaryQuery(Builder $query): void
+    {
+        $now = $this->currentTime();
+
+        $query
+            ->withCount([
+                'openIncidents',
+                'openIncidents as open_downtime_incidents_count' => fn (Builder $incidentQuery) => $incidentQuery->where('type', Incident::TYPE_DOWNTIME),
+                'openIncidents as open_degraded_performance_incidents_count' => fn (Builder $incidentQuery) => $incidentQuery->where('type', Incident::TYPE_DEGRADED_PERFORMANCE),
+                'openIncidents as open_ssl_expiry_incidents_count' => fn (Builder $incidentQuery) => $incidentQuery->where('type', Incident::TYPE_SSL_EXPIRY),
+                'openIncidents as open_domain_expiry_incidents_count' => fn (Builder $incidentQuery) => $incidentQuery->where('type', Incident::TYPE_DOMAIN_EXPIRY),
+                'maintenanceWindows as active_maintenance_windows_count' => fn (Builder $maintenanceQuery) => $maintenanceQuery
+                    ->where('maintenance_windows.status', '!=', MaintenanceWindow::STATUS_CANCELLED)
+                    ->where('maintenance_windows.starts_at', '<=', $now)
+                    ->where('maintenance_windows.ends_at', '>=', $now),
+            ])
+            ->orderBy('name');
     }
 
     protected function capabilityItemFromMonitors(Capability $capability, Collection $monitors): array
@@ -1071,9 +1191,7 @@ class MonitorPresenter
             'linkedChecks' => $monitors->count(),
             'affectedChecks' => $status['affectedChecks'],
             'regions' => $this->capabilityRegionsLabel($monitors),
-            'openIncidents' => $monitors->sum(fn (Monitor $monitor) => $monitor->relationLoaded('openIncidents')
-                ? $monitor->openIncidents->count()
-                : $monitor->openIncidents()->count()),
+            'openIncidents' => $monitors->sum(fn (Monitor $monitor) => $this->monitorOpenIncidentCount($monitor)),
             'monitorNames' => $monitors->pluck('name')->take(4)->values()->all(),
         ];
     }
@@ -1089,8 +1207,7 @@ class MonitorPresenter
                 Incident::TYPE_SSL_EXPIRY,
                 Incident::TYPE_DOMAIN_EXPIRY,
             ]))->count();
-        $maintenance = $monitors->filter(fn (Monitor $monitor) => $monitor->maintenanceWindows
-            ->contains(fn (MaintenanceWindow $window) => $this->maintenanceWindowStatus($window) === MaintenanceWindow::STATUS_ACTIVE))->count();
+        $maintenance = $monitors->filter(fn (Monitor $monitor) => $this->monitorHasActiveMaintenanceWindow($monitor))->count();
         $regions = $this->capabilityRegionsLabel($monitors);
 
         if ($down > 0) {
@@ -1681,7 +1798,7 @@ class MonitorPresenter
             Incident::TYPE_SSL_EXPIRY,
             Incident::TYPE_DOMAIN_EXPIRY,
         ]));
-        $activeMaintenance = $monitors->contains(fn (Monitor $monitor) => $monitor->maintenanceWindows->contains(fn (MaintenanceWindow $window) => $this->maintenanceWindowStatus($window) === MaintenanceWindow::STATUS_ACTIVE));
+        $activeMaintenance = $monitors->contains(fn (Monitor $monitor) => $this->monitorHasActiveMaintenanceWindow($monitor));
 
         if ($openStatusPageIncident) {
             return 'degraded performance';
@@ -1805,7 +1922,7 @@ class MonitorPresenter
             ];
         }
 
-        if ($monitor->maintenanceWindows->contains(fn (MaintenanceWindow $window) => $this->maintenanceWindowStatus($window) === MaintenanceWindow::STATUS_ACTIVE)) {
+        if ($this->monitorHasActiveMaintenanceWindow($monitor)) {
             return [
                 'label' => 'Maintenance',
                 'tone' => 'maintenance',
@@ -1822,11 +1939,76 @@ class MonitorPresenter
 
     protected function monitorHasOpenIncidentType(Monitor $monitor, array $types): bool
     {
+        $aggregatedCount = $this->aggregatedOpenIncidentCount($monitor, $types);
+
+        if ($aggregatedCount !== null) {
+            return $aggregatedCount > 0;
+        }
+
         if ($monitor->relationLoaded('openIncidents')) {
             return $monitor->openIncidents->contains(fn (Incident $incident) => in_array($incident->type, $types, true));
         }
 
         return $monitor->openIncidents()->whereIn('type', $types)->exists();
+    }
+
+    protected function monitorOpenIncidentCount(Monitor $monitor): int
+    {
+        if ($this->monitorHasLoadedAttribute($monitor, 'open_incidents_count')) {
+            return (int) $monitor->getAttribute('open_incidents_count');
+        }
+
+        return $monitor->relationLoaded('openIncidents')
+            ? $monitor->openIncidents->count()
+            : $monitor->openIncidents()->count();
+    }
+
+    protected function monitorHasActiveMaintenanceWindow(Monitor $monitor): bool
+    {
+        if ($this->monitorHasLoadedAttribute($monitor, 'active_maintenance_windows_count')) {
+            return (int) $monitor->getAttribute('active_maintenance_windows_count') > 0;
+        }
+
+        if ($monitor->relationLoaded('maintenanceWindows')) {
+            return $monitor->maintenanceWindows->contains(
+                fn (MaintenanceWindow $window) => $this->maintenanceWindowStatus($window) === MaintenanceWindow::STATUS_ACTIVE
+            );
+        }
+
+        return $monitor->maintenanceWindows()
+            ->where('maintenance_windows.status', '!=', MaintenanceWindow::STATUS_CANCELLED)
+            ->where('maintenance_windows.starts_at', '<=', $this->currentTime())
+            ->where('maintenance_windows.ends_at', '>=', $this->currentTime())
+            ->exists();
+    }
+
+    protected function aggregatedOpenIncidentCount(Monitor $monitor, array $types): ?int
+    {
+        $attributeMap = [
+            Incident::TYPE_DOWNTIME => 'open_downtime_incidents_count',
+            Incident::TYPE_DEGRADED_PERFORMANCE => 'open_degraded_performance_incidents_count',
+            Incident::TYPE_SSL_EXPIRY => 'open_ssl_expiry_incidents_count',
+            Incident::TYPE_DOMAIN_EXPIRY => 'open_domain_expiry_incidents_count',
+        ];
+
+        $count = 0;
+
+        foreach (array_unique($types) as $type) {
+            $attribute = $attributeMap[$type] ?? null;
+
+            if ($attribute === null || ! $this->monitorHasLoadedAttribute($monitor, $attribute)) {
+                return null;
+            }
+
+            $count += (int) $monitor->getAttribute($attribute);
+        }
+
+        return $count;
+    }
+
+    protected function monitorHasLoadedAttribute(Monitor $monitor, string $attribute): bool
+    {
+        return array_key_exists($attribute, $monitor->getAttributes());
     }
 
     protected function statusPageIncidentImpactRank(string $impact): int

@@ -27,9 +27,15 @@ class MonitorController extends Controller
 
     public function index(Request $request): Response
     {
-        return Inertia::render('monitors/index', $this->presenter->index(
-            $this->workspaces->current($request),
-        ));
+        $workspace = $this->workspaces->current($request);
+
+        return Inertia::render('monitors/index', [
+            ...$this->presenter->indexPage($workspace),
+            'capabilities' => Inertia::defer(
+                fn () => $this->presenter->indexCapabilities($workspace),
+                'monitor-insights',
+            ),
+        ]);
     }
 
     public function create(Request $request): Response|RedirectResponse
@@ -92,11 +98,20 @@ class MonitorController extends Controller
     {
         abort_unless($monitor->user_id === $this->workspaces->current($request)->id, 404);
 
-        return Inertia::render('monitors/show', $this->presenter->show(
-            $monitor,
-            $request->string('response_range')->toString(),
-            $request->string('response_granularity')->toString(),
-        ));
+        $responseRange = $request->string('response_range')->toString();
+        $responseGranularity = $request->string('response_granularity')->toString();
+
+        return Inertia::render('monitors/show', [
+            ...$this->presenter->showPage($monitor),
+            'monitorHistory' => Inertia::defer(
+                fn () => $this->presenter->showHistory($monitor->fresh(), $responseRange, $responseGranularity)['monitorHistory'],
+                'monitor-insights',
+            ),
+            'monitorCapabilities' => Inertia::defer(
+                fn () => $this->presenter->showCapabilities($monitor->fresh())['monitorCapabilities'],
+                'monitor-insights',
+            ),
+        ]);
     }
 
     public function edit(Request $request, Monitor $monitor): Response
