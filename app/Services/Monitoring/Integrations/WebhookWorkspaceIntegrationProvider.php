@@ -23,6 +23,7 @@ class WebhookWorkspaceIntegrationProvider implements WorkspaceIntegrationProvide
         return [
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_DOWN,
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_RECOVERED,
+            WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST,
         ];
     }
 
@@ -33,6 +34,7 @@ class WebhookWorkspaceIntegrationProvider implements WorkspaceIntegrationProvide
         return match ($event) {
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_DOWN => sprintf('Webhook alert: %s is down', $monitorName),
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_RECOVERED => sprintf('Webhook alert: %s recovered', $monitorName),
+            WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST => sprintf('Webhook test alert for %s', $monitorName),
             default => sprintf('Webhook alert: %s', $monitorName),
         };
     }
@@ -70,6 +72,7 @@ class WebhookWorkspaceIntegrationProvider implements WorkspaceIntegrationProvide
         return [
             'event' => $event,
             'event_label' => $this->eventLabel($event),
+            'is_test' => (bool) data_get($payload, 'is_test', false),
             'sent_at' => data_get($payload, 'sent_at'),
             'integration_id' => $integration->id,
             'integration_name' => $integration->name,
@@ -101,6 +104,7 @@ class WebhookWorkspaceIntegrationProvider implements WorkspaceIntegrationProvide
         return match ($event) {
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_DOWN => 'Downtime opened',
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_RECOVERED => 'Downtime recovered',
+            WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST => 'Test alert',
             default => 'Monitor alert',
         };
     }

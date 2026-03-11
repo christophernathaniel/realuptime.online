@@ -15,6 +15,7 @@ class WorkspaceIntegrationPayloadFactory
     {
         return [
             'event' => $event,
+            'is_test' => false,
             'sent_at' => now()->toIso8601String(),
             'workspace' => [
                 'id' => $workspace->id,
@@ -41,6 +42,43 @@ class WorkspaceIntegrationPayloadFactory
                 'http_status_code' => $incident->http_status_code,
                 'url' => route('incidents.show', $incident),
             ] : null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function makeTest(User $workspace, Monitor $monitor): array
+    {
+        return [
+            'event' => WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST,
+            'is_test' => true,
+            'sent_at' => now()->toIso8601String(),
+            'workspace' => [
+                'id' => $workspace->id,
+                'name' => $workspace->name,
+                'plan' => $workspace->membershipPlan()->value,
+            ],
+            'monitor' => [
+                'id' => $monitor->id,
+                'name' => $monitor->name,
+                'type' => $monitor->type,
+                'status' => $monitor->status,
+                'target' => $monitor->target,
+                'region' => $monitor->region,
+                'url' => route('monitors.show', $monitor),
+            ],
+            'incident' => [
+                'id' => null,
+                'type' => 'test',
+                'severity' => 'info',
+                'started_at' => now()->toIso8601String(),
+                'resolved_at' => null,
+                'reason' => 'This is a test alert from RealUptime.',
+                'error_type' => 'test',
+                'http_status_code' => null,
+                'url' => null,
+            ],
         ];
     }
 }

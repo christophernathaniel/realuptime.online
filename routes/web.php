@@ -57,6 +57,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('notification-contacts/{notificationContact}', [NotificationContactController::class, 'destroy'])->name('notification-contacts.destroy');
         Route::post('workspace-integrations', [WorkspaceIntegrationController::class, 'store'])->name('workspace-integrations.store');
         Route::put('workspace-integrations/{workspaceIntegration}', [WorkspaceIntegrationController::class, 'update'])->name('workspace-integrations.update');
+        Route::post('workspace-integrations/{workspaceIntegration}/test', [WorkspaceIntegrationController::class, 'test'])->name('workspace-integrations.test');
         Route::delete('workspace-integrations/{workspaceIntegration}', [WorkspaceIntegrationController::class, 'destroy'])->name('workspace-integrations.destroy');
         Route::post('api-tokens', [ApiTokenController::class, 'store'])->name('api-tokens.store');
         Route::delete('api-tokens/{apiToken}', [ApiTokenController::class, 'destroy'])->name('api-tokens.destroy');

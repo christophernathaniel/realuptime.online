@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\WorkspaceIntegration;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -457,4 +458,54 @@ it('creates webhook workspace integrations from the integrations section', funct
     expect($integration?->config['webhook_url'] ?? null)->toBe($webhookUrl);
     expect($integration?->scopes)->toBe(['monitor.down', 'monitor.recovered']);
     expect($rawConfig)->not->toContain($webhookUrl);
+});
+
+it('queues a test payload for workspace integrations from the integrations section', function () {
+    Http::fake([
+        'https://workflows.example.test/realuptime-alerts' => Http::response(['ok' => true], 200),
+    ]);
+
+    $user = User::factory()->premium()->create();
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Primary API',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com/health',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 2,
+        'region' => 'North America',
+    ]);
+    $integration = WorkspaceIntegration::query()->create([
+        'user_id' => $user->id,
+        'provider' => WorkspaceIntegration::PROVIDER_WEBHOOK,
+        'name' => 'Ops Workflow',
+        'status' => WorkspaceIntegration::STATUS_ACTIVE,
+        'config' => [
+            'webhook_url' => 'https://workflows.example.test/realuptime-alerts',
+        ],
+        'scopes' => ['monitor.down', 'monitor.recovered'],
+    ]);
+
+    $this->actingAs($user)
+        ->post("/workspace-integrations/{$integration->id}/test")
+        ->assertRedirect();
+
+    Http::assertSent(function ($request) use ($monitor) {
+        return $request->url() === 'https://workflows.example.test/realuptime-alerts'
+            && data_get($request->data(), 'event') === 'monitor.test'
+            && data_get($request->data(), 'is_test') === true
+            && data_get($request->data(), 'monitor_name') === $monitor->name
+            && data_get($request->data(), 'incident_reason') === 'This is a test alert from RealUptime.';
+    });
+
+    $this->assertDatabaseHas('notification_logs', [
+        'monitor_id' => $monitor->id,
+        'integration_id' => $integration->id,
+        'channel' => WorkspaceIntegration::PROVIDER_WEBHOOK,
+        'type' => 'test',
+        'status' => 'sent',
+    ]);
 });

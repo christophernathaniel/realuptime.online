@@ -191,18 +191,28 @@ function WorkspaceIntegrationEditor({ integration }: { integration: WorkspaceInt
                               : 'No deliveries recorded yet'}
                     </div>
                 </div>
-                <button
-                    type="button"
-                    className="inline-flex items-center gap-2 rounded-[14px] border border-[#ff6269]/25 bg-[#231320] px-4 py-2.5 text-sm text-[#ffd4d7]"
-                    onClick={() => {
-                        if (window.confirm(`Delete integration "${integration.name}"?`)) {
-                            router.delete(`/workspace-integrations/${integration.id}`, { preserveScroll: true });
-                        }
-                    }}
-                >
-                    <Trash2 className="size-4" />
-                    Delete
-                </button>
+                <div className="flex flex-wrap gap-3">
+                    <button
+                        type="button"
+                        className="inline-flex items-center gap-2 rounded-[14px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-sm text-[#d5def3]"
+                        onClick={() => router.post(`/workspace-integrations/${integration.id}/test`, {}, { preserveScroll: true })}
+                    >
+                        <Activity className="size-4 text-[#57c7c2]" />
+                        Test webhook
+                    </button>
+                    <button
+                        type="button"
+                        className="inline-flex items-center gap-2 rounded-[14px] border border-[#ff6269]/25 bg-[#231320] px-4 py-2.5 text-sm text-[#ffd4d7]"
+                        onClick={() => {
+                            if (window.confirm(`Delete integration "${integration.name}"?`)) {
+                                router.delete(`/workspace-integrations/${integration.id}`, { preserveScroll: true });
+                            }
+                        }}
+                    >
+                        <Trash2 className="size-4" />
+                        Delete
+                    </button>
+                </div>
             </div>
             <form
                 className="grid gap-4"
@@ -380,7 +390,7 @@ export default function IntegrationsPage({
                                     </label>
                                 </div>
                                 <div className="rounded-[16px] border border-white/8 bg-[#171d28] p-4 text-[14px] text-[#9ca7b9]">
-                                    RealUptime sends flat keys such as <span className="font-mono text-[#dce6fb]">event</span>, <span className="font-mono text-[#dce6fb]">workspace_name</span>, <span className="font-mono text-[#dce6fb]">monitor_name</span>, <span className="font-mono text-[#dce6fb]">monitor_target</span>, <span className="font-mono text-[#dce6fb]">monitor_url</span>, <span className="font-mono text-[#dce6fb]">incident_reason</span>, and <span className="font-mono text-[#dce6fb]">incident_url</span>.
+                                    RealUptime sends flat keys such as <span className="font-mono text-[#dce6fb]">event</span>, <span className="font-mono text-[#dce6fb]">workspace_name</span>, <span className="font-mono text-[#dce6fb]">monitor_name</span>, <span className="font-mono text-[#dce6fb]">monitor_target</span>, <span className="font-mono text-[#dce6fb]">monitor_url</span>, <span className="font-mono text-[#dce6fb]">incident_reason</span>, and <span className="font-mono text-[#dce6fb]">incident_url</span>. Use the saved integration cards below to send a live test payload.
                                 </div>
                                 <label className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#171d28] px-4 py-3 text-sm text-[#dce6fb]">
                                     <input

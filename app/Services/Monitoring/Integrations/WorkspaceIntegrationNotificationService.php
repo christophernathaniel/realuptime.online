@@ -14,6 +14,8 @@ class WorkspaceIntegrationNotificationService
 
     public const EVENT_MONITOR_RECOVERED = 'monitor.recovered';
 
+    public const EVENT_MONITOR_TEST = 'monitor.test';
+
     public function __construct(
         protected WorkspaceIntegrationProviderManager $providers,
         protected WorkspaceIntegrationPayloadFactory $payloadFactory,
@@ -29,7 +31,7 @@ class WorkspaceIntegrationNotificationService
         $this->dispatch(self::EVENT_MONITOR_RECOVERED, $monitor, $incident);
     }
 
-    protected function dispatch(string $event, Monitor $monitor, Incident $incident): void
+    public function sendTest(Monitor $monitor): void
     {
         $workspace = $monitor->relationLoaded('user')
             ? $monitor->user
@@ -39,13 +41,59 @@ class WorkspaceIntegrationNotificationService
             return;
         }
 
-        $integrations = $workspace->workspaceIntegrations()
-            ->where('status', WorkspaceIntegration::STATUS_ACTIVE)
-            ->orderBy('created_at')
-            ->get();
+        $this->dispatch(
+            self::EVENT_MONITOR_TEST,
+            $monitor,
+            payload: $this->payloadFactory->makeTest($workspace, $monitor),
+            ignoreScopes: true,
+        );
+    }
+
+    public function sendIntegrationTest(WorkspaceIntegration $integration, Monitor $monitor): void
+    {
+        $workspace = $monitor->relationLoaded('user')
+            ? $monitor->user
+            : $monitor->user()->first();
+
+        if (! $workspace || ! $workspace->allowsAdvancedWorkspaceFeatures()) {
+            return;
+        }
+
+        $this->dispatch(
+            self::EVENT_MONITOR_TEST,
+            $monitor,
+            integration: $integration,
+            payload: $this->payloadFactory->makeTest($workspace, $monitor),
+            ignoreScopes: true,
+        );
+    }
+
+    protected function dispatch(
+        string $event,
+        Monitor $monitor,
+        ?Incident $incident = null,
+        ?WorkspaceIntegration $integration = null,
+        ?array $payload = null,
+        bool $ignoreScopes = false,
+    ): void
+    {
+        $workspace = $monitor->relationLoaded('user')
+            ? $monitor->user
+            : $monitor->user()->first();
+
+        if (! $workspace || ! $workspace->allowsAdvancedWorkspaceFeatures()) {
+            return;
+        }
+
+        $integrations = $integration
+            ? collect([$integration])
+            : $workspace->workspaceIntegrations()
+                ->where('status', WorkspaceIntegration::STATUS_ACTIVE)
+                ->orderBy('created_at')
+                ->get();
 
         foreach ($integrations as $integration) {
-            if (! $integration->supportsEvent($event)) {
+            if (! $ignoreScopes && ! $integration->supportsEvent($event)) {
                 continue;
             }
 
@@ -55,14 +103,14 @@ class WorkspaceIntegrationNotificationService
                 continue;
             }
 
-            $payload = $this->payloadFactory->make($event, $workspace, $monitor, $incident);
+            $deliveryPayload = $payload ?? $this->payloadFactory->make($event, $workspace, $monitor, $incident);
             $log = NotificationLog::query()->create([
                 'monitor_id' => $monitor->id,
-                'incident_id' => $incident->id,
+                'incident_id' => $incident?->id,
                 'integration_id' => $integration->id,
                 'channel' => $integration->provider,
                 'type' => $this->typeFromEvent($event),
-                'subject' => $provider->subject($event, $payload),
+                'subject' => $provider->subject($event, $deliveryPayload),
                 'status' => 'pending',
                 'payload' => [
                     'event' => $event,
@@ -75,7 +123,7 @@ class WorkspaceIntegrationNotificationService
                 notificationLogId: $log->id,
                 integrationId: $integration->id,
                 event: $event,
-                payload: $payload,
+                payload: $deliveryPayload,
             )->afterCommit();
         }
     }
@@ -84,6 +132,7 @@ class WorkspaceIntegrationNotificationService
     {
         return match ($event) {
             self::EVENT_MONITOR_RECOVERED => 'recovered',
+            self::EVENT_MONITOR_TEST => 'test',
             default => 'down',
         };
     }

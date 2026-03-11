@@ -5,6 +5,7 @@ use App\Models\Incident;
 use App\Models\Monitor;
 use App\Models\NotificationContact;
 use App\Models\User;
+use App\Models\WorkspaceIntegration;
 use App\Models\WorkspaceMembership;
 use App\Notifications\MonitorAlertNotification;
 use App\Services\Monitoring\DomainMetadataResolver;
@@ -888,6 +889,72 @@ it('sends a test notification and records it in the notification log', function 
     $this->assertDatabaseHas('notification_logs', [
         'monitor_id' => $monitor->id,
         'notification_contact_id' => $contact->id,
+        'type' => 'test',
+        'status' => 'sent',
+    ]);
+});
+
+it('includes active workspace integrations when sending a test alert', function () {
+    Notification::fake();
+    Http::fake([
+        'https://workflows.example.test/realuptime-alerts' => Http::response(['ok' => true], 200),
+    ]);
+
+    $user = User::factory()->premium()->create();
+    $contact = NotificationContact::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Ops',
+        'email' => 'ops@example.com',
+        'enabled' => true,
+        'is_primary' => true,
+    ]);
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Main website',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 2,
+        'region' => 'North America',
+    ]);
+    $monitor->notificationContacts()->attach($contact);
+    $integration = WorkspaceIntegration::query()->create([
+        'user_id' => $user->id,
+        'provider' => WorkspaceIntegration::PROVIDER_WEBHOOK,
+        'name' => 'Ops Workflow',
+        'status' => WorkspaceIntegration::STATUS_ACTIVE,
+        'config' => [
+            'webhook_url' => 'https://workflows.example.test/realuptime-alerts',
+        ],
+        'scopes' => ['monitor.down', 'monitor.recovered'],
+    ]);
+
+    $this->actingAs($user)
+        ->post("/monitors/{$monitor->id}/test-notification")
+        ->assertRedirect();
+
+    Notification::assertSentOnDemand(MonitorAlertNotification::class);
+
+    Http::assertSent(function ($request) use ($monitor) {
+        return $request->url() === 'https://workflows.example.test/realuptime-alerts'
+            && data_get($request->data(), 'event') === 'monitor.test'
+            && data_get($request->data(), 'monitor_name') === $monitor->name;
+    });
+
+    $this->assertDatabaseHas('notification_logs', [
+        'monitor_id' => $monitor->id,
+        'notification_contact_id' => $contact->id,
+        'type' => 'test',
+        'status' => 'sent',
+    ]);
+
+    $this->assertDatabaseHas('notification_logs', [
+        'monitor_id' => $monitor->id,
+        'integration_id' => $integration->id,
+        'channel' => WorkspaceIntegration::PROVIDER_WEBHOOK,
         'type' => 'test',
         'status' => 'sent',
     ]);

@@ -9,6 +9,7 @@ use App\Models\Capability;
 use App\Models\Monitor;
 use App\Models\User;
 use App\Services\Monitoring\EmailNotificationService;
+use App\Services\Monitoring\Integrations\WorkspaceIntegrationNotificationService;
 use App\Services\Monitoring\MonitorPresenter;
 use App\Support\WorkspaceResolver;
 use Illuminate\Http\RedirectResponse;
@@ -22,6 +23,7 @@ class MonitorController extends Controller
     public function __construct(
         protected MonitorPresenter $presenter,
         protected EmailNotificationService $notifications,
+        protected WorkspaceIntegrationNotificationService $integrations,
         protected WorkspaceResolver $workspaces,
     ) {}
 
@@ -161,9 +163,12 @@ class MonitorController extends Controller
     {
         abort_unless($monitor->user_id === $this->workspaces->current($request)->id, 404);
 
-        $this->notifications->sendTest($monitor->loadMissing('notificationContacts', 'user'));
+        $monitor = $monitor->loadMissing('notificationContacts', 'user');
 
-        return back()->with('success', 'Test notification queued.');
+        $this->notifications->sendTest($monitor);
+        $this->integrations->sendTest($monitor);
+
+        return back()->with('success', 'Test alert queued for configured notification channels.');
     }
 
     public function runNow(Request $request, Monitor $monitor): RedirectResponse

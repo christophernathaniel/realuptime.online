@@ -23,6 +23,7 @@ class SlackWorkspaceIntegrationProvider implements WorkspaceIntegrationProvider
         return [
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_DOWN,
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_RECOVERED,
+            WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST,
         ];
     }
 
@@ -33,6 +34,7 @@ class SlackWorkspaceIntegrationProvider implements WorkspaceIntegrationProvider
         return match ($event) {
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_DOWN => sprintf('Slack alert: %s is down', $monitorName),
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_RECOVERED => sprintf('Slack alert: %s recovered', $monitorName),
+            WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST => sprintf('Slack test alert for %s', $monitorName),
             default => sprintf('Slack alert: %s', $monitorName),
         };
     }
@@ -83,6 +85,12 @@ class SlackWorkspaceIntegrationProvider implements WorkspaceIntegrationProvider
                 $workspaceName,
                 $monitorName,
             ),
+            WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST => trim(sprintf(
+                '[%s] Test alert for %s. %s',
+                $workspaceName,
+                $monitorName,
+                $reason ?? 'This is a test alert from RealUptime.'
+            )),
             default => sprintf('[%s] Monitor update for %s.', $workspaceName, $monitorName),
         };
     }
@@ -105,12 +113,14 @@ class SlackWorkspaceIntegrationProvider implements WorkspaceIntegrationProvider
         $header = match ($event) {
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_DOWN => ':red_circle: Monitor down',
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_RECOVERED => ':large_green_circle: Monitor recovered',
+            WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST => ':large_blue_circle: Test alert',
             default => ':large_blue_circle: Monitor update',
         };
 
         $summary = match ($event) {
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_DOWN => sprintf('*%s* is down in *%s*.', $monitorName, $workspaceName),
             WorkspaceIntegrationNotificationService::EVENT_MONITOR_RECOVERED => sprintf('*%s* has recovered in *%s*.', $monitorName, $workspaceName),
+            WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST => sprintf('*%s* sent a test alert from *%s*.', $monitorName, $workspaceName),
             default => sprintf('Update for *%s* in *%s*.', $monitorName, $workspaceName),
         };
 
