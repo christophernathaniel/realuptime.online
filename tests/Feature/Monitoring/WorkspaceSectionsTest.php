@@ -431,14 +431,14 @@ it('creates notification contacts from the integrations section', function () {
     expect($contact->is_primary)->toBeTrue();
 });
 
-it('creates slack workspace integrations from the integrations section', function () {
+it('creates webhook workspace integrations from the integrations section', function () {
     $user = User::factory()->premium()->create();
-    $webhookUrl = 'https://webhooks.example.test/integrations/ops-alerts';
+    $webhookUrl = 'https://workflows.example.test/realuptime-alerts';
 
     $this->actingAs($user)
         ->post('/workspace-integrations', [
-            'provider' => WorkspaceIntegration::PROVIDER_SLACK,
-            'name' => 'Ops Alerts',
+            'provider' => WorkspaceIntegration::PROVIDER_WEBHOOK,
+            'name' => 'Ops Workflow',
             'webhook_url' => $webhookUrl,
             'enabled' => true,
             'events' => ['monitor.down', 'monitor.recovered'],
@@ -451,9 +451,9 @@ it('creates slack workspace integrations from the integrations section', functio
 
     expect($integration)->not->toBeNull();
     expect($integration?->user_id)->toBe($user->id);
-    expect($integration?->provider)->toBe(WorkspaceIntegration::PROVIDER_SLACK);
+    expect($integration?->provider)->toBe(WorkspaceIntegration::PROVIDER_WEBHOOK);
     expect($integration?->status)->toBe(WorkspaceIntegration::STATUS_ACTIVE);
-    expect($integration?->name)->toBe('Ops Alerts');
+    expect($integration?->name)->toBe('Ops Workflow');
     expect($integration?->config['webhook_url'] ?? null)->toBe($webhookUrl);
     expect($integration?->scopes)->toBe(['monitor.down', 'monitor.recovered']);
     expect($rawConfig)->not->toContain($webhookUrl);

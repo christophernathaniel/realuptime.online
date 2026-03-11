@@ -11,6 +11,8 @@ class WorkspaceIntegration extends Model
 {
     use HasFactory;
 
+    public const PROVIDER_WEBHOOK = 'webhook';
+
     public const PROVIDER_SLACK = 'slack';
 
     public const STATUS_ACTIVE = 'active';

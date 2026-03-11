@@ -8,6 +8,7 @@ use InvalidArgumentException;
 class WorkspaceIntegrationProviderManager
 {
     public function __construct(
+        protected WebhookWorkspaceIntegrationProvider $webhook,
         protected SlackWorkspaceIntegrationProvider $slack,
     ) {}
 
@@ -16,6 +17,7 @@ class WorkspaceIntegrationProviderManager
         $provider = $integration instanceof WorkspaceIntegration ? $integration->provider : $integration;
 
         return match ($provider) {
+            WorkspaceIntegration::PROVIDER_WEBHOOK => $this->webhook,
             WorkspaceIntegration::PROVIDER_SLACK => $this->slack,
             default => throw new InvalidArgumentException(sprintf('Unsupported integration provider [%s].', $provider)),
         };

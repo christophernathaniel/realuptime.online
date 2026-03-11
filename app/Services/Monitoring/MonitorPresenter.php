@@ -998,7 +998,7 @@ class MonitorPresenter
                 'name' => 'Primary automation',
             ],
             'integrationFormDefaults' => [
-                'provider' => WorkspaceIntegration::PROVIDER_SLACK,
+                'provider' => WorkspaceIntegration::PROVIDER_WEBHOOK,
                 'name' => '',
                 'webhook_url' => '',
                 'enabled' => true,
@@ -1010,6 +1010,7 @@ class MonitorPresenter
     protected function integrationProviderLabel(WorkspaceIntegration $integration): string
     {
         return match ($integration->provider) {
+            WorkspaceIntegration::PROVIDER_WEBHOOK => 'Webhook',
             WorkspaceIntegration::PROVIDER_SLACK => 'Slack',
             default => ucfirst($integration->provider),
         };
@@ -1018,6 +1019,7 @@ class MonitorPresenter
     protected function integrationDestinationLabel(WorkspaceIntegration $integration): string
     {
         return match ($integration->provider) {
+            WorkspaceIntegration::PROVIDER_WEBHOOK,
             WorkspaceIntegration::PROVIDER_SLACK => $this->maskedWebhookLabel((string) data_get($integration->config, 'webhook_url', '')),
             default => 'Configured destination',
         };

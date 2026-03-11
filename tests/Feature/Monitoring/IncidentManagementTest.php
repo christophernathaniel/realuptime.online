@@ -347,30 +347,30 @@ it('sends downtime webhook payloads for paid workspaces', function () {
     ]);
 });
 
-it('sends downtime slack payloads for workspace integrations', function () {
+it('sends workflow-friendly downtime payloads for webhook integrations', function () {
     Notification::fake();
     Http::fake([
-        'https://example.com/slack-health' => Http::response('error', 500),
-        'https://webhooks.example.test/integrations/ops-alerts' => Http::response('ok', 200),
+        'https://example.com/workflow-health' => Http::response('error', 500),
+        'https://workflows.example.test/realuptime-alerts' => Http::response('ok', 200),
     ]);
 
     $user = User::factory()->premium()->create();
     $integration = WorkspaceIntegration::query()->create([
         'user_id' => $user->id,
-        'provider' => WorkspaceIntegration::PROVIDER_SLACK,
-        'name' => 'Ops Alerts',
+        'provider' => WorkspaceIntegration::PROVIDER_WEBHOOK,
+        'name' => 'Ops Workflow',
         'status' => WorkspaceIntegration::STATUS_ACTIVE,
         'config' => [
-            'webhook_url' => 'https://webhooks.example.test/integrations/ops-alerts',
+            'webhook_url' => 'https://workflows.example.test/realuptime-alerts',
         ],
         'scopes' => ['monitor.down', 'monitor.recovered'],
     ]);
     $monitor = Monitor::query()->create([
         'user_id' => $user->id,
-        'name' => 'Slack site',
+        'name' => 'Workflow site',
         'type' => Monitor::TYPE_HTTP,
         'status' => Monitor::STATUS_UP,
-        'target' => 'https://example.com/slack-health',
+        'target' => 'https://example.com/workflow-health',
         'request_method' => 'GET',
         'interval_seconds' => 30,
         'timeout_seconds' => 30,
@@ -384,19 +384,78 @@ it('sends downtime slack payloads for workspace integrations', function () {
         CarbonImmutable::parse('2026-03-11 16:00:00'),
     );
 
-    Http::assertSent(fn ($request) => $request->url() === 'https://webhooks.example.test/integrations/ops-alerts'
-        && str_contains((string) data_get($request->data(), 'text'), 'Slack site is down')
-        && data_get($request->data(), 'blocks.0.text.text') === ':red_circle: Monitor down');
+    Http::assertSent(function ($request): bool {
+        $payload = $request->data();
+
+        return $request->url() === 'https://workflows.example.test/realuptime-alerts'
+            && data_get($payload, 'event') === 'monitor.down'
+            && data_get($payload, 'event_label') === 'Downtime opened'
+            && data_get($payload, 'workspace_name') !== null
+            && data_get($payload, 'monitor_name') === 'Workflow site'
+            && data_get($payload, 'monitor_target') === 'https://example.com/workflow-health'
+            && data_get($payload, 'incident_reason') === 'Expected HTTP 200 but received 500.'
+            && data_get($payload, 'incident_url') !== null
+            && ! array_key_exists('monitor', $payload)
+            && ! array_key_exists('incident', $payload)
+            && ! array_key_exists('blocks', $payload);
+    });
 
     $this->assertDatabaseHas('notification_logs', [
         'monitor_id' => $monitor->id,
         'integration_id' => $integration->id,
-        'channel' => WorkspaceIntegration::PROVIDER_SLACK,
+        'channel' => WorkspaceIntegration::PROVIDER_WEBHOOK,
         'type' => 'down',
         'status' => 'sent',
     ]);
 
     expect($integration->fresh()?->last_tested_at)->not->toBeNull();
+});
+
+it('does not send webhook integrations for free workspaces', function () {
+    Notification::fake();
+    Http::fake([
+        'https://example.com/free-workflow-health' => Http::response('error', 500),
+        'https://workflows.example.test/free-realuptime-alerts' => Http::response('ok', 200),
+    ]);
+
+    $user = User::factory()->create();
+    $integration = WorkspaceIntegration::query()->create([
+        'user_id' => $user->id,
+        'provider' => WorkspaceIntegration::PROVIDER_WEBHOOK,
+        'name' => 'Free Workflow',
+        'status' => WorkspaceIntegration::STATUS_ACTIVE,
+        'config' => [
+            'webhook_url' => 'https://workflows.example.test/free-realuptime-alerts',
+        ],
+        'scopes' => ['monitor.down', 'monitor.recovered'],
+    ]);
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Free workflow site',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com/free-workflow-health',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 0,
+        'expected_status_code' => 200,
+        'region' => 'North America',
+    ]);
+
+    app(MonitorRunner::class)->runMonitor(
+        $monitor->fresh(['notificationContacts', 'user']),
+        CarbonImmutable::parse('2026-03-11 16:30:00'),
+    );
+
+    Http::assertNotSent(fn ($request) => $request->url() === 'https://workflows.example.test/free-realuptime-alerts');
+
+    $this->assertDatabaseMissing('notification_logs', [
+        'monitor_id' => $monitor->id,
+        'integration_id' => $integration->id,
+        'channel' => WorkspaceIntegration::PROVIDER_WEBHOOK,
+        'type' => 'down',
+    ]);
 });
 
 it('does not send downtime webhook payloads for free workspaces', function () {

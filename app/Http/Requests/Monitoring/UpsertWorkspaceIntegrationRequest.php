@@ -22,7 +22,10 @@ class UpsertWorkspaceIntegrationRequest extends FormRequest
             'provider' => [
                 $workspaceIntegration ? 'nullable' : 'required',
                 'string',
-                Rule::in([WorkspaceIntegration::PROVIDER_SLACK]),
+                Rule::in([
+                    WorkspaceIntegration::PROVIDER_WEBHOOK,
+                    WorkspaceIntegration::PROVIDER_SLACK,
+                ]),
             ],
             'name' => ['required', 'string', 'max:255'],
             'enabled' => ['nullable', 'boolean'],

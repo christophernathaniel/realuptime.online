@@ -35,7 +35,7 @@ class WorkspaceIntegrationNotificationService
             ? $monitor->user
             : $monitor->user()->first();
 
-        if (! $workspace) {
+        if (! $workspace || ! $workspace->allowsAdvancedWorkspaceFeatures()) {
             return;
         }
 

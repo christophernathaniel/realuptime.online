@@ -50,6 +50,28 @@ class SendWorkspaceIntegrationNotificationJob implements ShouldQueue
             return;
         }
 
+        if (! $integration->isActive()) {
+            $log->forceFill([
+                'status' => 'failed',
+                'failure_message' => 'Integration is disabled.',
+            ])->save();
+
+            return;
+        }
+
+        $workspace = $integration->relationLoaded('user')
+            ? $integration->user
+            : $integration->user()->first();
+
+        if (! $workspace || ! $workspace->allowsAdvancedWorkspaceFeatures()) {
+            $log->forceFill([
+                'status' => 'failed',
+                'failure_message' => 'Workspace membership no longer includes integration delivery.',
+            ])->save();
+
+            return;
+        }
+
         try {
             $provider = $providers->for($integration);
             $metadata = $provider->send($integration, $this->event, $this->payload);

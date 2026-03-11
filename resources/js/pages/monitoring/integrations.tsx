@@ -22,6 +22,18 @@ const integrationEvents = [
     { value: 'monitor.recovered', label: 'Downtime recovered' },
 ] as const;
 
+const workflowPayloadExample = JSON.stringify({
+    event: 'monitor.down',
+    event_label: 'Downtime opened',
+    workspace_name: 'Acme Production',
+    workspace_plan: 'premium',
+    monitor_name: 'Primary API',
+    monitor_target: 'https://status.example.com/health',
+    monitor_url: 'https://app.example.com/monitors/42',
+    incident_reason: 'Expected HTTP 200 but received 500.',
+    incident_url: 'https://app.example.com/incidents/101',
+}, null, 2);
+
 function MetricCard({ label, value, tone = 'default' }: { label: string; value: string | number; tone?: 'default' | 'good' | 'warning' | 'danger' }) {
     const toneClass = {
         default: 'text-white',
@@ -214,7 +226,7 @@ function WorkspaceIntegrationEditor({ integration }: { integration: WorkspaceInt
                         />
                     </label>
                     <label className="space-y-2">
-                        <span className="text-[15px] text-[#dce6fb]">Rotate webhook URL</span>
+                        <span className="text-[15px] text-[#dce6fb]">Rotate destination URL</span>
                         <input
                             value={form.data.webhook_url}
                             onChange={(event) => form.setData('webhook_url', event.target.value)}
@@ -327,10 +339,10 @@ export default function IntegrationsPage({
                         <PageCard className="space-y-5 p-6">
                             <div className="flex items-center gap-3 text-[22px] font-semibold text-white">
                                 <ServerCog className="size-5 text-[#7c8cff]" />
-                                Workspace integrations
+                                Webhook integrations
                             </div>
                             <div className="text-[15px] text-[#9ca7b9]">
-                                Connect Slack through an incoming webhook to mirror downtime and recovery events into the channels your team already watches.
+                                Send flat JSON webhook payloads into Slack Workflow Builder, Zapier, Make, n8n, monday.com, or any endpoint that accepts workflow-friendly fields.
                             </div>
                             <form
                                 className="grid gap-4"
@@ -354,7 +366,7 @@ export default function IntegrationsPage({
                                             value={integrationForm.data.name}
                                             onChange={(event) => integrationForm.setData('name', event.target.value)}
                                             className="h-11 w-full rounded-[14px] border border-white/10 bg-[#0b1425] px-4 text-sm text-white outline-none"
-                                            placeholder="Ops Alerts"
+                                            placeholder="Ops Workflow"
                                         />
                                     </label>
                                     <label className="space-y-2">
@@ -363,9 +375,12 @@ export default function IntegrationsPage({
                                             value={integrationForm.data.webhook_url}
                                             onChange={(event) => integrationForm.setData('webhook_url', event.target.value)}
                                             className="h-11 w-full rounded-[14px] border border-white/10 bg-[#0b1425] px-4 text-sm text-white outline-none"
-                                            placeholder="https://webhooks.example.test/integrations/ops-alerts"
+                                            placeholder="https://workflows.example.test/realuptime-alerts"
                                         />
                                     </label>
+                                </div>
+                                <div className="rounded-[16px] border border-white/8 bg-[#171d28] p-4 text-[14px] text-[#9ca7b9]">
+                                    RealUptime sends flat keys such as <span className="font-mono text-[#dce6fb]">event</span>, <span className="font-mono text-[#dce6fb]">workspace_name</span>, <span className="font-mono text-[#dce6fb]">monitor_name</span>, <span className="font-mono text-[#dce6fb]">monitor_target</span>, <span className="font-mono text-[#dce6fb]">monitor_url</span>, <span className="font-mono text-[#dce6fb]">incident_reason</span>, and <span className="font-mono text-[#dce6fb]">incident_url</span>.
                                 </div>
                                 <label className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#171d28] px-4 py-3 text-sm text-[#dce6fb]">
                                     <input
@@ -397,16 +412,26 @@ export default function IntegrationsPage({
                                 <div className="flex justify-end">
                                     <button type="submit" className="inline-flex items-center gap-2 rounded-[14px] bg-[#7c8cff] px-4 py-2.5 text-sm font-medium text-white">
                                         <Save className="size-4" />
-                                        Add Slack integration
+                                        Add webhook integration
                                     </button>
                                 </div>
                             </form>
                         </PageCard>
 
+                        <PageCard className="space-y-4 p-6">
+                            <div className="text-[18px] font-semibold text-white">Workflow payload example</div>
+                            <div className="text-[14px] text-[#9ca7b9]">
+                                Use these fields when mapping variables inside Slack workflows or other automation tools.
+                            </div>
+                            <div className="overflow-x-auto rounded-[14px] bg-[#081428] px-4 py-3 font-mono text-[12px] text-[#dce6fb]">
+                                <pre>{workflowPayloadExample}</pre>
+                            </div>
+                        </PageCard>
+
                         <div className="space-y-4">
                             {integrations.length === 0 ? (
                                 <PageCard className="p-6 text-[15px] text-[#9ca7b9]">
-                                    No workspace integrations yet. Add a Slack webhook above to mirror downtime and recovery into chat.
+                                    No webhook integrations yet. Add a workflow destination above to mirror downtime and recovery into your automation tools.
                                 </PageCard>
                             ) : (
                                 integrations.map((integration) => <WorkspaceIntegrationEditor key={integration.id} integration={integration} />)
