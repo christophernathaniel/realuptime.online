@@ -25,6 +25,13 @@ const integrationEvents = [
 const workflowPayloadExample = JSON.stringify({
     event: 'monitor.down',
     event_label: 'Downtime opened',
+    message_title: 'Website issue detected',
+    message_summary: 'Primary API is currently unavailable.',
+    message_status_label: 'Down',
+    message_status_tone: 'danger',
+    message_icon: ':red_circle:',
+    message_reason: 'Expected HTTP 200 but received 500.',
+    message_link_label: 'Open monitor',
     workspace_name: 'Acme Production',
     workspace_plan: 'premium',
     monitor_name: 'Primary API',
@@ -390,7 +397,7 @@ export default function IntegrationsPage({
                                     </label>
                                 </div>
                                 <div className="rounded-[16px] border border-white/8 bg-[#171d28] p-4 text-[14px] text-[#9ca7b9]">
-                                    RealUptime sends flat keys such as <span className="font-mono text-[#dce6fb]">event</span>, <span className="font-mono text-[#dce6fb]">workspace_name</span>, <span className="font-mono text-[#dce6fb]">monitor_name</span>, <span className="font-mono text-[#dce6fb]">monitor_target</span>, <span className="font-mono text-[#dce6fb]">monitor_url</span>, <span className="font-mono text-[#dce6fb]">incident_reason</span>, and <span className="font-mono text-[#dce6fb]">incident_url</span>. Use the saved integration cards below to send a live test payload.
+                                    RealUptime sends flat keys such as <span className="font-mono text-[#dce6fb]">event</span>, <span className="font-mono text-[#dce6fb]">message_title</span>, <span className="font-mono text-[#dce6fb]">message_summary</span>, <span className="font-mono text-[#dce6fb]">workspace_name</span>, <span className="font-mono text-[#dce6fb]">monitor_name</span>, <span className="font-mono text-[#dce6fb]">monitor_target</span>, <span className="font-mono text-[#dce6fb]">monitor_url</span>, <span className="font-mono text-[#dce6fb]">incident_reason</span>, and <span className="font-mono text-[#dce6fb]">incident_url</span>. Use the saved integration cards below to send a live test payload.
                                 </div>
                                 <label className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#171d28] px-4 py-3 text-sm text-[#dce6fb]">
                                     <input
