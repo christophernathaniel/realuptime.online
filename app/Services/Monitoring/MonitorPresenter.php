@@ -47,6 +47,15 @@ class MonitorPresenter
      * @var array<int, array<int, array{
      *     from: CarbonImmutable,
      *     to: CarbonImmutable,
+     *     summary: array{firstCheckedAt: CarbonImmutable|null, totalResults: int, downResults: int}
+     * }>>
+     */
+    protected array $preloadedCheckResultSummaries = [];
+
+    /**
+     * @var array<int, array<int, array{
+     *     from: CarbonImmutable,
+     *     to: CarbonImmutable,
      *     incidents: Collection<int, Incident>
      * }>>
      */
@@ -72,16 +81,13 @@ class MonitorPresenter
     public function indexPage(User $user, ?User $actor = null): array
     {
         $monitors = $user->monitors()
-            ->with([
-                'user',
-                'incidents' => fn ($query) => $query->latest('started_at')->limit(20),
-            ])
+            ->with('user')
             ->orderBy('created_at')
             ->get();
         $now = $this->currentTime();
 
         $this->preloadDowntimeIncidents($monitors, $now->subDay(), $now);
-        $this->preloadCheckResults($monitors, $now->subDay(), $now);
+        $this->preloadCheckResultSummaries($monitors, $now->subDay(), $now);
 
         $summary = [
             'up' => $monitors->where('status', Monitor::STATUS_UP)->count(),
@@ -101,7 +107,7 @@ class MonitorPresenter
                 ),
                 'canCreate' => ! $user->hasReachedMonitorLimit(),
             ],
-            'last24Hours' => $this->aggregateMonitorWindow($monitors, 1),
+            'last24Hours' => $this->aggregateMonitorWindow($monitors, 1, $this->workspaceMtbfLabel($monitors, 1)),
             'monitors' => $monitors->map(fn (Monitor $monitor) => $this->monitorListItem($monitor))->values()->all(),
         ];
     }
@@ -404,6 +410,45 @@ class MonitorPresenter
     }
 
     /**
+     * @param  Collection<int, Monitor>  $monitors
+     */
+    protected function preloadCheckResultSummaries(Collection $monitors, CarbonImmutable $from, CarbonImmutable $to): void
+    {
+        if ($monitors->isEmpty()) {
+            return;
+        }
+
+        $monitorIds = $monitors->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $summaries = CheckResult::query()
+            ->whereIn('monitor_id', $monitorIds)
+            ->where('checked_at', '>=', $from)
+            ->where('checked_at', '<', $to)
+            ->selectRaw(
+                "monitor_id, MIN(checked_at) as first_checked_at, COUNT(*) as total_results, SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END) as down_results"
+            )
+            ->groupBy('monitor_id')
+            ->get()
+            ->keyBy('monitor_id');
+
+        foreach ($monitorIds as $monitorId) {
+            $summary = $summaries->get($monitorId);
+
+            $this->rememberPreloadedCheckResultSummary(
+                (int) $monitorId,
+                $from,
+                $to,
+                [
+                    'firstCheckedAt' => $summary?->first_checked_at
+                        ? CarbonImmutable::parse($summary->first_checked_at)
+                        : null,
+                    'totalResults' => (int) ($summary?->total_results ?? 0),
+                    'downResults' => (int) ($summary?->down_results ?? 0),
+                ],
+            );
+        }
+    }
+
+    /**
      * @param  Collection<int, Incident>  $incidents
      */
     protected function rememberPreloadedDowntimeIncidents(
@@ -432,6 +477,22 @@ class MonitorPresenter
             'from' => $from,
             'to' => $to,
             'results' => $results,
+        ];
+    }
+
+    /**
+     * @param  array{firstCheckedAt: CarbonImmutable|null, totalResults: int, downResults: int}  $summary
+     */
+    protected function rememberPreloadedCheckResultSummary(
+        int $monitorId,
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        array $summary,
+    ): void {
+        $this->preloadedCheckResultSummaries[$monitorId][] = [
+            'from' => $from,
+            'to' => $to,
+            'summary' => $summary,
         ];
     }
 
@@ -468,6 +529,22 @@ class MonitorPresenter
                 ->filter(fn (CheckResult $result) => $result->checked_at?->greaterThanOrEqualTo($from)
                     && $result->checked_at->lt($to))
                 ->values();
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{firstCheckedAt: CarbonImmutable|null, totalResults: int, downResults: int}|null
+     */
+    protected function preloadedCheckResultSummaryForWindow(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to): ?array
+    {
+        foreach ($this->preloadedCheckResultSummaries[$monitor->id] ?? [] as $window) {
+            if ($window['from']->greaterThan($from) || $window['to']->lessThan($to)) {
+                continue;
+            }
+
+            return $window['summary'];
         }
 
         return null;
@@ -1316,7 +1393,7 @@ class MonitorPresenter
         ];
     }
 
-    protected function aggregateMonitorWindow(Collection $monitors, int $days): array
+    protected function aggregateMonitorWindow(Collection $monitors, int $days, ?string $mtbfLabel = null): array
     {
         if ($monitors->isEmpty()) {
             return [
@@ -1336,9 +1413,7 @@ class MonitorPresenter
 
         return [
             'uptimeLabel' => $this->formatUptimeLabel($uptimeValue),
-            'mtbfLabel' => $monitors->contains(fn (Monitor $monitor) => $this->mtbfLabel($monitor, $days) !== 'N/A')
-                ? $monitors->map(fn (Monitor $monitor) => $this->mtbfLabel($monitor, $days))->first(fn (string $value) => $value !== 'N/A')
-                : 'N/A',
+            'mtbfLabel' => $mtbfLabel ?? 'N/A',
             'withoutIncidentsLabel' => $stats->sum('incidentsCount') === 0 ? $days.'d' : '0d',
             'incidentsCount' => $stats->sum('incidentsCount'),
         ];
@@ -1394,7 +1469,10 @@ class MonitorPresenter
         $to = $this->currentTime();
         $from = $to->subHours($hours);
         $window = $this->downtimeWindowData($monitor, $from, $to);
-        $fallbackResults = $window['incidents']->isEmpty()
+        $fallbackSummary = $window['incidents']->isEmpty()
+            ? $this->windowCheckResultSummary($monitor, $from, $to)
+            : null;
+        $fallbackResults = $window['incidents']->isEmpty() && ($fallbackSummary['downResults'] ?? 0) > 0
             ? $this->windowCheckResults($monitor, $from, $to)
             : collect();
 
@@ -1414,7 +1492,7 @@ class MonitorPresenter
                 return 'unknown';
             }
 
-            if ($window['incidents']->isEmpty() && $fallbackResults->where('status', 'down')->isNotEmpty()) {
+            if ($window['incidents']->isEmpty() && ($fallbackSummary['downResults'] ?? 0) > 0) {
                 $slice = $fallbackResults->filter(fn (CheckResult $result) => $result->checked_at?->betweenIncluded($start, $end));
 
                 if ($slice->isEmpty()) {
@@ -1552,6 +1630,12 @@ class MonitorPresenter
             ];
         }
 
+        $preloadedSummary = $this->preloadedCheckResultSummaryForWindow($monitor, $from, $to);
+
+        if ($preloadedSummary !== null) {
+            return $this->windowCheckResultSummaryCache[$cacheKey] = $preloadedSummary;
+        }
+
         $summary = CheckResult::query()
             ->where('monitor_id', $monitor->id)
             ->where('checked_at', '>=', $from)
@@ -1568,6 +1652,38 @@ class MonitorPresenter
             'totalResults' => (int) ($summary?->total_results ?? 0),
             'downResults' => (int) ($summary?->down_results ?? 0),
         ];
+    }
+
+    protected function workspaceMtbfLabel(Collection $monitors, int $days): string
+    {
+        if ($monitors->isEmpty()) {
+            return 'N/A';
+        }
+
+        $from = $this->currentTime()->subDays($days);
+        $diffs = Incident::query()
+            ->whereIn('monitor_id', $monitors->pluck('id'))
+            ->where('started_at', '>=', $from)
+            ->orderBy('monitor_id')
+            ->orderBy('started_at')
+            ->get(['monitor_id', 'started_at'])
+            ->groupBy('monitor_id')
+            ->flatMap(function (Collection $incidents): Collection {
+                if ($incidents->count() < 2) {
+                    return collect();
+                }
+
+                return collect(range(1, $incidents->count() - 1))
+                    ->map(fn (int $index) => CarbonImmutable::parse($incidents[$index - 1]->started_at)
+                        ->diffInSeconds(CarbonImmutable::parse($incidents[$index]->started_at)))
+                    ->filter();
+            });
+
+        if ($diffs->isEmpty()) {
+            return 'N/A';
+        }
+
+        return $this->durationLabel((int) round($diffs->avg()));
     }
 
     protected function incidentWindowOverlapSeconds(Incident $incident, CarbonImmutable $from, CarbonImmutable $to): int
