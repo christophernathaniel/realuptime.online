@@ -13,6 +13,7 @@ use App\Http\Controllers\Monitoring\NotificationContactController;
 use App\Http\Controllers\Monitoring\PublicStatusPageController;
 use App\Http\Controllers\Monitoring\StatusPageController;
 use App\Http\Controllers\Monitoring\StatusPageIncidentController;
+use App\Http\Controllers\Monitoring\WorkspaceIntegrationController;
 use App\Http\Controllers\Monitoring\WorkspaceMembershipController;
 use Illuminate\Support\Facades\Route;
 
@@ -54,6 +55,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('notification-contacts', [NotificationContactController::class, 'store'])->name('notification-contacts.store');
         Route::put('notification-contacts/{notificationContact}', [NotificationContactController::class, 'update'])->name('notification-contacts.update');
         Route::delete('notification-contacts/{notificationContact}', [NotificationContactController::class, 'destroy'])->name('notification-contacts.destroy');
+        Route::post('workspace-integrations', [WorkspaceIntegrationController::class, 'store'])->name('workspace-integrations.store');
+        Route::put('workspace-integrations/{workspaceIntegration}', [WorkspaceIntegrationController::class, 'update'])->name('workspace-integrations.update');
+        Route::delete('workspace-integrations/{workspaceIntegration}', [WorkspaceIntegrationController::class, 'destroy'])->name('workspace-integrations.destroy');
         Route::post('api-tokens', [ApiTokenController::class, 'store'])->name('api-tokens.store');
         Route::delete('api-tokens/{apiToken}', [ApiTokenController::class, 'destroy'])->name('api-tokens.destroy');
 

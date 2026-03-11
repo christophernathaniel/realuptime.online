@@ -335,6 +335,26 @@ export type ContactFormData = {
     is_primary: boolean;
 };
 
+export type WorkspaceIntegrationItem = {
+    id: number;
+    provider: string;
+    providerLabel: string;
+    name: string;
+    enabled: boolean;
+    destinationLabel: string;
+    events: string[];
+    lastTestedAt: string | null;
+    lastError: string | null;
+};
+
+export type WorkspaceIntegrationFormData = {
+    provider: string;
+    name: string;
+    webhook_url: string;
+    enabled: boolean;
+    events: string[];
+};
+
 export type NotificationLogItem = {
     monitor: string | null;
     contact: string | null;
@@ -373,6 +393,8 @@ export type IntegrationSummary = {
     contacts: number;
     enabled: number;
     apiTokens: number;
+    integrations: number;
+    activeIntegrations: number;
     emailsSent: number;
     emailsPending: number;
     emailsFailed: number;

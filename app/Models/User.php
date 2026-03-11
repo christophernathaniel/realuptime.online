@@ -145,6 +145,11 @@ class User extends Authenticatable
         return $this->hasMany(ApiToken::class);
     }
 
+    public function workspaceIntegrations(): HasMany
+    {
+        return $this->hasMany(WorkspaceIntegration::class);
+    }
+
     public function assignedAdmin(): BelongsTo
     {
         return $this->belongsTo(self::class, 'admin_plan_assigned_by');

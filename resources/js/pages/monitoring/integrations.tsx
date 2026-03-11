@@ -9,11 +9,18 @@ import type {
     ApiTokenItem,
     ContactFormData,
     IntegrationContact,
+    WorkspaceIntegrationFormData,
+    WorkspaceIntegrationItem,
     IntegrationRuntime,
     IntegrationSummary,
     NotificationLogItem,
     PaginatedData,
 } from '@/types/monitoring';
+
+const integrationEvents = [
+    { value: 'monitor.down', label: 'Downtime opened' },
+    { value: 'monitor.recovered', label: 'Downtime recovered' },
+] as const;
 
 function MetricCard({ label, value, tone = 'default' }: { label: string; value: string | number; tone?: 'default' | 'good' | 'warning' | 'danger' }) {
     const toneClass = {
@@ -140,29 +147,144 @@ function ContactEditor({ contact }: { contact: IntegrationContact }) {
     );
 }
 
+function WorkspaceIntegrationEditor({ integration }: { integration: WorkspaceIntegrationItem }) {
+    const form = useForm<WorkspaceIntegrationFormData>({
+        provider: integration.provider,
+        name: integration.name,
+        webhook_url: '',
+        enabled: integration.enabled,
+        events: integration.events,
+    });
+    const errors = Object.values(form.errors);
+
+    const toggleEvent = (value: string, checked: boolean) => {
+        form.setData('events', checked
+            ? [...new Set([...form.data.events, value])]
+            : form.data.events.filter((event) => event !== value));
+    };
+
+    return (
+        <PageCard className="space-y-4 p-5">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <div>
+                    <div className="text-[18px] font-semibold text-white">{integration.name}</div>
+                    <div className="mt-1 text-[14px] text-[#9ca7b9]">
+                        {integration.providerLabel} • {integration.destinationLabel}
+                    </div>
+                    <div className="mt-1 text-[13px] text-[#7f8eab]">
+                        {integration.lastError
+                            ? `Last error: ${integration.lastError}`
+                            : integration.lastTestedAt
+                              ? `Last delivery: ${integration.lastTestedAt}`
+                              : 'No deliveries recorded yet'}
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-[14px] border border-[#ff6269]/25 bg-[#231320] px-4 py-2.5 text-sm text-[#ffd4d7]"
+                    onClick={() => {
+                        if (window.confirm(`Delete integration "${integration.name}"?`)) {
+                            router.delete(`/workspace-integrations/${integration.id}`, { preserveScroll: true });
+                        }
+                    }}
+                >
+                    <Trash2 className="size-4" />
+                    Delete
+                </button>
+            </div>
+            <form
+                className="grid gap-4"
+                onSubmit={(event) => {
+                    event.preventDefault();
+                    form.put(`/workspace-integrations/${integration.id}`, { preserveScroll: true });
+                }}
+            >
+                {errors.length > 0 ? (
+                    <div className="rounded-[16px] border border-[#ff6269]/20 bg-[#2a1621] px-4 py-3 text-sm text-[#ffd4d7]">
+                        {errors.join(' ')}
+                    </div>
+                ) : null}
+                <div className="grid gap-4 lg:grid-cols-2">
+                    <label className="space-y-2">
+                        <span className="text-[15px] text-[#dce6fb]">Name</span>
+                        <input
+                            value={form.data.name}
+                            onChange={(event) => form.setData('name', event.target.value)}
+                            className="h-11 w-full rounded-[14px] border border-white/10 bg-[#0b1425] px-4 text-sm text-white outline-none"
+                        />
+                    </label>
+                    <label className="space-y-2">
+                        <span className="text-[15px] text-[#dce6fb]">Rotate webhook URL</span>
+                        <input
+                            value={form.data.webhook_url}
+                            onChange={(event) => form.setData('webhook_url', event.target.value)}
+                            className="h-11 w-full rounded-[14px] border border-white/10 bg-[#0b1425] px-4 text-sm text-white outline-none"
+                            placeholder="Leave blank to keep the current webhook"
+                        />
+                    </label>
+                </div>
+                <label className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#171d28] px-4 py-3 text-sm text-[#dce6fb]">
+                    <input
+                        type="checkbox"
+                        checked={form.data.enabled}
+                        onChange={(event) => form.setData('enabled', event.target.checked)}
+                        className="size-4 rounded border-white/15 bg-[#121821]"
+                    />
+                    Enable delivery
+                </label>
+                <div className="grid gap-3 md:grid-cols-2">
+                    {integrationEvents.map((eventOption) => (
+                        <label key={eventOption.value} className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#171d28] px-4 py-3 text-sm text-[#dce6fb]">
+                            <input
+                                type="checkbox"
+                                checked={form.data.events.includes(eventOption.value)}
+                                onChange={(event) => toggleEvent(eventOption.value, event.target.checked)}
+                                className="size-4 rounded border-white/15 bg-[#121821]"
+                            />
+                            {eventOption.label}
+                        </label>
+                    ))}
+                </div>
+                <div className="flex justify-end">
+                    <button type="submit" className="inline-flex items-center gap-2 rounded-[14px] bg-[#7c8cff] px-4 py-2.5 text-sm font-medium text-white">
+                        <Save className="size-4" />
+                        Save integration
+                    </button>
+                </div>
+            </form>
+        </PageCard>
+    );
+}
+
 type IntegrationsPageProps = {
     summary: IntegrationSummary;
     runtime: IntegrationRuntime;
     contacts: IntegrationContact[];
+    integrations: WorkspaceIntegrationItem[];
     recentLogs: PaginatedData<NotificationLogItem>;
     apiTokens: ApiTokenItem[];
     formDefaults: ContactFormData;
     tokenFormDefaults: ApiTokenFormData;
+    integrationFormDefaults: WorkspaceIntegrationFormData;
 };
 
 export default function IntegrationsPage({
     summary,
     runtime,
     contacts,
+    integrations,
     recentLogs,
     apiTokens,
     formDefaults,
     tokenFormDefaults,
+    integrationFormDefaults,
 }: IntegrationsPageProps) {
     const contactForm = useForm<ContactFormData>(formDefaults);
     const tokenForm = useForm<ApiTokenFormData>(tokenFormDefaults);
+    const integrationForm = useForm<WorkspaceIntegrationFormData>(integrationFormDefaults);
     const contactErrors = Object.values(contactForm.errors);
     const tokenErrors = Object.values(tokenForm.errors);
+    const integrationErrors = Object.values(integrationForm.errors);
     const flash = usePage<{
         flash?: {
             apiToken?: {
@@ -185,12 +307,14 @@ export default function IntegrationsPage({
                             Automation &amp; API<span className="text-[#7c8cff]">.</span>
                         </h1>
                         <div className="mt-2 max-w-[820px] text-[16px] text-[#9ca7b9]">
-                            Manage email contacts, issue tokens for automation, and verify that queues, workers, and mail delivery are configured correctly before deployment.
+                            Manage email contacts, workspace integrations, API tokens, and delivery queues from one operational surface.
                         </div>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
+                    <div className="grid gap-3 sm:grid-cols-4 xl:grid-cols-8">
                         <MetricCard label="Contacts" value={summary.contacts} />
                         <MetricCard label="Enabled" value={summary.enabled} tone="good" />
+                        <MetricCard label="Integrations" value={summary.integrations} />
+                        <MetricCard label="Active" value={summary.activeIntegrations} tone="good" />
                         <MetricCard label="Tokens" value={summary.apiTokens} />
                         <MetricCard label="Sent" value={summary.emailsSent} tone="good" />
                         <MetricCard label="Pending" value={summary.emailsPending} tone="warning" />
@@ -200,6 +324,95 @@ export default function IntegrationsPage({
 
                 <div className="grid gap-5 xl:grid-cols-[minmax(0,1.08fr)_420px]">
                     <section className="space-y-4">
+                        <PageCard className="space-y-5 p-6">
+                            <div className="flex items-center gap-3 text-[22px] font-semibold text-white">
+                                <ServerCog className="size-5 text-[#7c8cff]" />
+                                Workspace integrations
+                            </div>
+                            <div className="text-[15px] text-[#9ca7b9]">
+                                Connect Slack through an incoming webhook to mirror downtime and recovery events into the channels your team already watches.
+                            </div>
+                            <form
+                                className="grid gap-4"
+                                onSubmit={(event: FormEvent) => {
+                                    event.preventDefault();
+                                    integrationForm.post('/workspace-integrations', {
+                                        preserveScroll: true,
+                                        onSuccess: () => integrationForm.reset('name', 'webhook_url'),
+                                    });
+                                }}
+                            >
+                                {integrationErrors.length > 0 ? (
+                                    <div className="rounded-[16px] border border-[#ff6269]/20 bg-[#2a1621] px-4 py-3 text-sm text-[#ffd4d7]">
+                                        {integrationErrors.join(' ')}
+                                    </div>
+                                ) : null}
+                                <div className="grid gap-4 lg:grid-cols-2">
+                                    <label className="space-y-2">
+                                        <span className="text-[15px] text-[#dce6fb]">Integration name</span>
+                                        <input
+                                            value={integrationForm.data.name}
+                                            onChange={(event) => integrationForm.setData('name', event.target.value)}
+                                            className="h-11 w-full rounded-[14px] border border-white/10 bg-[#0b1425] px-4 text-sm text-white outline-none"
+                                            placeholder="Ops Alerts"
+                                        />
+                                    </label>
+                                    <label className="space-y-2">
+                                        <span className="text-[15px] text-[#dce6fb]">Webhook URL</span>
+                                        <input
+                                            value={integrationForm.data.webhook_url}
+                                            onChange={(event) => integrationForm.setData('webhook_url', event.target.value)}
+                                            className="h-11 w-full rounded-[14px] border border-white/10 bg-[#0b1425] px-4 text-sm text-white outline-none"
+                                            placeholder="https://webhooks.example.test/integrations/ops-alerts"
+                                        />
+                                    </label>
+                                </div>
+                                <label className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#171d28] px-4 py-3 text-sm text-[#dce6fb]">
+                                    <input
+                                        type="checkbox"
+                                        checked={integrationForm.data.enabled}
+                                        onChange={(event) => integrationForm.setData('enabled', event.target.checked)}
+                                        className="size-4 rounded border-white/15 bg-[#121821]"
+                                    />
+                                    Enable delivery immediately
+                                </label>
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    {integrationEvents.map((eventOption) => (
+                                        <label key={eventOption.value} className="flex items-center gap-3 rounded-[16px] border border-white/8 bg-[#171d28] px-4 py-3 text-sm text-[#dce6fb]">
+                                            <input
+                                                type="checkbox"
+                                                checked={integrationForm.data.events.includes(eventOption.value)}
+                                                onChange={(event) => integrationForm.setData(
+                                                    'events',
+                                                    event.target.checked
+                                                        ? [...new Set([...integrationForm.data.events, eventOption.value])]
+                                                        : integrationForm.data.events.filter((current) => current !== eventOption.value),
+                                                )}
+                                                className="size-4 rounded border-white/15 bg-[#121821]"
+                                            />
+                                            {eventOption.label}
+                                        </label>
+                                    ))}
+                                </div>
+                                <div className="flex justify-end">
+                                    <button type="submit" className="inline-flex items-center gap-2 rounded-[14px] bg-[#7c8cff] px-4 py-2.5 text-sm font-medium text-white">
+                                        <Save className="size-4" />
+                                        Add Slack integration
+                                    </button>
+                                </div>
+                            </form>
+                        </PageCard>
+
+                        <div className="space-y-4">
+                            {integrations.length === 0 ? (
+                                <PageCard className="p-6 text-[15px] text-[#9ca7b9]">
+                                    No workspace integrations yet. Add a Slack webhook above to mirror downtime and recovery into chat.
+                                </PageCard>
+                            ) : (
+                                integrations.map((integration) => <WorkspaceIntegrationEditor key={integration.id} integration={integration} />)
+                            )}
+                        </div>
+
                         <PageCard className="space-y-5 p-6">
                             <div className="flex items-center gap-3 text-[22px] font-semibold text-white">
                                 <KeyRound className="size-5 text-[#7c8cff]" />
@@ -414,7 +627,7 @@ export default function IntegrationsPage({
                         <PageCard className="space-y-4 p-6">
                             <div className="flex items-center gap-3 text-[22px] font-semibold text-white">
                                 <Mail className="size-5 text-[#7c8cff]" />
-                                Email delivery log
+                                Delivery log
                             </div>
                             {recentLogs.data.length === 0 ? (
                                 <div className="text-[15px] text-[#9ca7b9]">No notifications have been recorded yet.</div>
@@ -433,7 +646,7 @@ export default function IntegrationsPage({
                                                 <span className={toneClass}>{log.status}</span>
                                             </div>
                                             <div className="mt-2 text-[14px] text-[#dce6fb]">{log.subject}</div>
-                                            <div className="mt-1 text-[13px] text-[#7f8eab]">{log.monitor} • {log.contact}</div>
+                                            <div className="mt-1 text-[13px] text-[#7f8eab]">{log.monitor} • {log.contact ?? 'Unknown destination'}</div>
                                             <div className="mt-1 text-[13px] text-[#7f8eab]">{log.sentAt}</div>
                                             {log.failureMessage ? (
                                                 <div className="mt-3 flex items-start gap-2 rounded-[12px] border border-[#ff6269]/20 bg-[#2a1621] px-3 py-2 text-[12px] text-[#ffd4d7]">

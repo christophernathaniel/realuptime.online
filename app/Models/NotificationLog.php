@@ -14,6 +14,7 @@ class NotificationLog extends Model
         'monitor_id',
         'incident_id',
         'notification_contact_id',
+        'integration_id',
         'channel',
         'type',
         'subject',
@@ -44,5 +45,10 @@ class NotificationLog extends Model
     public function notificationContact(): BelongsTo
     {
         return $this->belongsTo(NotificationContact::class);
+    }
+
+    public function integration(): BelongsTo
+    {
+        return $this->belongsTo(WorkspaceIntegration::class, 'integration_id');
     }
 }

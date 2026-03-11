@@ -6,7 +6,9 @@ use App\Models\Monitor;
 use App\Models\NotificationContact;
 use App\Models\StatusPage;
 use App\Models\User;
+use App\Models\WorkspaceIntegration;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -427,4 +429,32 @@ it('creates notification contacts from the integrations section', function () {
 
     expect($contact)->not->toBeNull();
     expect($contact->is_primary)->toBeTrue();
+});
+
+it('creates slack workspace integrations from the integrations section', function () {
+    $user = User::factory()->premium()->create();
+    $webhookUrl = 'https://webhooks.example.test/integrations/ops-alerts';
+
+    $this->actingAs($user)
+        ->post('/workspace-integrations', [
+            'provider' => WorkspaceIntegration::PROVIDER_SLACK,
+            'name' => 'Ops Alerts',
+            'webhook_url' => $webhookUrl,
+            'enabled' => true,
+            'events' => ['monitor.down', 'monitor.recovered'],
+        ])
+        ->assertRedirect();
+
+    /** @var WorkspaceIntegration|null $integration */
+    $integration = WorkspaceIntegration::query()->first();
+    $rawConfig = DB::table('workspace_integrations')->value('config');
+
+    expect($integration)->not->toBeNull();
+    expect($integration?->user_id)->toBe($user->id);
+    expect($integration?->provider)->toBe(WorkspaceIntegration::PROVIDER_SLACK);
+    expect($integration?->status)->toBe(WorkspaceIntegration::STATUS_ACTIVE);
+    expect($integration?->name)->toBe('Ops Alerts');
+    expect($integration?->config['webhook_url'] ?? null)->toBe($webhookUrl);
+    expect($integration?->scopes)->toBe(['monitor.down', 'monitor.recovered']);
+    expect($rawConfig)->not->toContain($webhookUrl);
 });

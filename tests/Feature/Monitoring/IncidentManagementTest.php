@@ -6,6 +6,7 @@ use App\Models\Monitor;
 use App\Models\NotificationContact;
 use App\Models\NotificationLog;
 use App\Models\User;
+use App\Models\WorkspaceIntegration;
 use App\Services\Monitoring\DomainMetadataResolver;
 use App\Services\Monitoring\MonitorMetadataRefresher;
 use App\Services\Monitoring\MonitorRunner;
@@ -344,6 +345,58 @@ it('sends downtime webhook payloads for paid workspaces', function () {
         'type' => 'down',
         'status' => 'sent',
     ]);
+});
+
+it('sends downtime slack payloads for workspace integrations', function () {
+    Notification::fake();
+    Http::fake([
+        'https://example.com/slack-health' => Http::response('error', 500),
+        'https://webhooks.example.test/integrations/ops-alerts' => Http::response('ok', 200),
+    ]);
+
+    $user = User::factory()->premium()->create();
+    $integration = WorkspaceIntegration::query()->create([
+        'user_id' => $user->id,
+        'provider' => WorkspaceIntegration::PROVIDER_SLACK,
+        'name' => 'Ops Alerts',
+        'status' => WorkspaceIntegration::STATUS_ACTIVE,
+        'config' => [
+            'webhook_url' => 'https://webhooks.example.test/integrations/ops-alerts',
+        ],
+        'scopes' => ['monitor.down', 'monitor.recovered'],
+    ]);
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Slack site',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com/slack-health',
+        'request_method' => 'GET',
+        'interval_seconds' => 30,
+        'timeout_seconds' => 30,
+        'retry_limit' => 0,
+        'expected_status_code' => 200,
+        'region' => 'North America',
+    ]);
+
+    app(MonitorRunner::class)->runMonitor(
+        $monitor->fresh(['notificationContacts', 'user']),
+        CarbonImmutable::parse('2026-03-11 16:00:00'),
+    );
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://webhooks.example.test/integrations/ops-alerts'
+        && str_contains((string) data_get($request->data(), 'text'), 'Slack site is down')
+        && data_get($request->data(), 'blocks.0.text.text') === ':red_circle: Monitor down');
+
+    $this->assertDatabaseHas('notification_logs', [
+        'monitor_id' => $monitor->id,
+        'integration_id' => $integration->id,
+        'channel' => WorkspaceIntegration::PROVIDER_SLACK,
+        'type' => 'down',
+        'status' => 'sent',
+    ]);
+
+    expect($integration->fresh()?->last_tested_at)->not->toBeNull();
 });
 
 it('does not send downtime webhook payloads for free workspaces', function () {

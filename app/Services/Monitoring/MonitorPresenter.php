@@ -12,9 +12,11 @@ use App\Models\StatusPage;
 use App\Models\StatusPageIncident;
 use App\Models\User;
 use App\Models\WorkspaceMembership;
+use App\Models\WorkspaceIntegration;
 use App\Support\MonitorQueueResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Number;
@@ -172,7 +174,7 @@ class MonitorPresenter
         $monitor->load([
             'user',
             'incidents' => fn ($query) => $query->latest('started_at')->limit(10),
-            'notificationLogs' => fn ($query) => $query->with('notificationContact')->latest()->limit(8),
+            'notificationLogs' => fn ($query) => $query->with(['notificationContact', 'integration'])->latest()->limit(8),
             'heartbeatEvents' => fn ($query) => $query->latest('received_at')->limit(1),
             'maintenanceWindows' => fn ($query) => $query->with('monitors:id,name')->orderBy('starts_at'),
             'statusPages',
@@ -284,7 +286,7 @@ class MonitorPresenter
                 'channel' => ucfirst($log->channel),
                 'status' => ucfirst($log->status),
                 'subject' => $log->subject,
-                'recipient' => $log->notificationContact?->email ?? data_get($log->payload, 'url'),
+                'recipient' => $this->notificationLogDestination($log),
                 'time' => $log->created_at->format('M j, H:i'),
             ])->all(),
             'statusPages' => $monitor->statusPages->map(fn (StatusPage $statusPage) => [
@@ -690,6 +692,7 @@ class MonitorPresenter
             'lastGoodCheckResult',
             'latestCheckResult',
             'notificationLogs.notificationContact',
+            'notificationLogs.integration',
         ]);
 
         $windowEnd = $incident->resolved_at ? CarbonImmutable::parse($incident->resolved_at) : CarbonImmutable::now();
@@ -738,9 +741,7 @@ class MonitorPresenter
                         'type' => ucfirst(str_replace('_', ' ', $log->type)),
                         'status' => ucfirst($log->status),
                         'subject' => $log->subject,
-                        'contact' => $log->notificationContact?->email
-                            ?? data_get($log->payload, 'email')
-                            ?? data_get($log->payload, 'url', 'Unknown'),
+                        'contact' => $this->notificationLogDestination($log) ?? 'Unknown',
                         'sentAt' => $log->sent_at?->format('M j, Y H:i') ?? $log->created_at->format('M j, Y H:i'),
                     ])->all(),
             ],
@@ -899,10 +900,13 @@ class MonitorPresenter
         $apiTokens = $user->apiTokens()
             ->latest()
             ->get();
+        $workspaceIntegrations = $user->workspaceIntegrations()
+            ->latest()
+            ->get();
 
         $logQuery = NotificationLog::query()
             ->whereHas('monitor', fn ($query) => $query->where('user_id', $user->id))
-            ->with(['monitor', 'notificationContact']);
+            ->with(['monitor', 'notificationContact', 'integration']);
 
         $recentLogs = (clone $logQuery)
             ->latest()
@@ -916,6 +920,8 @@ class MonitorPresenter
                 'contacts' => $contacts->count(),
                 'enabled' => $contacts->where('enabled', true)->count(),
                 'apiTokens' => $apiTokens->count(),
+                'integrations' => $workspaceIntegrations->count(),
+                'activeIntegrations' => $workspaceIntegrations->where('status', WorkspaceIntegration::STATUS_ACTIVE)->count(),
                 'emailsSent' => (clone $logQuery)->where('status', 'sent')->count(),
                 'emailsPending' => (clone $logQuery)->where('status', 'pending')->count(),
                 'emailsFailed' => (clone $logQuery)->where('status', 'failed')->count(),
@@ -955,9 +961,20 @@ class MonitorPresenter
                 'logsCount' => $contact->notification_logs_count,
                 'monitorNames' => $contact->monitors->pluck('name')->take(3)->values()->all(),
             ])->all(),
+            'integrations' => $workspaceIntegrations->map(fn (WorkspaceIntegration $integration) => [
+                'id' => $integration->id,
+                'provider' => $integration->provider,
+                'providerLabel' => $this->integrationProviderLabel($integration),
+                'name' => $integration->name,
+                'enabled' => $integration->status === WorkspaceIntegration::STATUS_ACTIVE,
+                'destinationLabel' => $this->integrationDestinationLabel($integration),
+                'events' => collect($integration->scopes ?? [])->values()->all(),
+                'lastTestedAt' => $integration->last_tested_at?->format('M j, Y H:i'),
+                'lastError' => $integration->last_error_message,
+            ])->all(),
             'recentLogs' => $this->paginateData($recentLogs, fn (NotificationLog $log) => [
                 'monitor' => $log->monitor?->name,
-                'contact' => $log->notificationContact?->email,
+                'contact' => $this->notificationLogDestination($log),
                 'type' => ucfirst(str_replace('_', ' ', $log->type)),
                 'status' => ucfirst($log->status),
                 'subject' => $log->subject,
@@ -980,7 +997,51 @@ class MonitorPresenter
             'tokenFormDefaults' => [
                 'name' => 'Primary automation',
             ],
+            'integrationFormDefaults' => [
+                'provider' => WorkspaceIntegration::PROVIDER_SLACK,
+                'name' => '',
+                'webhook_url' => '',
+                'enabled' => true,
+                'events' => ['monitor.down', 'monitor.recovered'],
+            ],
         ];
+    }
+
+    protected function integrationProviderLabel(WorkspaceIntegration $integration): string
+    {
+        return match ($integration->provider) {
+            WorkspaceIntegration::PROVIDER_SLACK => 'Slack',
+            default => ucfirst($integration->provider),
+        };
+    }
+
+    protected function integrationDestinationLabel(WorkspaceIntegration $integration): string
+    {
+        return match ($integration->provider) {
+            WorkspaceIntegration::PROVIDER_SLACK => $this->maskedWebhookLabel((string) data_get($integration->config, 'webhook_url', '')),
+            default => 'Configured destination',
+        };
+    }
+
+    protected function maskedWebhookLabel(string $url): string
+    {
+        if ($url === '') {
+            return 'No destination configured';
+        }
+
+        $host = parse_url($url, PHP_URL_HOST) ?: 'Webhook';
+        $suffix = substr($url, -8);
+
+        return sprintf('%s • …%s', $host, $suffix);
+    }
+
+    protected function notificationLogDestination(NotificationLog $log): ?string
+    {
+        return $log->notificationContact?->email
+            ?? $log->integration?->name
+            ?? data_get($log->payload, 'integration_name')
+            ?? data_get($log->payload, 'email')
+            ?? data_get($log->payload, 'url');
     }
 
     /**
@@ -1217,7 +1278,7 @@ class MonitorPresenter
     {
         return $user->capabilities()
             ->with([
-                'monitors' => fn (Builder $query) => $this->applyCapabilityMonitorSummaryQuery($query),
+                'monitors' => fn (BelongsToMany $query) => $this->applyCapabilityMonitorSummaryQuery($query),
             ])
             ->orderBy('name')
             ->get()
@@ -1228,13 +1289,13 @@ class MonitorPresenter
     protected function capabilityItem(Capability $capability): array
     {
         $capability->loadMissing([
-            'monitors' => fn (Builder $query) => $this->applyCapabilityMonitorSummaryQuery($query),
+            'monitors' => fn (BelongsToMany $query) => $this->applyCapabilityMonitorSummaryQuery($query),
         ]);
 
         return $this->capabilityItemFromMonitors($capability, $capability->monitors->unique('id')->values());
     }
 
-    protected function applyCapabilityMonitorSummaryQuery(Builder $query): void
+    protected function applyCapabilityMonitorSummaryQuery(Builder|BelongsToMany $query): void
     {
         $now = $this->currentTime();
 

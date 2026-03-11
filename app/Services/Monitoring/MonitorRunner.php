@@ -8,6 +8,7 @@ use App\Models\HeartbeatEvent;
 use App\Models\Incident;
 use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
+use App\Services\Monitoring\Integrations\WorkspaceIntegrationNotificationService;
 use Carbon\CarbonImmutable;
 use GuzzleHttp\Cookie\CookieJar;
 use Illuminate\Support\Facades\Http;
@@ -19,6 +20,7 @@ class MonitorRunner
     public function __construct(
         protected EmailNotificationService $notifications,
         protected WebhookNotificationService $webhooks,
+        protected WorkspaceIntegrationNotificationService $integrations,
         protected TlsMetadataResolver $tlsMetadata,
         protected MonitorMetadataRefresher $metadataRefresher,
     ) {}
@@ -1034,6 +1036,7 @@ class MonitorRunner
             case 'down':
                 $this->notifications->sendDownAlert($monitor, $incident);
                 $this->webhooks->sendDownAlert($monitor, $incident);
+                $this->integrations->sendDownAlert($monitor, $incident);
                 break;
         }
     }
@@ -1046,6 +1049,7 @@ class MonitorRunner
 
         if ($incident->type === Incident::TYPE_DOWNTIME) {
             $this->notifications->sendRecoveryAlert($monitor, $incident);
+            $this->integrations->sendRecoveryAlert($monitor, $incident);
         }
     }
 
