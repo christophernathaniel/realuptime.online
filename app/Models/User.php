@@ -19,6 +19,14 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use Billable, HasFactory, Notifiable, TwoFactorAuthenticatable;
 
+    protected bool $subscriptionPlanResolved = false;
+
+    protected ?MembershipPlan $resolvedSubscriptionPlan = null;
+
+    protected bool $membershipPlanResolved = false;
+
+    protected ?MembershipPlan $resolvedMembershipPlan = null;
+
     /**
      * The attributes that are mass assignable.
      *
@@ -151,22 +159,36 @@ class User extends Authenticatable
 
     public function subscriptionPlan(): ?MembershipPlan
     {
+        if ($this->subscriptionPlanResolved) {
+            return $this->resolvedSubscriptionPlan;
+        }
+
         $subscription = $this->subscription('default');
 
         if (! $subscription || ! $subscription->valid()) {
-            return null;
+            $this->subscriptionPlanResolved = true;
+
+            return $this->resolvedSubscriptionPlan = null;
         }
 
         $priceId = $subscription->hasMultiplePrices()
             ? $subscription->items->first()?->stripe_price
             : $subscription->stripe_price;
 
-        return MembershipPlan::fromStripePriceId($priceId);
+        $this->subscriptionPlanResolved = true;
+
+        return $this->resolvedSubscriptionPlan = MembershipPlan::fromStripePriceId($priceId);
     }
 
     public function membershipPlan(): MembershipPlan
     {
-        return $this->adminPlanOverride()
+        if ($this->membershipPlanResolved) {
+            return $this->resolvedMembershipPlan ?? MembershipPlan::FREE;
+        }
+
+        $this->membershipPlanResolved = true;
+
+        return $this->resolvedMembershipPlan = $this->adminPlanOverride()
             ?? $this->subscriptionPlan()
             ?? MembershipPlan::FREE;
     }

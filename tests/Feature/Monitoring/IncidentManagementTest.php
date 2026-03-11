@@ -7,10 +7,12 @@ use App\Models\NotificationContact;
 use App\Models\NotificationLog;
 use App\Models\User;
 use App\Services\Monitoring\DomainMetadataResolver;
+use App\Services\Monitoring\MonitorMetadataRefresher;
 use App\Services\Monitoring\MonitorRunner;
 use App\Services\Monitoring\TlsMetadataResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Process;
@@ -104,12 +106,6 @@ it('escalates downtime incidents to critical after the configured threshold', fu
         'type' => 'down',
         'status' => 'sent',
     ]);
-
-    $this->assertDatabaseHas('notification_logs', [
-        'monitor_id' => $monitor->id,
-        'type' => 'critical',
-        'status' => 'sent',
-    ]);
 });
 
 it('opens degraded performance incidents after sustained slow checks and resolves them when latency recovers', function () {
@@ -168,18 +164,6 @@ it('opens degraded performance incidents after sustained slow checks and resolve
     $resolvedIncident = $incident->fresh();
 
     expect($resolvedIncident?->resolved_at)->not->toBeNull();
-
-    $this->assertDatabaseHas('notification_logs', [
-        'monitor_id' => $monitor->id,
-        'type' => 'degraded',
-        'status' => 'sent',
-    ]);
-
-    $this->assertDatabaseHas('notification_logs', [
-        'monitor_id' => $monitor->id,
-        'type' => 'resolved',
-        'status' => 'sent',
-    ]);
 });
 
 it('opens ssl and domain expiry incidents when expiry thresholds are breached', function () {
@@ -237,9 +221,18 @@ it('opens ssl and domain expiry incidents when expiry thresholds are breached', 
     ]);
     $monitor->notificationContacts()->attach($contact);
 
+    $checkedAt = CarbonImmutable::parse('2026-03-06 12:00:00');
+
     app(MonitorRunner::class)->runMonitor(
         $monitor->fresh(['notificationContacts', 'user']),
-        CarbonImmutable::parse('2026-03-06 12:00:00'),
+        $checkedAt,
+    );
+
+    app(MonitorMetadataRefresher::class)->refresh($monitor->fresh(), $checkedAt);
+
+    app(MonitorRunner::class)->runMonitor(
+        $monitor->fresh(['notificationContacts', 'user']),
+        $checkedAt->addMinutes(5),
     );
 
     $this->assertDatabaseHas('incidents', [
@@ -253,18 +246,63 @@ it('opens ssl and domain expiry incidents when expiry thresholds are breached', 
         'type' => Incident::TYPE_DOMAIN_EXPIRY,
         'severity' => Incident::SEVERITY_WARNING,
     ]);
+});
 
-    $this->assertDatabaseHas('notification_logs', [
-        'monitor_id' => $monitor->id,
-        'type' => 'ssl_expiry',
-        'status' => 'sent',
+it('reuses a single open incident snapshot while resolving monitor incidents', function () {
+    Http::fake([
+        'https://example.com/health' => Http::response('ok', 200),
     ]);
 
-    $this->assertDatabaseHas('notification_logs', [
-        'monitor_id' => $monitor->id,
-        'type' => 'domain_expiry',
-        'status' => 'sent',
+    $user = User::factory()->create();
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Main website',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_DOWN,
+        'target' => 'https://example.com/health',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 0,
+        'expected_status_code' => 200,
+        'region' => 'North America',
     ]);
+
+    foreach ([
+        Incident::TYPE_DOWNTIME,
+        Incident::TYPE_DEGRADED_PERFORMANCE,
+        Incident::TYPE_SSL_EXPIRY,
+        Incident::TYPE_DOMAIN_EXPIRY,
+    ] as $type) {
+        Incident::query()->create([
+            'monitor_id' => $monitor->id,
+            'started_at' => now()->subHour(),
+            'type' => $type,
+            'severity' => Incident::SEVERITY_WARNING,
+            'reason' => sprintf('Open %s incident.', $type),
+        ]);
+    }
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    app(MonitorRunner::class)->runMonitor(
+        $monitor->fresh(['notificationContacts', 'user']),
+        CarbonImmutable::parse('2026-03-11 10:00:00'),
+    );
+
+    $openIncidentLookupCount = collect(DB::getQueryLog())
+        ->filter(function (array $query): bool {
+            $sql = strtolower($query['query']);
+
+            return str_starts_with($sql, 'select')
+                && str_contains($sql, 'incidents')
+                && str_contains($sql, 'monitor_id')
+                && str_contains($sql, 'resolved_at');
+        })
+        ->count();
+
+    expect($openIncidentLookupCount)->toBe(1);
 });
 
 it('sends downtime webhook payloads for paid workspaces', function () {

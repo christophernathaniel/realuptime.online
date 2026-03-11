@@ -2,6 +2,7 @@
 
 namespace App\Services\Monitoring;
 
+use App\Jobs\RefreshMonitorMetadataJob;
 use App\Models\CheckResult;
 use App\Models\HeartbeatEvent;
 use App\Models\Incident;
@@ -18,8 +19,8 @@ class MonitorRunner
     public function __construct(
         protected EmailNotificationService $notifications,
         protected WebhookNotificationService $webhooks,
-        protected DomainMetadataResolver $domainMetadata,
         protected TlsMetadataResolver $tlsMetadata,
+        protected MonitorMetadataRefresher $metadataRefresher,
     ) {}
 
     public function runDueMonitors(): int
@@ -50,6 +51,7 @@ class MonitorRunner
         $outcome = null;
         $attemptHistory = [];
         $previousStatus = $monitor->status;
+        $openIncidents = $this->openIncidentMap($monitor);
 
         for ($attempt = 1; $attempt <= $attempts; $attempt++) {
             $outcome = $this->performCheck($monitor, $checkedAt, $attempt);
@@ -70,7 +72,7 @@ class MonitorRunner
             ->where('starts_at', '<=', $checkedAt)
             ->where('ends_at', '>=', $checkedAt)
             ->exists();
-        $shouldStoreCheckResult = $this->shouldStoreCheckResult($monitor, $outcome, $checkedAt, $previousStatus);
+        $shouldStoreCheckResult = $this->shouldStoreCheckResult($monitor, $outcome, $checkedAt, $previousStatus, $openIncidents);
         $checkResult = $shouldStoreCheckResult
             ? CheckResult::query()->create([
                 'monitor_id' => $monitor->id,
@@ -115,7 +117,7 @@ class MonitorRunner
         ])->save();
 
         if (! $outcome->isUp()) {
-            $this->resolveIncidentByType($monitor, Incident::TYPE_DEGRADED_PERFORMANCE, $checkResult, $checkedAt);
+            $this->resolveIncidentByType($monitor, Incident::TYPE_DEGRADED_PERFORMANCE, $checkResult, $checkedAt, $openIncidents);
 
             $activeIncident = $this->openOrUpdateIncident(
                 $monitor,
@@ -129,6 +131,7 @@ class MonitorRunner
                     'suppressed_by_maintenance' => $hasActiveMaintenance,
                 ],
                 $hasActiveMaintenance ? null : 'down',
+                $openIncidents,
             );
 
             $this->maybeEscalateDowntimeIncident($monitor, $activeIncident, $checkResult, $checkedAt, $hasActiveMaintenance);
@@ -136,9 +139,9 @@ class MonitorRunner
             return $outcome;
         }
 
-        $this->resolveIncidentByType($monitor, Incident::TYPE_DOWNTIME, $checkResult, $checkedAt);
-        $this->evaluateDegradedPerformance($monitor, $checkResult, $checkedAt, $hasActiveMaintenance);
-        $this->evaluateExpiryIncidents($monitor, $checkResult, $checkedAt, $hasActiveMaintenance);
+        $this->resolveIncidentByType($monitor, Incident::TYPE_DOWNTIME, $checkResult, $checkedAt, $openIncidents);
+        $this->evaluateDegradedPerformance($monitor, $checkResult, $checkedAt, $hasActiveMaintenance, $openIncidents);
+        $this->evaluateExpiryIncidents($monitor, $checkResult, $checkedAt, $hasActiveMaintenance, $openIncidents);
 
         return $outcome;
     }
@@ -202,7 +205,7 @@ class MonitorRunner
                     );
                 }
 
-                $this->refreshMonitorMetadata($monitor, $checkedAt);
+                $this->queueMetadataRefresh($monitor, $checkedAt);
 
                 return MonitorCheckOutcome::up(
                     $checkedAt,
@@ -214,7 +217,7 @@ class MonitorRunner
                 );
             }
 
-            $this->refreshMonitorMetadata($monitor, $checkedAt);
+            $this->queueMetadataRefresh($monitor, $checkedAt);
 
             return MonitorCheckOutcome::up(
                 $checkedAt,
@@ -278,6 +281,7 @@ class MonitorRunner
         MonitorCheckOutcome $outcome,
         CarbonImmutable $checkedAt,
         string $previousStatus,
+        array $openIncidents = [],
     ): bool {
         if ($monitor->type !== Monitor::TYPE_PING) {
             return true;
@@ -291,7 +295,7 @@ class MonitorRunner
             return true;
         }
 
-        if ($monitor->openIncidents()->exists()) {
+        if ($openIncidents !== []) {
             return true;
         }
 
@@ -377,7 +381,7 @@ class MonitorRunner
                 'ssl_issuer' => $issuer,
             ])->save();
 
-            $this->refreshDomainMetadata($monitor, $checkedAt);
+            $this->queueMetadataRefresh($monitor, $checkedAt);
             $meta = [
                 'issuer' => $issuer,
                 'expires_at' => $expiresAt->toIso8601String(),
@@ -575,7 +579,7 @@ class MonitorRunner
         }
 
         $totalResponseTime = (int) round((microtime(true) - $transactionStarted) * 1000);
-        $this->refreshMonitorMetadata($monitor, $checkedAt);
+        $this->queueMetadataRefresh($monitor, $checkedAt);
 
         return MonitorCheckOutcome::up(
             $checkedAt,
@@ -659,10 +663,14 @@ class MonitorRunner
         };
     }
 
-    protected function refreshMonitorMetadata(Monitor $monitor, CarbonImmutable $checkedAt): void
+    protected function queueMetadataRefresh(Monitor $monitor, CarbonImmutable $checkedAt): void
     {
-        $this->refreshDomainMetadata($monitor, $checkedAt);
-        $this->refreshSslMetadata($monitor, $checkedAt);
+        if (! $this->metadataRefresher->needsRefresh($monitor, $checkedAt)) {
+            return;
+        }
+
+        RefreshMonitorMetadataJob::dispatch($monitor->id, $checkedAt->toIso8601String())
+            ->afterCommit();
     }
 
     protected function effectiveIntervalSeconds(Monitor $monitor): int
@@ -674,89 +682,6 @@ class MonitorRunner
         }
 
         return max((int) $monitor->interval_seconds, $user->minimumMonitorIntervalSeconds());
-    }
-
-    protected function refreshDomainMetadata(Monitor $monitor, CarbonImmutable $checkedAt): void
-    {
-        if (! in_array($monitor->type, [Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD, Monitor::TYPE_SSL, Monitor::TYPE_SYNTHETIC], true)) {
-            return;
-        }
-
-        if ($monitor->domain_checked_at && $monitor->domain_checked_at->gt($checkedAt->subDay())) {
-            return;
-        }
-
-        $host = $this->monitorHost($monitor);
-
-        if (! $host) {
-            return;
-        }
-
-        $domain = $this->domainMetadata->resolve($host, $monitor->timeout_seconds);
-
-        $monitor->forceFill([
-            'domain_expires_at' => $domain['expires_at'] ?? $monitor->domain_expires_at,
-            'domain_registrar' => $domain['registrar'] ?? $monitor->domain_registrar,
-            'domain_checked_at' => $checkedAt,
-        ])->save();
-    }
-
-    protected function refreshSslMetadata(Monitor $monitor, CarbonImmutable $checkedAt): void
-    {
-        if ($monitor->type === Monitor::TYPE_SSL) {
-            return;
-        }
-
-        if (! in_array($monitor->type, [Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD, Monitor::TYPE_SYNTHETIC], true)) {
-            return;
-        }
-
-        if ($monitor->ssl_checked_at && $monitor->ssl_checked_at->gt($checkedAt->subHours(12))) {
-            return;
-        }
-
-        $target = (string) ($monitor->target ?? '');
-
-        if (! str_starts_with(strtolower($target), 'https://')) {
-            return;
-        }
-
-        $host = $this->monitorHost($monitor);
-
-        if (! $host) {
-            return;
-        }
-
-        $ssl = $this->tlsMetadata->resolve($host, $monitor->timeout_seconds);
-
-        if (! $ssl) {
-            return;
-        }
-
-        $monitor->forceFill([
-            'ssl_expires_at' => $ssl['expires_at'],
-            'ssl_issuer' => $ssl['issuer'],
-            'ssl_checked_at' => $checkedAt,
-        ])->save();
-    }
-
-    protected function monitorHost(Monitor $monitor): ?string
-    {
-        if ($monitor->type === Monitor::TYPE_PORT) {
-            [$host] = $this->parsePortTarget((string) ($monitor->target ?? ''));
-
-            return $host;
-        }
-
-        $host = parse_url((string) ($monitor->target ?? ''), PHP_URL_HOST);
-
-        if (is_string($host) && $host !== '') {
-            return $host;
-        }
-
-        $target = trim((string) ($monitor->target ?? ''));
-
-        return $target !== '' ? $target : null;
     }
 
     protected function attemptHistoryEntry(MonitorCheckOutcome $outcome, int $attempt): array
@@ -811,9 +736,10 @@ class MonitorRunner
         CheckResult $checkResult,
         CarbonImmutable $checkedAt,
         bool $hasActiveMaintenance,
+        array &$openIncidents,
     ): void {
         if (! $this->supportsLatencyAlerts($monitor) || ! $monitor->latency_threshold_ms) {
-            $this->resolveIncidentByType($monitor, Incident::TYPE_DEGRADED_PERFORMANCE, $checkResult, $checkedAt);
+            $this->resolveIncidentByType($monitor, Incident::TYPE_DEGRADED_PERFORMANCE, $checkResult, $checkedAt, $openIncidents);
 
             return;
         }
@@ -821,7 +747,7 @@ class MonitorRunner
         $isSlow = (bool) data_get($checkResult->meta, 'slow', false);
 
         if (! $isSlow || $checkResult->status !== 'up') {
-            $this->resolveIncidentByType($monitor, Incident::TYPE_DEGRADED_PERFORMANCE, $checkResult, $checkedAt);
+            $this->resolveIncidentByType($monitor, Incident::TYPE_DEGRADED_PERFORMANCE, $checkResult, $checkedAt, $openIncidents);
 
             return;
         }
@@ -864,6 +790,7 @@ class MonitorRunner
                 'suppressed_by_maintenance' => $hasActiveMaintenance,
             ],
             $hasActiveMaintenance ? null : 'degraded',
+            $openIncidents,
         );
     }
 
@@ -872,6 +799,7 @@ class MonitorRunner
         CheckResult $checkResult,
         CarbonImmutable $checkedAt,
         bool $hasActiveMaintenance,
+        array &$openIncidents,
     ): void {
         $this->evaluateExpiryIncident(
             $monitor,
@@ -884,6 +812,7 @@ class MonitorRunner
             'ssl_days_remaining',
             'ssl_expiry',
             'SSL certificate expires in %d day(s).',
+            $openIncidents,
         );
 
         $this->evaluateExpiryIncident(
@@ -897,6 +826,7 @@ class MonitorRunner
             'domain_days_remaining',
             'domain_expiry',
             'Domain registration expires in %d day(s).',
+            $openIncidents,
         );
     }
 
@@ -911,9 +841,10 @@ class MonitorRunner
         string $daysRemainingKey,
         string $notificationType,
         string $reasonTemplate,
+        array &$openIncidents,
     ): void {
         if (! $expiresAt || $thresholdDays === null) {
-            $this->resolveIncidentByType($monitor, $incidentType, $checkResult, $checkedAt);
+            $this->resolveIncidentByType($monitor, $incidentType, $checkResult, $checkedAt, $openIncidents);
 
             return;
         }
@@ -921,7 +852,7 @@ class MonitorRunner
         $daysRemaining = (int) $checkedAt->diffInDays(CarbonImmutable::parse($expiresAt), false);
 
         if ($daysRemaining > $thresholdDays) {
-            $this->resolveIncidentByType($monitor, $incidentType, $checkResult, $checkedAt);
+            $this->resolveIncidentByType($monitor, $incidentType, $checkResult, $checkedAt, $openIncidents);
 
             return;
         }
@@ -940,6 +871,7 @@ class MonitorRunner
                 'suppressed_by_maintenance' => $hasActiveMaintenance,
             ],
             $hasActiveMaintenance ? null : $notificationType,
+            $openIncidents,
         );
     }
 
@@ -948,8 +880,9 @@ class MonitorRunner
         string $type,
         CheckResult $checkResult,
         CarbonImmutable $checkedAt,
+        array &$openIncidents,
     ): ?Incident {
-        $incident = $this->openIncidentForType($monitor, $type);
+        $incident = $openIncidents[$type] ?? null;
 
         if (! $incident) {
             return null;
@@ -965,6 +898,8 @@ class MonitorRunner
             $this->sendResolutionNotification($monitor, $incident);
         }
 
+        unset($openIncidents[$type]);
+
         return $incident;
     }
 
@@ -977,8 +912,9 @@ class MonitorRunner
         string $reason,
         array $meta = [],
         ?string $notificationType = null,
+        array &$openIncidents = [],
     ): Incident {
-        $incident = $this->openIncidentForType($monitor, $type);
+        $incident = $openIncidents[$type] ?? null;
         $mergedMeta = $incident
             ? [...($incident->meta ?? []), ...$meta]
             : $meta;
@@ -1002,6 +938,8 @@ class MonitorRunner
                 $this->sendOpenNotification($monitor, $incident, $notificationType);
             }
 
+            $openIncidents[$type] = $incident;
+
             return $incident;
         }
 
@@ -1013,6 +951,8 @@ class MonitorRunner
             'http_status_code' => $checkResult->http_status_code ?? $incident->http_status_code,
             'meta' => $mergedMeta,
         ])->save();
+
+        $openIncidents[$type] = $incident;
 
         return $incident;
     }
@@ -1041,14 +981,24 @@ class MonitorRunner
         // Reserved by policy: prolonged downtime changes severity, but does not trigger another email.
     }
 
-    protected function openIncidentForType(Monitor $monitor, string $type): ?Incident
+    /**
+     * @return array<string, Incident>
+     */
+    protected function openIncidentMap(Monitor $monitor): array
     {
-        return Incident::query()
-            ->where('monitor_id', $monitor->id)
-            ->where('type', $type)
-            ->whereNull('resolved_at')
-            ->latest('started_at')
-            ->first();
+        $openIncidents = $monitor->relationLoaded('openIncidents')
+            ? $monitor->openIncidents
+            : Incident::query()
+                ->where('monitor_id', $monitor->id)
+                ->whereNull('resolved_at')
+                ->latest('started_at')
+                ->get();
+
+        return $openIncidents
+            ->sortByDesc(fn (Incident $incident) => $incident->started_at)
+            ->unique('type')
+            ->mapWithKeys(fn (Incident $incident) => [$incident->type => $incident])
+            ->all();
     }
 
     protected function lastHealthyCheckResultId(Monitor $monitor, string $incidentType, CarbonImmutable $checkedAt): ?int

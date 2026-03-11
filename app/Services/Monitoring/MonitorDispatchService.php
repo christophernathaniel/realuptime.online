@@ -19,7 +19,7 @@ class MonitorDispatchService
         $staleBefore = $now->subSeconds(max(60, (int) config('realuptime.dispatch.claim_ttl_seconds', 600)));
 
         $candidateIds = Monitor::query()
-            ->where('status', '!=', Monitor::STATUS_PAUSED)
+            ->whereIn('status', [Monitor::STATUS_UP, Monitor::STATUS_DOWN])
             ->where(function ($query) use ($now): void {
                 $query->whereNull('next_check_at')
                     ->orWhere('next_check_at', '<=', $now);
@@ -28,7 +28,8 @@ class MonitorDispatchService
                 $query->whereNull('check_claimed_at')
                     ->orWhere('check_claimed_at', '<=', $staleBefore);
             })
-            ->orderByRaw('coalesce(next_check_at, created_at)')
+            ->orderBy('next_check_at')
+            ->orderBy('id')
             ->limit($batchSize)
             ->pluck('id');
 
@@ -40,7 +41,7 @@ class MonitorDispatchService
 
         Monitor::query()
             ->whereIn('id', $candidateIds)
-            ->where('status', '!=', Monitor::STATUS_PAUSED)
+            ->whereIn('status', [Monitor::STATUS_UP, Monitor::STATUS_DOWN])
             ->where(function ($query) use ($now): void {
                 $query->whereNull('next_check_at')
                     ->orWhere('next_check_at', '<=', $now);
@@ -57,7 +58,8 @@ class MonitorDispatchService
 
         return Monitor::query()
             ->where('check_claim_token', $claimToken)
-            ->orderByRaw('coalesce(next_check_at, created_at)')
+            ->orderBy('next_check_at')
+            ->orderBy('id')
             ->get();
     }
 

@@ -13,6 +13,7 @@ use App\Services\Monitoring\MonitorRunner;
 use App\Services\Monitoring\TlsMetadataResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Process;
@@ -52,6 +53,70 @@ it('renders the monitors index for authenticated users', function () {
         ->assertInertia(fn ($page) => $page
             ->component('monitors/index')
             ->where('monitors.0.name', 'API health'));
+});
+
+it('keeps the monitors index presenter query count effectively flat as monitor volume grows', function () {
+    CarbonImmutable::setTestNow('2026-03-10 12:00:00');
+
+    $seedUser = function (int $monitorCount): User {
+        $user = User::factory()->create();
+
+        foreach (range(1, $monitorCount) as $index) {
+            $monitor = Monitor::query()->create([
+                'user_id' => $user->id,
+                'name' => "API {$index}",
+                'type' => Monitor::TYPE_HTTP,
+                'status' => Monitor::STATUS_UP,
+                'target' => "https://example.com/health/{$index}",
+                'request_method' => 'GET',
+                'interval_seconds' => 300,
+                'timeout_seconds' => 30,
+                'retry_limit' => 2,
+                'region' => 'North America',
+                'last_checked_at' => now()->subMinutes($index),
+                'last_status_changed_at' => now()->subHours(4),
+            ]);
+
+            $monitor->forceFill([
+                'created_at' => now()->subDays(5),
+                'updated_at' => now()->subMinutes($index),
+            ])->save();
+
+            foreach ([now()->subHours(12), now()->subHours(1), now()->subMinutes($index)] as $checkedAt) {
+                $monitor->checkResults()->create([
+                    'status' => 'up',
+                    'checked_at' => $checkedAt,
+                    'attempts' => 1,
+                    'response_time_ms' => 200 + $index,
+                    'http_status_code' => 200,
+                ]);
+            }
+        }
+
+        return $user;
+    };
+
+    $singleMonitorUser = $seedUser(1);
+    $threeMonitorUser = $seedUser(3);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    app(MonitorPresenter::class)->index($singleMonitorUser);
+
+    $singleMonitorQueryCount = count(DB::getQueryLog());
+
+    DB::flushQueryLog();
+
+    app(MonitorPresenter::class)->index($threeMonitorUser);
+
+    $threeMonitorQueryCount = count(DB::getQueryLog());
+
+    DB::disableQueryLog();
+    CarbonImmutable::setTestNow();
+
+    expect($threeMonitorQueryCount - $singleMonitorQueryCount)->toBeLessThanOrEqual(1);
+    expect($threeMonitorQueryCount)->toBeLessThanOrEqual(10);
 });
 
 it('keeps dashboard uptime percentages aligned with downtime duration when healthy ping results are sampled', function () {
@@ -817,6 +882,7 @@ it('filters response time data by the requested range on the monitor detail page
     expect($props['monitor']['responseTimeStats']['maximum'])->toBe(210);
     expect($props['monitor']['responseTimeStats']['average'])->toBe(160);
     expect($props['monitor']['responseTimeStats']['p95'])->toBe(210);
+    expect($props['monitor']['responseTimeStats']['downtimeLabel'])->toBe('5m down');
     expect($props['monitor']['responseTimeSignals']['sampleCount'])->toBe(3);
     expect($props['monitor']['responseTimeSignals']['failedChecks'])->toBe(1);
     expect($props['monitor']['responseTimeSignals']['slowChecks'])->toBe(0);
@@ -824,6 +890,78 @@ it('filters response time data by the requested range on the monitor detail page
     expect($props['monitor']['responseTimeRangeOptions'])->toHaveCount(6);
     expect($props['monitor']['responseTimeChart'])->toHaveCount(3);
     expect($props['monitor']['responseTimeChart'][2]['status'])->toBe('down');
+});
+
+it('defaults the latency profile range to the last day', function () {
+    $user = User::factory()->create();
+
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'API latency',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com/health',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 2,
+        'region' => 'North America',
+        'last_checked_at' => now()->subMinute(),
+        'last_status_changed_at' => now()->subHours(2),
+    ]);
+
+    $props = app(MonitorPresenter::class)->show($monitor->fresh());
+
+    expect($props['monitor']['responseTimeRange'])->toBe('day');
+    expect($props['monitor']['responseTimeRangeLabel'])->toBe('Last day');
+});
+
+it('keeps the default monitor detail presenter query count bounded', function () {
+    CarbonImmutable::setTestNow('2026-03-10 12:00:00');
+
+    $user = User::factory()->create();
+
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'API latency',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com/health',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 2,
+        'region' => 'North America',
+        'last_checked_at' => now()->subMinute(),
+        'last_status_changed_at' => now()->subHours(2),
+    ]);
+
+    $monitor->forceFill([
+        'created_at' => now()->subDays(45),
+        'updated_at' => now()->subMinute(),
+    ])->save();
+
+    foreach ([now()->subDays(6), now()->subDay(), now()->subHour(), now()->subMinute()] as $checkedAt) {
+        $monitor->checkResults()->create([
+            'status' => 'up',
+            'checked_at' => $checkedAt,
+            'attempts' => 1,
+            'response_time_ms' => 180,
+            'http_status_code' => 200,
+        ]);
+    }
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    app(MonitorPresenter::class)->show($monitor->fresh());
+
+    $queryCount = count(DB::getQueryLog());
+
+    DB::disableQueryLog();
+    CarbonImmutable::setTestNow();
+
+    expect($queryCount)->toBeLessThanOrEqual(15);
 });
 
 it('supports changing response time granularity on the monitor detail page', function () {

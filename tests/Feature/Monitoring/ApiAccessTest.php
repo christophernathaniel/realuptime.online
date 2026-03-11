@@ -45,6 +45,47 @@ it('rejects invalid api tokens', function () {
     $this->getJson('/api/v1/workspace', [
         'Authorization' => 'Bearer invalid-token',
     ])->assertUnauthorized()->assertJson([
-        'message' => 'Invalid API token.',
+        'message' => 'Invalid token.',
     ]);
+});
+
+it('paginates api monitor listings', function () {
+    $user = User::factory()->premium()->create();
+
+    foreach (range(1, 55) as $index) {
+        Monitor::query()->create([
+            'user_id' => $user->id,
+            'name' => sprintf('API Monitor %03d', $index),
+            'type' => Monitor::TYPE_HTTP,
+            'status' => Monitor::STATUS_UP,
+            'target' => sprintf('https://example.com/%03d', $index),
+            'request_method' => 'GET',
+            'interval_seconds' => 300,
+            'timeout_seconds' => 30,
+            'retry_limit' => 2,
+            'region' => 'North America',
+        ]);
+    }
+
+    $user->apiTokens()->create([
+        'name' => 'Pagination client',
+        'token_hash' => hash('sha256', 'pagination-token'),
+    ]);
+
+    $response = $this->getJson('/api/v1/monitors?per_page=20&page=2', [
+        'Authorization' => 'Bearer pagination-token',
+    ]);
+
+    $response
+        ->assertOk()
+        ->assertJsonCount(20, 'data')
+        ->assertJsonPath('meta.current_page', 2)
+        ->assertJsonPath('meta.last_page', 3)
+        ->assertJsonPath('meta.per_page', 20)
+        ->assertJsonPath('meta.total', 55);
+
+    expect($response->json('links.previous'))->toContain('page=1');
+    expect($response->json('links.previous'))->toContain('per_page=20');
+    expect($response->json('links.next'))->toContain('page=3');
+    expect($response->json('links.next'))->toContain('per_page=20');
 });

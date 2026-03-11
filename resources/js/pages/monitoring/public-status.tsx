@@ -29,7 +29,7 @@ type PublicStatusPageProps = {
 export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) {
     const tone = tones[statusPage.overallTone];
 
-    usePageAutoRefresh({ only: ['statusPage'], intervalMs: 30000 });
+    usePageAutoRefresh({ only: ['statusPage'], intervalMs: 60000 });
 
     return (
         <div className="min-h-screen bg-[#0d1117] px-4 py-8 text-[#f4f7ff] sm:px-6 lg:px-8">

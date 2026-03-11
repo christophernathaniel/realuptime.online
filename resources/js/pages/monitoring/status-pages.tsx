@@ -1,11 +1,13 @@
 import { Head, router, useForm } from '@inertiajs/react';
 import { ExternalLink, Globe2, Save, Trash2 } from 'lucide-react';
-import type { FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
+import { PaginationStrip } from '@/components/monitoring/pagination-strip';
 import { PageCard } from '@/components/monitoring/page-card';
 import { StatusDot } from '@/components/monitoring/status-chip';
 import MonitoringLayout from '@/layouts/monitoring-layout';
 import type {
     MonitorOption,
+    PaginatedData,
     StatusPageFormData,
     StatusPageIncidentFormData,
     StatusPageIncidentItem,
@@ -420,8 +422,10 @@ type StatusPagesPageProps = {
         monitors: number;
         activeIncidents: number;
     };
-    pages: StatusPageItem[];
+    pages: PaginatedData<StatusPageItem>;
     monitorOptions: MonitorOption[];
+    monitorOptionQuery: string;
+    monitorOptionResults: PaginatedData<MonitorOption>;
     formDefaults: StatusPageFormData;
 };
 
@@ -429,14 +433,33 @@ export default function StatusPagesPage({
     summary,
     pages,
     monitorOptions,
+    monitorOptionQuery,
+    monitorOptionResults,
     formDefaults,
 }: StatusPagesPageProps) {
     const form = useForm<StatusPageFormData>(formDefaults);
     const errors = Object.values(form.errors);
+    const [monitorSearch, setMonitorSearch] = useState(monitorOptionQuery);
 
     const syncSlug = (value: string) => {
         form.setData('name', value);
         form.setData('slug', value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
+    };
+
+    const submitMonitorSearch = (query: string) => {
+        router.get(
+            '/status-pages',
+            {
+                page: pages.currentPage,
+                monitor_query: query,
+                monitor_page: 1,
+            },
+            {
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            },
+        );
     };
 
     return (
@@ -472,11 +495,62 @@ export default function StatusPagesPage({
                     </div>
                 </div>
 
-                        <PageCard className="space-y-5 p-6">
-                            <div className="flex items-center gap-3 text-[22px] font-semibold text-white">
-                                <Globe2 className="size-5 text-[#7c8cff]" />
-                                Create status page
+                <PageCard className="space-y-5 p-6">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <div className="text-[20px] font-semibold text-white">Monitor browser</div>
+                            <div className="mt-1 text-[14px] text-[#9ca7b9]">
+                                Showing {monitorOptionResults.from ?? 0}-{monitorOptionResults.to ?? 0} of {monitorOptionResults.total} checks for the create and edit forms on this page.
                             </div>
+                        </div>
+                        <form
+                            className="flex flex-col gap-3 sm:flex-row"
+                            onSubmit={(event: FormEvent) => {
+                                event.preventDefault();
+                                submitMonitorSearch(monitorSearch);
+                            }}
+                        >
+                            <input
+                                value={monitorSearch}
+                                onChange={(event) => setMonitorSearch(event.target.value)}
+                                className="h-11 min-w-[220px] rounded-[14px] border border-white/10 bg-[#0b1425] px-4 text-sm text-white outline-none"
+                                placeholder="Search checks by name"
+                            />
+                            <div className="flex gap-3">
+                                <button type="submit" className="inline-flex h-11 items-center justify-center rounded-[14px] bg-[#7c8cff] px-4 text-sm font-medium text-white">
+                                    Search
+                                </button>
+                                {monitorOptionQuery ? (
+                                    <button
+                                        type="button"
+                                        className="inline-flex h-11 items-center justify-center rounded-[14px] border border-white/10 bg-[#171d28] px-4 text-sm text-[#dce6fb]"
+                                        onClick={() => {
+                                            setMonitorSearch('');
+                                            submitMonitorSearch('');
+                                        }}
+                                    >
+                                        Clear
+                                    </button>
+                                ) : null}
+                            </div>
+                        </form>
+                    </div>
+                    <PaginationStrip
+                        currentPage={monitorOptionResults.currentPage}
+                        lastPage={monitorOptionResults.lastPage}
+                        from={monitorOptionResults.from}
+                        to={monitorOptionResults.to}
+                        total={monitorOptionResults.total}
+                        previousPageUrl={monitorOptionResults.previousPageUrl}
+                        nextPageUrl={monitorOptionResults.nextPageUrl}
+                    />
+                </PageCard>
+
+                <PageCard className="space-y-5 p-6">
+                    <div className="flex items-center gap-3 text-[22px] font-semibold text-white">
+                        <Globe2 className="size-5 text-[#7c8cff]" />
+                        Create status page
+                    </div>
                     <form
                         className="grid gap-4"
                         onSubmit={(event: FormEvent) => {
@@ -577,18 +651,29 @@ export default function StatusPagesPage({
                 </PageCard>
 
                 <div className="space-y-4">
-                    {pages.length === 0 ? (
+                    {pages.data.length === 0 ? (
                         <PageCard className="p-6 text-[15px] text-[#9ca7b9]">
                             No status pages yet. Create one above to publish monitor health publicly.
                         </PageCard>
                     ) : (
-                        pages.map((page) => (
-                            <StatusPageEditor key={page.id} page={page} monitorOptions={monitorOptions} />
-                        ))
+                        <>
+                            {pages.data.map((page) => (
+                                <StatusPageEditor key={page.id} page={page} monitorOptions={monitorOptions} />
+                            ))}
+                            <PaginationStrip
+                                currentPage={pages.currentPage}
+                                lastPage={pages.lastPage}
+                                from={pages.from}
+                                to={pages.to}
+                                total={pages.total}
+                                previousPageUrl={pages.previousPageUrl}
+                                nextPageUrl={pages.nextPageUrl}
+                            />
+                        </>
                     )}
                 </div>
 
-                {pages.length > 0 ? (
+                {pages.data.length > 0 ? (
                     <div className="text-sm text-[#7f8eab]">
                         Public URLs are available even without authentication. Draft pages return a 404 until published.
                     </div>

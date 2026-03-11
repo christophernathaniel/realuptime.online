@@ -12,22 +12,48 @@ use Inertia\Response;
 
 class SessionController extends Controller
 {
+    protected const REQUEST_SESSION_ATTRIBUTE = 'tracked_session.current';
+
+    protected const SESSION_SYNCED_AT_KEY = 'tracked_session_synced_at';
+
     public function index(Request $request): Response
     {
         $user = $request->user();
         $currentSessionId = $request->session()->getId();
 
         if ($currentSessionId !== '') {
-            $user->trackedSessions()->updateOrCreate(
-                ['session_id' => $currentSessionId],
-                [
+            $refreshSeconds = max(60, (int) config('realuptime.session_tracking.refresh_seconds', 300));
+            /** @var UserSession|null $trackedSession */
+            $trackedSession = $request->attributes->get(self::REQUEST_SESSION_ATTRIBUTE);
+            $now = now();
+
+            if (! $trackedSession) {
+                $trackedSession = $user->trackedSessions()
+                    ->where('session_id', $currentSessionId)
+                    ->first(['id', 'user_id', 'session_id', 'last_active_at', 'revoked_at']);
+            }
+
+            if (! $trackedSession) {
+                $trackedSession = $user->trackedSessions()->create([
+                    'session_id' => $currentSessionId,
                     'ip_address' => $request->ip(),
                     'user_agent' => $request->userAgent(),
                     'last_path' => $request->path(),
-                    'last_active_at' => now(),
+                    'last_active_at' => $now,
                     'revoked_at' => null,
-                ],
-            );
+                ]);
+            } elseif (! $trackedSession->last_active_at || $trackedSession->last_active_at->lte($now->copy()->subSeconds($refreshSeconds))) {
+                $trackedSession->forceFill([
+                    'ip_address' => $request->ip(),
+                    'user_agent' => $request->userAgent(),
+                    'last_path' => $request->path(),
+                    'last_active_at' => $now,
+                    'revoked_at' => null,
+                ])->save();
+            }
+
+            $request->attributes->set(self::REQUEST_SESSION_ATTRIBUTE, $trackedSession);
+            $request->session()->put(self::SESSION_SYNCED_AT_KEY, $now->toIso8601String());
         }
 
         $sessions = $user->trackedSessions()

@@ -6,9 +6,9 @@ use App\Models\Monitor;
 use App\Models\NotificationContact;
 use App\Models\StatusPage;
 use App\Models\User;
-use App\Notifications\MaintenanceWindowNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
+use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
 
@@ -234,7 +234,140 @@ it('prefills the focused monitor on the maintenance page', function () {
             ->where('formDefaults.monitor_ids.0', $monitor->id));
 });
 
-it('emails contacts when a maintenance window is scheduled with notifications enabled', function () {
+it('paginates status pages and windows the monitor browser', function () {
+    $user = User::factory()->premium()->create();
+    $monitors = collect(range(1, 30))->map(function (int $index) use ($user) {
+        return Monitor::query()->create([
+            'user_id' => $user->id,
+            'name' => sprintf('Check %03d', $index),
+            'type' => Monitor::TYPE_HTTP,
+            'status' => Monitor::STATUS_UP,
+            'target' => sprintf('https://example.com/%03d', $index),
+            'request_method' => 'GET',
+            'interval_seconds' => 300,
+            'timeout_seconds' => 30,
+            'retry_limit' => 2,
+            'region' => 'North America',
+        ]);
+    });
+
+    foreach (range(1, 7) as $index) {
+        $statusPage = StatusPage::query()->create([
+            'user_id' => $user->id,
+            'name' => sprintf('Status %02d', $index),
+            'slug' => sprintf('status-%02d', $index),
+            'headline' => sprintf('Status %02d', $index),
+            'description' => 'Windowed status page',
+            'published' => $index % 2 === 0,
+        ]);
+
+        $statusPage->monitors()->attach(
+            $monitors->slice(($index - 1) * 2, 2)->pluck('id')->values()->all(),
+        );
+    }
+
+    $this->actingAs($user)
+        ->get('/status-pages')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('monitoring/status-pages')
+            ->has('pages.data', 6)
+            ->where('pages.total', 7)
+            ->where('pages.perPage', 6)
+            ->where('monitorOptionResults.total', 30)
+            ->where('monitorOptionResults.perPage', 24)
+            ->has('monitorOptions', 24));
+
+    $this->actingAs($user)
+        ->get('/status-pages?monitor_query=Check%2002')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('monitoring/status-pages')
+            ->where('monitorOptionQuery', 'Check 02')
+            ->where('monitorOptionResults.total', 10));
+});
+
+it('paginates maintenance history and windows upcoming maintenance lists', function () {
+    $user = User::factory()->premium()->create();
+    $monitors = collect(range(1, 30))->map(function (int $index) use ($user) {
+        return Monitor::query()->create([
+            'user_id' => $user->id,
+            'name' => sprintf('Window check %03d', $index),
+            'type' => Monitor::TYPE_HTTP,
+            'status' => Monitor::STATUS_UP,
+            'target' => sprintf('https://example.com/window-%03d', $index),
+            'request_method' => 'GET',
+            'interval_seconds' => 300,
+            'timeout_seconds' => 30,
+            'retry_limit' => 2,
+            'region' => 'North America',
+        ]);
+    });
+
+    foreach (range(1, 2) as $index) {
+        $window = MaintenanceWindow::query()->create([
+            'user_id' => $user->id,
+            'title' => sprintf('Active %02d', $index),
+            'message' => 'Planned work',
+            'starts_at' => now()->subHour(),
+            'ends_at' => now()->addHour(),
+            'status' => MaintenanceWindow::STATUS_SCHEDULED,
+            'notify_contacts' => false,
+        ]);
+        $window->monitors()->attach($monitors[$index - 1]->id);
+    }
+
+    foreach (range(1, 7) as $index) {
+        $window = MaintenanceWindow::query()->create([
+            'user_id' => $user->id,
+            'title' => sprintf('Upcoming %02d', $index),
+            'message' => 'Planned work',
+            'starts_at' => now()->addDays($index),
+            'ends_at' => now()->addDays($index)->addHour(),
+            'status' => MaintenanceWindow::STATUS_SCHEDULED,
+            'notify_contacts' => false,
+        ]);
+        $window->monitors()->attach($monitors[$index + 2]->id);
+    }
+
+    foreach (range(1, 12) as $index) {
+        $window = MaintenanceWindow::query()->create([
+            'user_id' => $user->id,
+            'title' => sprintf('Completed %02d', $index),
+            'message' => 'Completed work',
+            'starts_at' => now()->subDays($index + 2),
+            'ends_at' => now()->subDays($index + 2)->addHour(),
+            'status' => MaintenanceWindow::STATUS_SCHEDULED,
+            'notify_contacts' => false,
+        ]);
+        $window->monitors()->attach($monitors[$index + 9]->id);
+    }
+
+    $this->actingAs($user)
+        ->get('/maintenance')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('monitoring/maintenance')
+            ->has('active', 2)
+            ->has('upcoming', 6)
+            ->has('history.data', 10)
+            ->where('summary.active', 2)
+            ->where('summary.upcoming', 7)
+            ->where('summary.history', 12)
+            ->where('history.total', 12)
+            ->where('monitorOptionResults.total', 30)
+            ->where('monitorOptionResults.perPage', 24));
+
+    $this->actingAs($user)
+        ->get('/maintenance?history_page=2')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('monitoring/maintenance')
+            ->where('history.currentPage', 2)
+            ->has('history.data', 2));
+});
+
+it('records maintenance windows without sending maintenance emails', function () {
     Notification::fake();
 
     $user = User::factory()->premium()->create();
@@ -270,13 +403,11 @@ it('emails contacts when a maintenance window is scheduled with notifications en
         ])
         ->assertRedirect();
 
-    Notification::assertSentOnDemand(MaintenanceWindowNotification::class);
-
-    $this->assertDatabaseHas('notification_logs', [
+    Notification::assertNothingSent();
+    $this->assertDatabaseMissing('notification_logs', [
         'monitor_id' => $monitor->id,
         'notification_contact_id' => $contact->id,
         'type' => 'maintenance',
-        'status' => 'sent',
     ]);
 });
 

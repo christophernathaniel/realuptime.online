@@ -26,7 +26,12 @@ class MonitoringSectionController extends Controller
 
     public function statusPages(Request $request): Response
     {
-        return Inertia::render('monitoring/status-pages', $this->presenter->statusPages($this->workspaces->current($request)));
+        return Inertia::render('monitoring/status-pages', $this->presenter->statusPages(
+            $this->workspaces->current($request),
+            max(1, $request->integer('page', 1)),
+            (string) $request->query('monitor_query', ''),
+            max(1, $request->integer('monitor_page', 1)),
+        ));
     }
 
     public function maintenance(Request $request): Response
@@ -34,6 +39,9 @@ class MonitoringSectionController extends Controller
         return Inertia::render('monitoring/maintenance', $this->presenter->maintenance(
             $this->workspaces->current($request),
             $request->integer('monitor_id') ?: null,
+            max(1, $request->integer('history_page', 1)),
+            (string) $request->query('monitor_query', ''),
+            max(1, $request->integer('monitor_page', 1)),
         ));
     }
 

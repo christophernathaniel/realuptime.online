@@ -465,6 +465,11 @@ export default function MonitorShow({ monitor }: MonitorShowProps) {
                                 value={formatPercentage(monitor.responseTimeSignals.successRate)}
                                 caption="Healthy checks versus total samples"
                             />
+                            <MetricPanel
+                                title="Downtime"
+                                value={monitor.responseTimeStats.downtimeLabel}
+                                caption={`Total downtime in ${monitor.responseTimeRangeLabel.toLowerCase()}`}
+                            />
                         </div>
                     </PageCard>
 

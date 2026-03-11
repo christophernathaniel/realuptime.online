@@ -1,12 +1,14 @@
 import { Head, router, useForm } from '@inertiajs/react';
 import { CalendarRange, Save, Trash2 } from 'lucide-react';
-import type { FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
+import { PaginationStrip } from '@/components/monitoring/pagination-strip';
 import { PageCard } from '@/components/monitoring/page-card';
 import MonitoringLayout from '@/layouts/monitoring-layout';
 import type {
     MaintenanceFormData,
     MaintenanceWindowItem,
     MonitorOption,
+    PaginatedData,
 } from '@/types/monitoring';
 
 function MaintenanceEditor({
@@ -150,8 +152,10 @@ type MaintenancePageProps = {
     };
     active: MaintenanceWindowItem[];
     upcoming: MaintenanceWindowItem[];
-    history: MaintenanceWindowItem[];
+    history: PaginatedData<MaintenanceWindowItem>;
     monitorOptions: MonitorOption[];
+    monitorOptionQuery: string;
+    monitorOptionResults: PaginatedData<MonitorOption>;
     focusMonitor: {
         id: number;
         name: string;
@@ -165,11 +169,31 @@ export default function MaintenancePage({
     upcoming,
     history,
     monitorOptions,
+    monitorOptionQuery,
+    monitorOptionResults,
     focusMonitor,
     formDefaults,
 }: MaintenancePageProps) {
     const form = useForm<MaintenanceFormData>(formDefaults);
     const errors = Object.values(form.errors);
+    const [monitorSearch, setMonitorSearch] = useState(monitorOptionQuery);
+
+    const submitMonitorSearch = (query: string) => {
+        router.get(
+            '/maintenance',
+            {
+                ...(focusMonitor ? { monitor_id: focusMonitor.id } : {}),
+                history_page: history.currentPage,
+                monitor_query: query,
+                monitor_page: 1,
+            },
+            {
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            },
+        );
+    };
 
     return (
         <MonitoringLayout>
@@ -205,6 +229,57 @@ export default function MaintenancePage({
                         </PageCard>
                     </div>
                 </div>
+
+                <PageCard className="space-y-5 p-6">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <div className="text-[20px] font-semibold text-white">Monitor browser</div>
+                            <div className="mt-1 text-[14px] text-[#9ca7b9]">
+                                Showing {monitorOptionResults.from ?? 0}-{monitorOptionResults.to ?? 0} of {monitorOptionResults.total} checks for the maintenance forms on this page.
+                            </div>
+                        </div>
+                        <form
+                            className="flex flex-col gap-3 sm:flex-row"
+                            onSubmit={(event: FormEvent) => {
+                                event.preventDefault();
+                                submitMonitorSearch(monitorSearch);
+                            }}
+                        >
+                            <input
+                                value={monitorSearch}
+                                onChange={(event) => setMonitorSearch(event.target.value)}
+                                className="h-11 min-w-[220px] rounded-[14px] border border-white/10 bg-[#0b1425] px-4 text-sm text-white outline-none"
+                                placeholder="Search checks by name"
+                            />
+                            <div className="flex gap-3">
+                                <button type="submit" className="inline-flex h-11 items-center justify-center rounded-[14px] bg-[#7c8cff] px-4 text-sm font-medium text-white">
+                                    Search
+                                </button>
+                                {monitorOptionQuery ? (
+                                    <button
+                                        type="button"
+                                        className="inline-flex h-11 items-center justify-center rounded-[14px] border border-white/10 bg-[#171d28] px-4 text-sm text-[#dce6fb]"
+                                        onClick={() => {
+                                            setMonitorSearch('');
+                                            submitMonitorSearch('');
+                                        }}
+                                    >
+                                        Clear
+                                    </button>
+                                ) : null}
+                            </div>
+                        </form>
+                    </div>
+                    <PaginationStrip
+                        currentPage={monitorOptionResults.currentPage}
+                        lastPage={monitorOptionResults.lastPage}
+                        from={monitorOptionResults.from}
+                        to={monitorOptionResults.to}
+                        total={monitorOptionResults.total}
+                        previousPageUrl={monitorOptionResults.previousPageUrl}
+                        nextPageUrl={monitorOptionResults.nextPageUrl}
+                    />
+                </PageCard>
 
                 <PageCard className="space-y-5 p-6">
                     <div className="flex items-center gap-3 text-[22px] font-semibold text-white">
@@ -315,7 +390,10 @@ export default function MaintenancePage({
                 <section className="space-y-4">
                     {active.length > 0 ? (
                         <div className="space-y-4">
-                            <div className="text-[20px] font-semibold text-white">Active now</div>
+                            <div className="text-[20px] font-semibold text-white">
+                                Active now
+                                {summary.active > active.length ? ` • showing ${active.length} of ${summary.active}` : ''}
+                            </div>
                             {active.map((window) => (
                                 <MaintenanceEditor key={window.id} window={window} monitorOptions={monitorOptions} />
                             ))}
@@ -323,7 +401,10 @@ export default function MaintenancePage({
                     ) : null}
 
                     <div className="space-y-4">
-                        <div className="text-[20px] font-semibold text-white">Upcoming</div>
+                        <div className="text-[20px] font-semibold text-white">
+                            Upcoming
+                            {summary.upcoming > upcoming.length ? ` • showing ${upcoming.length} of ${summary.upcoming}` : ''}
+                        </div>
                         {upcoming.length === 0 ? (
                             <PageCard className="p-6 text-[15px] text-[#9ca7b9]">
                                 No upcoming maintenance windows.
@@ -337,14 +418,25 @@ export default function MaintenancePage({
 
                     <div className="space-y-4">
                         <div className="text-[20px] font-semibold text-white">History</div>
-                        {history.length === 0 ? (
+                        {history.data.length === 0 ? (
                             <PageCard className="p-6 text-[15px] text-[#9ca7b9]">
                                 Completed maintenance windows will appear here.
                             </PageCard>
                         ) : (
-                            history.map((window) => (
-                                <MaintenanceEditor key={window.id} window={window} monitorOptions={monitorOptions} />
-                            ))
+                            <>
+                                {history.data.map((window) => (
+                                    <MaintenanceEditor key={window.id} window={window} monitorOptions={monitorOptions} />
+                                ))}
+                                <PaginationStrip
+                                    currentPage={history.currentPage}
+                                    lastPage={history.lastPage}
+                                    from={history.from}
+                                    to={history.to}
+                                    total={history.total}
+                                    previousPageUrl={history.previousPageUrl}
+                                    nextPageUrl={history.nextPageUrl}
+                                />
+                            </>
                         )}
                     </div>
                 </section>

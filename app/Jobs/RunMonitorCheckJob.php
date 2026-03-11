@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Monitor;
 use App\Services\Monitoring\MonitorRunner;
+use App\Support\MonitorQueueResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -25,7 +26,7 @@ class RunMonitorCheckJob implements ShouldQueue
         public int $monitorId,
         public ?string $checkedAtIso = null,
     ) {
-        $this->onQueue(config('realuptime.queues.monitor_checks'));
+        $this->onQueue(MonitorQueueResolver::monitorCheckQueue($this->monitorId));
     }
 
     public function middleware(): array

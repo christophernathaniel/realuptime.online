@@ -12,6 +12,7 @@ use App\Models\StatusPage;
 use App\Models\StatusPageIncident;
 use App\Models\User;
 use App\Models\WorkspaceMembership;
+use App\Support\MonitorQueueResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -19,6 +20,8 @@ use Illuminate\Support\Number;
 
 class MonitorPresenter
 {
+    protected ?CarbonImmutable $requestTime = null;
+
     /**
      * @var array<string, array{
      *     incidents: \Illuminate\Support\Collection<int, Incident>,
@@ -34,16 +37,42 @@ class MonitorPresenter
      */
     protected array $windowCheckResultCache = [];
 
+    /**
+     * @var array<string, array{firstCheckedAt: CarbonImmutable|null, totalResults: int, downResults: int}>
+     */
+    protected array $windowCheckResultSummaryCache = [];
+
+    /**
+     * @var array<int, array<int, array{
+     *     from: CarbonImmutable,
+     *     to: CarbonImmutable,
+     *     incidents: Collection<int, Incident>
+     * }>>
+     */
+    protected array $preloadedDowntimeIncidents = [];
+
+    /**
+     * @var array<int, array<int, array{
+     *     from: CarbonImmutable,
+     *     to: CarbonImmutable,
+     *     results: Collection<int, CheckResult>
+     * }>>
+     */
+    protected array $preloadedCheckResults = [];
+
     public function index(User $user, ?User $actor = null): array
     {
         $monitors = $user->monitors()
             ->with([
                 'user',
-                'checkResults' => fn ($query) => $query->latest('checked_at')->limit(400),
                 'incidents' => fn ($query) => $query->latest('started_at')->limit(20),
             ])
             ->orderBy('created_at')
             ->get();
+        $now = $this->currentTime();
+
+        $this->preloadDowntimeIncidents($monitors, $now->subDay(), $now);
+        $this->preloadCheckResults($monitors, $now->subDay(), $now);
 
         $summary = [
             'up' => $monitors->where('status', Monitor::STATUS_UP)->count(),
@@ -76,7 +105,6 @@ class MonitorPresenter
 
         $monitor->load([
             'user',
-            'checkResults' => fn ($query) => $query->latest('checked_at')->limit(720),
             'incidents' => fn ($query) => $query->latest('started_at')->limit(10),
             'notificationLogs' => fn ($query) => $query->latest()->limit(8),
             'notificationContacts',
@@ -89,6 +117,10 @@ class MonitorPresenter
                 ])
                 ->orderBy('name'),
         ]);
+        $now = $this->currentTime();
+
+        $this->preloadDowntimeIncidents(collect([$monitor]), $now->subYear(), $now);
+        $this->preloadCheckResults(collect([$monitor]), $now->subDays(7), $now);
 
         $responseTimeData = $this->responseTimeData($monitor, $responseRange, $responseGranularity);
         $nextMaintenance = $this->nextMaintenanceForMonitor($monitor);
@@ -201,6 +233,143 @@ class MonitorPresenter
                     ->all(),
             ],
         ];
+    }
+
+    protected function currentTime(): CarbonImmutable
+    {
+        return $this->requestTime ??= CarbonImmutable::now()->startOfSecond();
+    }
+
+    /**
+     * @param  Collection<int, Monitor>  $monitors
+     */
+    protected function preloadDowntimeIncidents(Collection $monitors, CarbonImmutable $from, CarbonImmutable $to): void
+    {
+        if ($monitors->isEmpty()) {
+            return;
+        }
+
+        $monitorIds = $monitors->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $grouped = Incident::query()
+            ->whereIn('monitor_id', $monitorIds)
+            ->where('type', Incident::TYPE_DOWNTIME)
+            ->where('started_at', '<', $to)
+            ->where(function ($query) use ($from): void {
+                $query->whereNull('resolved_at')
+                    ->orWhere('resolved_at', '>', $from);
+            })
+            ->orderBy('monitor_id')
+            ->orderBy('started_at')
+            ->get()
+            ->groupBy('monitor_id');
+
+        foreach ($monitorIds as $monitorId) {
+            $this->rememberPreloadedDowntimeIncidents(
+                (int) $monitorId,
+                $from,
+                $to,
+                $grouped->get($monitorId, collect())->values()
+            );
+        }
+    }
+
+    /**
+     * @param  Collection<int, Monitor>  $monitors
+     */
+    protected function preloadCheckResults(Collection $monitors, CarbonImmutable $from, CarbonImmutable $to): void
+    {
+        if ($monitors->isEmpty()) {
+            return;
+        }
+
+        $monitorIds = $monitors->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $grouped = CheckResult::query()
+            ->whereIn('monitor_id', $monitorIds)
+            ->where('checked_at', '>=', $from)
+            ->where('checked_at', '<', $to)
+            ->orderBy('monitor_id')
+            ->orderBy('checked_at')
+            ->get(['id', 'monitor_id', 'status', 'checked_at', 'response_time_ms', 'meta'])
+            ->groupBy('monitor_id');
+
+        foreach ($monitorIds as $monitorId) {
+            $this->rememberPreloadedCheckResults(
+                (int) $monitorId,
+                $from,
+                $to,
+                $grouped->get($monitorId, collect())->values()
+            );
+        }
+    }
+
+    /**
+     * @param  Collection<int, Incident>  $incidents
+     */
+    protected function rememberPreloadedDowntimeIncidents(
+        int $monitorId,
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        Collection $incidents,
+    ): void {
+        $this->preloadedDowntimeIncidents[$monitorId][] = [
+            'from' => $from,
+            'to' => $to,
+            'incidents' => $incidents,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, CheckResult>  $results
+     */
+    protected function rememberPreloadedCheckResults(
+        int $monitorId,
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        Collection $results,
+    ): void {
+        $this->preloadedCheckResults[$monitorId][] = [
+            'from' => $from,
+            'to' => $to,
+            'results' => $results,
+        ];
+    }
+
+    /**
+     * @return Collection<int, Incident>|null
+     */
+    protected function preloadedDowntimeIncidentsForWindow(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to): ?Collection
+    {
+        foreach ($this->preloadedDowntimeIncidents[$monitor->id] ?? [] as $window) {
+            if ($window['from']->greaterThan($from) || $window['to']->lessThan($to)) {
+                continue;
+            }
+
+            return $window['incidents']
+                ->filter(fn (Incident $incident) => $incident->started_at?->lt($to)
+                    && ($incident->resolved_at === null || $incident->resolved_at->gt($from)))
+                ->values();
+        }
+
+        return null;
+    }
+
+    /**
+     * @return Collection<int, CheckResult>|null
+     */
+    protected function preloadedCheckResultsForWindow(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to): ?Collection
+    {
+        foreach ($this->preloadedCheckResults[$monitor->id] ?? [] as $window) {
+            if ($window['from']->greaterThan($from) || $window['to']->lessThan($to)) {
+                continue;
+            }
+
+            return $window['results']
+                ->filter(fn (CheckResult $result) => $result->checked_at?->greaterThanOrEqualTo($from)
+                    && $result->checked_at->lt($to))
+                ->values();
+        }
+
+        return null;
     }
 
     public function form(User $user, ?Monitor $monitor = null, ?User $actor = null): array
@@ -400,8 +569,14 @@ class MonitorPresenter
         ];
     }
 
-    public function statusPages(User $user): array
+    public function statusPages(User $user, int $page = 1, string $monitorQuery = '', int $monitorPage = 1): array
     {
+        $formDefaultMonitorIds = $user->monitors()
+            ->orderBy('created_at')
+            ->limit(3)
+            ->pluck('id')
+            ->all();
+
         $statusPages = $user->statusPages()
             ->with([
                 'monitors' => fn ($query) => $query->with([
@@ -409,87 +584,117 @@ class MonitorPresenter
                     'openIncidents',
                     'capabilities',
                 ]),
-                'incidents' => fn ($query) => $query->with(['monitors.capabilities', 'updates'])->latest('started_at'),
+                'incidents' => fn ($query) => $query
+                    ->with([
+                        'monitors.capabilities',
+                        'updates',
+                    ])
+                    ->latest('started_at'),
             ])
             ->latest('updated_at')
-            ->get();
+            ->paginate(6, ['*'], 'page', max(1, $page))
+            ->withQueryString();
+        $visibleStatusPages = collect($statusPages->items());
+        $monitorOptions = $this->monitorOptions(
+            $user,
+            $visibleStatusPages
+                ->flatMap(fn (StatusPage $statusPage) => $statusPage->monitors->pluck('id'))
+                ->merge($formDefaultMonitorIds)
+                ->unique()
+                ->values()
+                ->all(),
+            $monitorQuery,
+            $monitorPage,
+        );
 
         return [
             'summary' => [
-                'published' => $statusPages->where('published', true)->count(),
-                'drafts' => $statusPages->where('published', false)->count(),
-                'monitors' => $statusPages->sum(fn (StatusPage $statusPage) => $statusPage->monitors->count()),
-                'activeIncidents' => $statusPages->sum(fn (StatusPage $statusPage) => $statusPage->incidents->whereNull('resolved_at')->count()),
+                'published' => $user->statusPages()->where('published', true)->count(),
+                'drafts' => $user->statusPages()->where('published', false)->count(),
+                'monitors' => StatusPage::query()
+                    ->join('status_page_monitor', 'status_pages.id', '=', 'status_page_monitor.status_page_id')
+                    ->where('status_pages.user_id', $user->id)
+                    ->count(),
+                'activeIncidents' => StatusPageIncident::query()
+                    ->where('user_id', $user->id)
+                    ->whereNull('resolved_at')
+                    ->count(),
             ],
-            'pages' => $statusPages->map(fn (StatusPage $statusPage) => [
-                'id' => $statusPage->id,
-                'name' => $statusPage->name,
-                'slug' => $statusPage->slug,
-                'headline' => $statusPage->headline,
-                'description' => $statusPage->description,
-                'published' => $statusPage->published,
-                'statusLabel' => ucfirst($this->overallStatusForMonitors($statusPage->monitors, $statusPage->incidents)),
-                'monitorCount' => $statusPage->monitors->count(),
-                'monitorIds' => $statusPage->monitors->pluck('id')->all(),
-                'monitorNames' => $statusPage->monitors->pluck('name')->take(4)->values()->all(),
-                'publicUrl' => $this->publicStatusPageUrl($statusPage),
-                'updatedLabel' => $this->timeAgo($this->latestStatusPageActivityAt($statusPage, $statusPage->monitors)),
-                'incidents' => $statusPage->incidents
-                    ->map(fn (StatusPageIncident $incident) => $this->statusPageIncidentItem($incident))
-                    ->all(),
-                'incidentDefaults' => [
-                    'title' => '',
-                    'message' => '',
-                    'status' => StatusPageIncident::STATUS_INVESTIGATING,
-                    'impact' => StatusPageIncident::IMPACT_MINOR,
-                    'monitor_ids' => $statusPage->monitors->pluck('id')->all(),
-                ],
-                'capabilities' => $statusPage->monitors
-                    ->flatMap(fn (Monitor $monitor) => $monitor->capabilities)
-                    ->unique('id')
-                    ->values()
-                    ->map(fn (Capability $capability) => $this->capabilityItemFromMonitors(
-                        $capability,
-                        $statusPage->monitors->filter(fn (Monitor $monitor) => $monitor->capabilities->contains('id', $capability->id))->values(),
-                    ))
-                    ->all(),
-            ])->all(),
-            'monitorOptions' => $this->monitorOptions($user),
+            'pages' => $this->paginateData($statusPages, fn (StatusPage $statusPage) => $this->statusPageItem($statusPage)),
+            'monitorOptions' => $monitorOptions['options'],
+            'monitorOptionQuery' => $monitorOptions['query'],
+            'monitorOptionResults' => $monitorOptions['results'],
             'formDefaults' => [
                 'name' => '',
                 'slug' => '',
                 'headline' => 'System status',
                 'description' => 'Live availability and incident information for monitored services.',
                 'published' => true,
-                'monitor_ids' => $user->monitors()->orderBy('created_at')->pluck('id')->take(3)->all(),
+                'monitor_ids' => $formDefaultMonitorIds,
             ],
         ];
     }
 
-    public function maintenance(User $user, ?int $focusMonitorId = null): array
+    public function maintenance(User $user, ?int $focusMonitorId = null, int $historyPage = 1, string $monitorQuery = '', int $monitorPage = 1): array
     {
-        $windows = $user->maintenanceWindows()
+        $now = $this->currentTime();
+        $activeQuery = $user->maintenanceWindows()
+            ->where('status', '!=', MaintenanceWindow::STATUS_CANCELLED)
+            ->where('starts_at', '<=', $now)
+            ->where('ends_at', '>=', $now);
+        $upcomingQuery = $user->maintenanceWindows()
+            ->where('status', '!=', MaintenanceWindow::STATUS_CANCELLED)
+            ->where('starts_at', '>', $now);
+        $historyQuery = $user->maintenanceWindows()
+            ->where(function ($query) use ($now): void {
+                $query->where('status', MaintenanceWindow::STATUS_CANCELLED)
+                    ->orWhere('ends_at', '<', $now);
+            });
+
+        $active = (clone $activeQuery)
+            ->with('monitors')
+            ->orderBy('starts_at')
+            ->limit(6)
+            ->get();
+        $upcoming = (clone $upcomingQuery)
+            ->with('monitors')
+            ->orderBy('starts_at')
+            ->limit(6)
+            ->get();
+        $history = (clone $historyQuery)
             ->with('monitors')
             ->orderByDesc('starts_at')
-            ->get();
+            ->paginate(10, ['*'], 'history_page', max(1, $historyPage))
+            ->withQueryString();
         $focusMonitor = $focusMonitorId
             ? $user->monitors()->whereKey($focusMonitorId)->first()
             : null;
-
-        $active = $windows->filter(fn (MaintenanceWindow $window) => $this->maintenanceWindowStatus($window) === MaintenanceWindow::STATUS_ACTIVE)->values();
-        $upcoming = $windows->filter(fn (MaintenanceWindow $window) => $this->maintenanceWindowStatus($window) === MaintenanceWindow::STATUS_SCHEDULED)->values();
-        $history = $windows->filter(fn (MaintenanceWindow $window) => in_array($this->maintenanceWindowStatus($window), [MaintenanceWindow::STATUS_COMPLETED, MaintenanceWindow::STATUS_CANCELLED], true))->values();
+        $monitorOptions = $this->monitorOptions(
+            $user,
+            $active
+                ->flatMap(fn (MaintenanceWindow $window) => $window->monitors->pluck('id'))
+                ->merge($upcoming->flatMap(fn (MaintenanceWindow $window) => $window->monitors->pluck('id')))
+                ->merge(collect($history->items())->flatMap(fn (MaintenanceWindow $window) => $window->monitors->pluck('id')))
+                ->merge($focusMonitor ? [$focusMonitor->id] : [])
+                ->unique()
+                ->values()
+                ->all(),
+            $monitorQuery,
+            $monitorPage,
+        );
 
         return [
             'summary' => [
-                'active' => $active->count(),
-                'upcoming' => $upcoming->count(),
-                'history' => $history->count(),
+                'active' => (clone $activeQuery)->count(),
+                'upcoming' => (clone $upcomingQuery)->count(),
+                'history' => (clone $historyQuery)->count(),
             ],
             'active' => $active->map(fn (MaintenanceWindow $window) => $this->maintenanceWindowItem($window))->all(),
             'upcoming' => $upcoming->map(fn (MaintenanceWindow $window) => $this->maintenanceWindowItem($window))->all(),
-            'history' => $history->take(12)->map(fn (MaintenanceWindow $window) => $this->maintenanceWindowItem($window))->all(),
-            'monitorOptions' => $this->monitorOptions($user),
+            'history' => $this->paginateData($history, fn (MaintenanceWindow $window) => $this->maintenanceWindowItem($window)),
+            'monitorOptions' => $monitorOptions['options'],
+            'monitorOptionQuery' => $monitorOptions['query'],
+            'monitorOptionResults' => $monitorOptions['results'],
             'focusMonitor' => $focusMonitor ? [
                 'id' => $focusMonitor->id,
                 'name' => $focusMonitor->name,
@@ -543,7 +748,7 @@ class MonitorPresenter
                 'apiBaseUrl' => url('/api/v1'),
                 'mailer' => config('mail.default'),
                 'queueConnection' => config('queue.default'),
-                'monitorQueue' => config('realuptime.queues.monitor_checks'),
+                'monitorQueue' => implode(', ', MonitorQueueResolver::monitorCheckQueues()),
                 'notificationQueue' => config('realuptime.queues.notifications'),
                 'dispatchBatchSize' => (int) config('realuptime.dispatch.batch_size', 250),
                 'dispatchMaxBatches' => (int) config('realuptime.dispatch.max_batches', 12),
@@ -715,12 +920,6 @@ class MonitorPresenter
         $statusPage->load([
             'incidents' => fn ($query) => $query->with(['monitors.capabilities', 'updates'])->latest('started_at'),
             'monitors' => fn ($query) => $query->with([
-                'checkResults' => fn ($checkResults) => $checkResults
-                    ->where('checked_at', '>=', now()->subDay())
-                    ->orderBy('checked_at'),
-                'incidents' => fn ($incidents) => $incidents
-                    ->where('started_at', '>=', now()->subDay())
-                    ->latest('started_at'),
                 'maintenanceWindows' => fn ($maintenance) => $maintenance->orderBy('starts_at'),
                 'openIncidents',
                 'capabilities',
@@ -728,6 +927,11 @@ class MonitorPresenter
         ]);
 
         $monitors = $statusPage->monitors;
+        $now = $this->currentTime();
+
+        $this->preloadDowntimeIncidents($monitors, $now->subDay(), $now);
+        $this->preloadCheckResults($monitors, $now->subDay(), $now);
+
         $monitorIds = $monitors->pluck('id');
         $maintenanceWindows = MaintenanceWindow::query()
             ->where('user_id', $statusPage->user_id)
@@ -823,7 +1027,7 @@ class MonitorPresenter
                 ])->all(),
                 'recentUpdates' => $recentStatusUpdates,
                 'maintenance' => $maintenanceWindows
-                    ->filter(fn (MaintenanceWindow $window) => $window->ends_at?->gte(now()->subDay()))
+                    ->filter(fn (MaintenanceWindow $window) => $window->ends_at?->gte($now->subDay()))
                     ->values()
                     ->map(fn (MaintenanceWindow $window) => $this->maintenanceWindowItem($window))
                     ->all(),
@@ -1025,17 +1229,17 @@ class MonitorPresenter
 
     protected function windowStats(Monitor $monitor, int $days): array
     {
-        return $this->windowStatsSince($monitor, CarbonImmutable::now()->subDays($days), $days.'d');
+        return $this->windowStatsSince($monitor, $this->currentTime()->subDays($days), $days.'d');
     }
 
     protected function windowStatsByHours(Monitor $monitor, int $hours): array
     {
-        return $this->windowStatsSince($monitor, CarbonImmutable::now()->subHours($hours), $hours.'h');
+        return $this->windowStatsSince($monitor, $this->currentTime()->subHours($hours), $hours.'h');
     }
 
     protected function windowStatsSince(Monitor $monitor, CarbonImmutable $from, string $withoutIncidentsLabel): array
     {
-        $to = CarbonImmutable::now();
+        $to = $this->currentTime();
         $window = $this->downtimeWindowData($monitor, $from, $to);
         $monitoredSeconds = $window['monitoredSeconds'];
         $downtimeSeconds = min($window['downtimeSeconds'], $monitoredSeconds);
@@ -1045,12 +1249,12 @@ class MonitorPresenter
         $incidents = $window['incidents'];
 
         if ($incidents->isEmpty()) {
-            $results = $this->windowCheckResults($monitor, $from, $to);
-            $downResults = $results->where('status', 'down')->count();
+            $summary = $this->windowCheckResultSummary($monitor, $from, $to);
+            $downResults = $summary['downResults'];
 
             if ($downResults > 0) {
                 $effectiveIntervalSeconds = $this->effectiveIntervalSeconds($monitor);
-                $totalResults = max(1, $results->count());
+                $totalResults = max(1, $summary['totalResults']);
                 $monitoredSeconds = max($monitoredSeconds, $totalResults * $effectiveIntervalSeconds);
                 $uptimeValue = round((($totalResults - $downResults) / $totalResults) * 100, 2);
                 $downtimeSeconds = min($downResults * $effectiveIntervalSeconds, $monitoredSeconds);
@@ -1070,8 +1274,8 @@ class MonitorPresenter
 
     protected function uptimeBars(Monitor $monitor, int $hours, int $segments): array
     {
-        $from = CarbonImmutable::now()->subHours($hours);
-        $to = CarbonImmutable::now();
+        $to = $this->currentTime();
+        $from = $to->subHours($hours);
         $window = $this->downtimeWindowData($monitor, $from, $to);
         $fallbackResults = $window['incidents']->isEmpty()
             ? $this->windowCheckResults($monitor, $from, $to)
@@ -1123,35 +1327,39 @@ class MonitorPresenter
             return $this->downtimeWindowCache[$cacheKey];
         }
 
-        $incidents = Incident::query()
-            ->where('monitor_id', $monitor->id)
-            ->where('type', Incident::TYPE_DOWNTIME)
-            ->where('started_at', '<', $to)
-            ->where(function ($query) use ($from): void {
-                $query->whereNull('resolved_at')
-                    ->orWhere('resolved_at', '>', $from);
-            })
-            ->orderBy('started_at')
-            ->get();
+        $incidents = $this->preloadedDowntimeIncidentsForWindow($monitor, $from, $to)
+            ?? Incident::query()
+                ->where('monitor_id', $monitor->id)
+                ->where('type', Incident::TYPE_DOWNTIME)
+                ->where('started_at', '<', $to)
+                ->where(function ($query) use ($from): void {
+                    $query->whereNull('resolved_at')
+                        ->orWhere('resolved_at', '>', $from);
+                })
+                ->orderBy('started_at')
+                ->get();
+
+        if (! $monitor->last_checked_at && $incidents->isEmpty()) {
+            return $this->downtimeWindowCache[$cacheKey] = [
+                'incidents' => $incidents,
+                'monitoringStart' => null,
+                'monitoredSeconds' => 0,
+                'downtimeSeconds' => 0,
+            ];
+        }
 
         $createdAt = CarbonImmutable::parse($monitor->created_at);
-        $firstCheckAtValue = CheckResult::query()
-            ->where('monitor_id', $monitor->id)
-            ->where('checked_at', '>=', $from)
-            ->where('checked_at', '<', $to)
-            ->min('checked_at');
-        $firstCheckAt = $firstCheckAtValue ? CarbonImmutable::parse($firstCheckAtValue) : null;
+        $firstCheckAt = $this->windowCheckResultSummary($monitor, $from, $to)['firstCheckedAt'];
         $firstIncidentAt = $incidents->isNotEmpty()
             ? CarbonImmutable::parse($incidents->min('started_at'))
             : null;
-
         $evidenceStart = collect([$createdAt, $firstCheckAt, $firstIncidentAt])
             ->filter()
             ->sortBy(fn (CarbonImmutable $time) => $time->timestamp)
             ->first() ?? $createdAt;
         $monitoringStart = $evidenceStart->greaterThan($from) ? $evidenceStart : $from;
 
-        if ($monitoringStart->greaterThanOrEqualTo($to) || (! $monitor->last_checked_at && $incidents->isEmpty() && ! $firstCheckAt)) {
+        if ($monitoringStart->greaterThanOrEqualTo($to)) {
             return $this->downtimeWindowCache[$cacheKey] = [
                 'incidents' => $incidents,
                 'monitoringStart' => null,
@@ -1190,12 +1398,59 @@ class MonitorPresenter
             return $this->windowCheckResultCache[$cacheKey];
         }
 
+        $preloadedResults = $this->preloadedCheckResultsForWindow($monitor, $from, $to);
+
+        if ($preloadedResults !== null) {
+            return $this->windowCheckResultCache[$cacheKey] = $preloadedResults;
+        }
+
         return $this->windowCheckResultCache[$cacheKey] = CheckResult::query()
             ->where('monitor_id', $monitor->id)
             ->where('checked_at', '>=', $from)
             ->where('checked_at', '<', $to)
             ->orderBy('checked_at')
-            ->get();
+            ->get(['id', 'monitor_id', 'status', 'checked_at', 'response_time_ms', 'meta']);
+    }
+
+    /**
+     * @return array{firstCheckedAt: CarbonImmutable|null, totalResults: int, downResults: int}
+     */
+    protected function windowCheckResultSummary(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $cacheKey = implode(':', ['summary', $monitor->id, $from->timestamp, $to->timestamp]);
+
+        if (array_key_exists($cacheKey, $this->windowCheckResultSummaryCache)) {
+            return $this->windowCheckResultSummaryCache[$cacheKey];
+        }
+
+        $preloadedResults = $this->preloadedCheckResultsForWindow($monitor, $from, $to);
+
+        if ($preloadedResults !== null) {
+            return $this->windowCheckResultSummaryCache[$cacheKey] = [
+                'firstCheckedAt' => $preloadedResults->first()?->checked_at
+                    ? CarbonImmutable::parse($preloadedResults->first()->checked_at)
+                    : null,
+                'totalResults' => $preloadedResults->count(),
+                'downResults' => $preloadedResults->where('status', 'down')->count(),
+            ];
+        }
+
+        $summary = CheckResult::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('checked_at', '>=', $from)
+            ->where('checked_at', '<', $to)
+            ->selectRaw(
+                "MIN(checked_at) as first_checked_at, COUNT(*) as total_results, SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END) as down_results"
+            )
+            ->first();
+
+        return $this->windowCheckResultSummaryCache[$cacheKey] = [
+            'firstCheckedAt' => $summary?->first_checked_at
+                ? CarbonImmutable::parse($summary->first_checked_at)
+                : null,
+            'totalResults' => (int) ($summary?->total_results ?? 0),
+            'downResults' => (int) ($summary?->down_results ?? 0),
+        ];
     }
 
     protected function incidentWindowOverlapSeconds(Incident $incident, CarbonImmutable $from, CarbonImmutable $to): int
@@ -1235,7 +1490,7 @@ class MonitorPresenter
 
     protected function mtbfLabel(Monitor $monitor, int $days): string
     {
-        $from = CarbonImmutable::now()->subDays($days);
+        $from = $this->currentTime()->subDays($days);
         $incidents = $monitor->incidents->filter(fn ($incident) => $incident->started_at?->gte($from))->values();
 
         if ($incidents->count() < 2) {
@@ -1639,6 +1894,7 @@ class MonitorPresenter
             'monitorNames' => $incident->monitors->pluck('name')->values()->all(),
             'updates' => $incident->updates
                 ->sortByDesc('created_at')
+                ->take(6)
                 ->values()
                 ->map(fn ($update) => [
                     'id' => $update->id,
@@ -1661,32 +1917,119 @@ class MonitorPresenter
         };
     }
 
-    protected function monitorOptions(User $user): array
+    protected function statusPageItem(StatusPage $statusPage): array
     {
-        return $user->monitors()
-            ->orderBy('name')
-            ->get(['id', 'name', 'status', 'type'])
-            ->map(fn (Monitor $monitor) => [
-                'id' => $monitor->id,
-                'name' => $monitor->name,
-                'status' => $monitor->status,
-                'type' => strtoupper($monitor->type),
-            ])
+        return [
+            'id' => $statusPage->id,
+            'name' => $statusPage->name,
+            'slug' => $statusPage->slug,
+            'headline' => $statusPage->headline,
+            'description' => $statusPage->description,
+            'published' => $statusPage->published,
+            'statusLabel' => ucfirst($this->overallStatusForMonitors($statusPage->monitors, $statusPage->incidents)),
+            'monitorCount' => $statusPage->monitors->count(),
+            'monitorIds' => $statusPage->monitors->pluck('id')->all(),
+            'monitorNames' => $statusPage->monitors->pluck('name')->take(4)->values()->all(),
+            'publicUrl' => $this->publicStatusPageUrl($statusPage),
+            'updatedLabel' => $this->timeAgo($this->latestStatusPageActivityAt($statusPage, $statusPage->monitors)),
+            'incidents' => $statusPage->incidents
+                ->take(6)
+                ->map(fn (StatusPageIncident $incident) => $this->statusPageIncidentItem($incident))
+                ->all(),
+            'incidentDefaults' => [
+                'title' => '',
+                'message' => '',
+                'status' => StatusPageIncident::STATUS_INVESTIGATING,
+                'impact' => StatusPageIncident::IMPACT_MINOR,
+                'monitor_ids' => $statusPage->monitors->pluck('id')->all(),
+            ],
+            'capabilities' => $statusPage->monitors
+                ->flatMap(fn (Monitor $monitor) => $monitor->capabilities)
+                ->unique('id')
+                ->values()
+                ->map(fn (Capability $capability) => $this->capabilityItemFromMonitors(
+                    $capability,
+                    $statusPage->monitors->filter(fn (Monitor $monitor) => $monitor->capabilities->contains('id', $capability->id))->values(),
+                ))
+                ->all(),
+        ];
+    }
+
+    /**
+     * @param  array<int, int>  $selectedMonitorIds
+     * @return array{
+     *     options: array<int, array{id: int, name: string, status: string, type: string}>,
+     *     query: string,
+     *     results: array{
+     *         data: array<int, array{id: int, name: string, status: string, type: string}>,
+     *         currentPage: int,
+     *         lastPage: int,
+     *         perPage: int,
+     *         total: int,
+     *         from: int|null,
+     *         to: int|null,
+     *         previousPageUrl: string|null,
+     *         nextPageUrl: string|null
+     *     }
+     * }
+     */
+    protected function monitorOptions(User $user, array $selectedMonitorIds = [], string $query = '', int $page = 1): array
+    {
+        $query = trim($query);
+        $selectedMonitorIds = collect($selectedMonitorIds)
+            ->map(fn (mixed $id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values()
             ->all();
+
+        $visibleMonitors = $user->monitors()
+            ->select(['id', 'name', 'status', 'type'])
+            ->when($query !== '', fn ($monitorQuery) => $monitorQuery->where('name', 'like', '%'.$query.'%'))
+            ->orderBy('name')
+            ->paginate(24, ['*'], 'monitor_page', max(1, $page))
+            ->withQueryString();
+        $selectedMonitors = $selectedMonitorIds === []
+            ? collect()
+            : $user->monitors()
+                ->whereKey($selectedMonitorIds)
+                ->get(['id', 'name', 'status', 'type']);
+
+        return [
+            'options' => $selectedMonitors
+                ->merge(collect($visibleMonitors->items()))
+                ->unique('id')
+                ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
+                ->values()
+                ->map(fn (Monitor $monitor) => $this->monitorOptionItem($monitor))
+                ->all(),
+            'query' => $query,
+            'results' => $this->paginateData($visibleMonitors, fn (Monitor $monitor) => $this->monitorOptionItem($monitor)),
+        ];
+    }
+
+    /**
+     * @return array{id: int, name: string, status: string, type: string}
+     */
+    protected function monitorOptionItem(Monitor $monitor): array
+    {
+        return [
+            'id' => $monitor->id,
+            'name' => $monitor->name,
+            'status' => $monitor->status,
+            'type' => strtoupper($monitor->type),
+        ];
     }
 
     protected function responseTimeData(Monitor $monitor, string $range, string $granularity): array
     {
         $config = $this->responseRangeConfig($range);
         $granularityConfig = $this->responseGranularityConfig($range, $granularity);
-        $to = CarbonImmutable::now();
+        $to = $this->currentTime();
         $from = $to->subSeconds($config['seconds']);
+        $windowStats = $this->windowStatsSince($monitor, $from, $range);
 
-        $results = CheckResult::query()
-            ->where('monitor_id', $monitor->id)
-            ->whereBetween('checked_at', [$from, $to])
-            ->orderBy('checked_at')
-            ->get(['checked_at', 'response_time_ms', 'status', 'meta']);
+        $results = $this->windowCheckResults($monitor, $from, $to);
 
         $latencies = $results
             ->pluck('response_time_ms')
@@ -1701,6 +2044,7 @@ class MonitorPresenter
             'minimum' => $latencies !== [] ? min($latencies) : null,
             'maximum' => $latencies !== [] ? max($latencies) : null,
             'p95' => $this->percentile($latencies, 95),
+            'downtimeLabel' => $windowStats['downtimeLabel'],
         ];
         $sampleCount = $results->count();
         $failedChecks = $results->where('status', 'down')->count();
@@ -1761,7 +2105,7 @@ class MonitorPresenter
     {
         return array_key_exists((string) $range, $this->responseRangeConfigMap())
             ? (string) $range
-            : 'hour';
+            : 'day';
     }
 
     /**
@@ -1769,7 +2113,7 @@ class MonitorPresenter
      */
     protected function responseRangeConfig(string $range): array
     {
-        return $this->responseRangeConfigMap()[$range] ?? $this->responseRangeConfigMap()['hour'];
+        return $this->responseRangeConfigMap()[$range] ?? $this->responseRangeConfigMap()['day'];
     }
 
     /**

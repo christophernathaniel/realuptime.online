@@ -13,15 +13,31 @@ class MonitorController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
+        $perPage = min(100, max(1, $request->integer('per_page', 50)));
+        $page = max(1, $request->integer('page', 1));
 
         $monitors = $user?->monitors()
             ->orderBy('created_at')
-            ->get()
-            ->map(fn (Monitor $monitor) => $this->serializeMonitor($monitor))
-            ->all();
+            ->paginate($perPage, ['*'], 'page', $page)
+            ->withQueryString();
 
         return response()->json([
-            'data' => $monitors,
+            'data' => collect($monitors?->items() ?? [])
+                ->map(fn (Monitor $monitor) => $this->serializeMonitor($monitor))
+                ->values()
+                ->all(),
+            'meta' => [
+                'current_page' => $monitors?->currentPage() ?? 1,
+                'last_page' => $monitors?->lastPage() ?? 1,
+                'per_page' => $monitors?->perPage() ?? $perPage,
+                'total' => $monitors?->total() ?? 0,
+                'from' => $monitors?->firstItem(),
+                'to' => $monitors?->lastItem(),
+            ],
+            'links' => [
+                'previous' => $monitors?->previousPageUrl(),
+                'next' => $monitors?->nextPageUrl(),
+            ],
         ]);
     }
 

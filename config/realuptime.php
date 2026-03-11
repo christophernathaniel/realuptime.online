@@ -1,8 +1,16 @@
 <?php
 
+$monitorCheckQueue = env('REALUPTIME_MONITOR_QUEUE', 'monitor-checks');
+$monitorCheckShards = array_values(array_filter(array_map(
+    static fn (string $queue): string => trim($queue),
+    explode(',', (string) env('REALUPTIME_MONITOR_QUEUE_SHARDS', ''))
+)));
+
 return [
     'queues' => [
-        'monitor_checks' => env('REALUPTIME_MONITOR_QUEUE', 'monitor-checks'),
+        'monitor_checks' => $monitorCheckShards[0] ?? $monitorCheckQueue,
+        'monitor_check_shards' => $monitorCheckShards !== [] ? $monitorCheckShards : [$monitorCheckQueue],
+        'monitor_metadata' => env('REALUPTIME_METADATA_QUEUE', 'monitor-metadata'),
         'notifications' => env('REALUPTIME_NOTIFICATION_QUEUE', 'notifications'),
     ],
 
@@ -10,6 +18,15 @@ return [
         'batch_size' => (int) env('REALUPTIME_DISPATCH_BATCH_SIZE', 250),
         'max_batches' => (int) env('REALUPTIME_DISPATCH_MAX_BATCHES', 12),
         'claim_ttl_seconds' => (int) env('REALUPTIME_CHECK_CLAIM_TTL_SECONDS', 600),
+    ],
+
+    'session_tracking' => [
+        'verify_seconds' => (int) env('REALUPTIME_SESSION_VERIFY_SECONDS', 60),
+        'refresh_seconds' => (int) env('REALUPTIME_SESSION_REFRESH_SECONDS', 300),
+    ],
+
+    'public_status' => [
+        'cache_seconds' => (int) env('REALUPTIME_PUBLIC_STATUS_CACHE_SECONDS', 15),
     ],
 
     'ping' => [

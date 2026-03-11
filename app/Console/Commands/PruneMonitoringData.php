@@ -24,9 +24,23 @@ class PruneMonitoringData extends Command
         $notificationLogCutoff = CarbonImmutable::now()->subDays($notificationLogRetentionDays);
         $healthyCheckCutoff = CarbonImmutable::now()->subDays($healthyCheckRetentionDays);
 
-        $deletedLogs = NotificationLog::query()
+        $deletedLogs = 0;
+
+        NotificationLog::query()
+            ->select('id')
             ->where('created_at', '<', $notificationLogCutoff)
-            ->delete();
+            ->orderBy('id')
+            ->chunkById($chunkSize, function (Collection $logs) use (&$deletedLogs): void {
+                $logIds = $logs->pluck('id')->all();
+
+                if ($logIds === []) {
+                    return;
+                }
+
+                $deletedLogs += NotificationLog::query()
+                    ->whereKey($logIds)
+                    ->delete();
+            });
 
         $deletedHealthyResults = 0;
 

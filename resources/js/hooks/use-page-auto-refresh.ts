@@ -9,7 +9,7 @@ type Options = {
 
 export function usePageAutoRefresh({
     enabled = true,
-    intervalMs = 15000,
+    intervalMs = 30000,
     only,
 }: Options) {
     const reloading = useRef(false);
@@ -19,25 +19,50 @@ export function usePageAutoRefresh({
             return;
         }
 
-        const interval = window.setInterval(() => {
-            if (document.visibilityState !== 'visible' || reloading.current) {
+        let cancelled = false;
+        let timeoutId: number | null = null;
+        const schedule = () => {
+            if (cancelled) {
                 return;
             }
 
-            reloading.current = true;
+            const jitterMs = Math.floor(Math.random() * Math.max(1000, intervalMs * 0.2));
 
-            router.visit(`${window.location.pathname}${window.location.search}`, {
-                method: 'get',
-                only,
-                preserveScroll: true,
-                preserveState: true,
-                replace: true,
-                onFinish: () => {
-                    reloading.current = false;
-                },
-            });
-        }, intervalMs);
+            timeoutId = window.setTimeout(() => {
+                if (cancelled) {
+                    return;
+                }
 
-        return () => window.clearInterval(interval);
+                if (document.visibilityState !== 'visible' || reloading.current || navigator.onLine === false) {
+                    schedule();
+
+                    return;
+                }
+
+                reloading.current = true;
+
+                router.visit(`${window.location.pathname}${window.location.search}`, {
+                    method: 'get',
+                    only,
+                    preserveScroll: true,
+                    preserveState: true,
+                    replace: true,
+                    onFinish: () => {
+                        reloading.current = false;
+                        schedule();
+                    },
+                });
+            }, intervalMs + jitterMs);
+        };
+
+        schedule();
+
+        return () => {
+            cancelled = true;
+
+            if (timeoutId !== null) {
+                window.clearTimeout(timeoutId);
+            }
+        };
     }, [enabled, intervalMs, only]);
 }

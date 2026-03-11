@@ -128,6 +128,7 @@ export type DetailedMonitor = {
         minimum: number | null;
         maximum: number | null;
         p95: number | null;
+        downtimeLabel: string;
     };
     responseTimeSignals: {
         sampleCount: number;

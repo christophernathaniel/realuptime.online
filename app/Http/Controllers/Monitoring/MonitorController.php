@@ -4,12 +4,12 @@ namespace App\Http\Controllers\Monitoring;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Monitoring\UpsertMonitorRequest;
+use App\Jobs\RunMonitorCheckJob;
 use App\Models\Capability;
 use App\Models\Monitor;
 use App\Models\User;
 use App\Services\Monitoring\EmailNotificationService;
 use App\Services\Monitoring\MonitorPresenter;
-use App\Services\Monitoring\MonitorRunner;
 use App\Support\WorkspaceResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,7 +22,6 @@ class MonitorController extends Controller
     public function __construct(
         protected MonitorPresenter $presenter,
         protected EmailNotificationService $notifications,
-        protected MonitorRunner $runner,
         protected WorkspaceResolver $workspaces,
     ) {}
 
@@ -160,9 +159,9 @@ class MonitorController extends Controller
             return back()->with('error', 'Resume the monitor before running an on-demand check.');
         }
 
-        $this->runner->runMonitor($monitor->fresh(['notificationContacts', 'user']));
+        RunMonitorCheckJob::dispatch($monitor->id, now()->toIso8601String())->afterCommit();
 
-        return back()->with('success', sprintf('Ran an on-demand check for %s.', $monitor->name));
+        return back()->with('success', sprintf('Queued an on-demand check for %s.', $monitor->name));
     }
 
     public function destroy(Request $request, Monitor $monitor): RedirectResponse
