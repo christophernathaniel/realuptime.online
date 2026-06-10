@@ -8,17 +8,19 @@ use App\Models\Incident;
 use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
 use App\Models\NotificationLog;
+use App\Models\ProbeConfirmation;
 use App\Models\StatusPage;
 use App\Models\StatusPageIncident;
 use App\Models\User;
-use App\Models\WorkspaceMembership;
 use App\Models\WorkspaceIntegration;
+use App\Models\WorkspaceMembership;
 use App\Support\MonitorQueueResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Number;
 
 class MonitorPresenter
@@ -44,6 +46,24 @@ class MonitorPresenter
      * @var array<string, array{firstCheckedAt: CarbonImmutable|null, totalResults: int, downResults: int}>
      */
     protected array $windowCheckResultSummaryCache = [];
+
+    /**
+     * @var array<string, array<int, string>>
+     */
+    protected array $windowCheckResultSegmentStatusCache = [];
+
+    /**
+     * @var array<string, array{
+     *     sampleCount: int,
+     *     failedChecks: int,
+     *     slowChecks: int,
+     *     latencySamples: int,
+     *     average: int|null,
+     *     minimum: int|null,
+     *     maximum: int|null
+     * }>
+     */
+    protected array $responseTimeSummaryCache = [];
 
     /**
      * @var array<int, array<int, array{
@@ -171,12 +191,18 @@ class MonitorPresenter
 
     protected function loadMonitorShowCoreRelations(Monitor $monitor): Monitor
     {
+        $now = $this->currentTime();
+
         $monitor->load([
             'user',
             'incidents' => fn ($query) => $query->latest('started_at')->limit(10),
             'notificationLogs' => fn ($query) => $query->with(['notificationContact', 'integration'])->latest()->limit(8),
             'heartbeatEvents' => fn ($query) => $query->latest('received_at')->limit(1),
-            'maintenanceWindows' => fn ($query) => $query->with('monitors:id,name')->orderBy('starts_at'),
+            'maintenanceWindows' => fn ($query) => $query
+                ->with('monitors:id,name')
+                ->where('ends_at', '>=', $now->subDay())
+                ->orderBy('starts_at')
+                ->limit(8),
             'statusPages',
         ]);
 
@@ -185,7 +211,7 @@ class MonitorPresenter
 
     protected function loadMonitorShowHistoryRelations(Monitor $monitor): Monitor
     {
-        $monitor->load([
+        $monitor->loadMissing([
             'user',
             'incidents' => fn ($query) => $query->latest('started_at')->limit(10),
         ]);
@@ -195,13 +221,27 @@ class MonitorPresenter
 
     protected function loadMonitorShowCapabilityRelations(Monitor $monitor): Monitor
     {
+        $now = $this->currentTime();
+
         $monitor->load([
             'capabilities' => fn ($query) => $query
-                ->with([
-                    'monitors' => fn ($monitorQuery) => $this->applyCapabilityMonitorSummaryQuery($monitorQuery),
-                ])
+                ->withCount('monitors')
                 ->orderBy('name'),
         ]);
+
+        if ($monitor->capabilities->isNotEmpty()) {
+            $monitor->loadCount([
+                'openIncidents',
+                'openIncidents as open_downtime_incidents_count' => fn (Builder $query) => $query->where('type', Incident::TYPE_DOWNTIME),
+                'openIncidents as open_degraded_performance_incidents_count' => fn (Builder $query) => $query->where('type', Incident::TYPE_DEGRADED_PERFORMANCE),
+                'openIncidents as open_ssl_expiry_incidents_count' => fn (Builder $query) => $query->where('type', Incident::TYPE_SSL_EXPIRY),
+                'openIncidents as open_domain_expiry_incidents_count' => fn (Builder $query) => $query->where('type', Incident::TYPE_DOMAIN_EXPIRY),
+                'maintenanceWindows as active_maintenance_windows_count' => fn (Builder $query) => $query
+                    ->where('maintenance_windows.status', '!=', MaintenanceWindow::STATUS_CANCELLED)
+                    ->where('maintenance_windows.starts_at', '<=', $now)
+                    ->where('maintenance_windows.ends_at', '>=', $now),
+            ]);
+        }
 
         return $monitor;
     }
@@ -219,9 +259,16 @@ class MonitorPresenter
         $heartbeatDeadline = $heartbeatBaseline && $monitor->type === Monitor::TYPE_HEARTBEAT
             ? CarbonImmutable::parse($heartbeatBaseline)->addSeconds($effectiveIntervalSeconds + ($monitor->heartbeat_grace_seconds ?: 0))
             : null;
+        $pendingRecoveryConfirmation = ProbeConfirmation::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('kind', ProbeConfirmation::KIND_RECOVERY)
+            ->where('status', ProbeConfirmation::STATUS_PENDING)
+            ->latest('requested_at')
+            ->first();
 
         return [
             'id' => $monitor->id,
+            'publicId' => $monitor->public_id,
             'name' => $monitor->name,
             'type' => strtoupper($monitor->type === Monitor::TYPE_HTTP ? 'http/s' : $monitor->type),
             'typeLabel' => $this->typeLabel($monitor),
@@ -265,6 +312,17 @@ class MonitorPresenter
                 ->map(fn (MaintenanceWindow $window) => $this->maintenanceWindowItem($window))
                 ->all(),
             'region' => $monitor->region,
+            'acceptedHttpStatuses' => in_array($monitor->type, [Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD], true)
+                ? ($monitor->accepted_http_statuses ?: '200-299')
+                : 'n/a',
+            'lastProbeRegion' => $monitor->last_probe_region ?: 'Not recorded yet',
+            'lastQueueLagLabel' => $monitor->last_queue_lag_ms !== null ? Number::format($monitor->last_queue_lag_ms).' ms' : 'n/a',
+            'lastQueueLagValue' => $monitor->last_queue_lag_ms,
+            'recoveryConfirmation' => $pendingRecoveryConfirmation ? [
+                'status' => ucfirst($pendingRecoveryConfirmation->status),
+                'requestedAt' => $pendingRecoveryConfirmation->requested_at?->format('M j, Y H:i:s') ?? 'Pending',
+                'regions' => collect($pendingRecoveryConfirmation->confirmation_regions ?? [])->implode(', '),
+            ] : null,
             'heartbeatUrl' => $monitor->heartbeat_token ? route('heartbeat.store', $monitor->heartbeat_token) : null,
             'lastHeartbeatLabel' => $monitor->type === Monitor::TYPE_HEARTBEAT
                 ? ($monitor->last_heartbeat_at ? $this->timeAgo($monitor->last_heartbeat_at) : 'No heartbeat received yet')
@@ -306,7 +364,7 @@ class MonitorPresenter
         $now = $this->currentTime();
 
         $this->preloadDowntimeIncidents(collect([$monitor]), $now->subYear(), $now);
-        $this->preloadCheckResults(collect([$monitor]), $now->subDays(7), $now);
+        $this->preloadMonitorHistoryCheckResultSummaries($monitor, $now, $responseRange);
 
         $responseTimeData = $this->responseTimeData($monitor, $responseRange, $responseGranularity);
 
@@ -339,7 +397,7 @@ class MonitorPresenter
     protected function monitorCapabilityOverview(Monitor $monitor): array
     {
         return $monitor->capabilities
-            ->map(fn (Capability $capability) => $this->capabilityItem($capability))
+            ->map(fn (Capability $capability) => $this->monitorCapabilityItem($capability, $monitor))
             ->values()
             ->all();
     }
@@ -447,6 +505,54 @@ class MonitorPresenter
                     'downResults' => (int) ($summary?->down_results ?? 0),
                 ],
             );
+        }
+    }
+
+    protected function preloadMonitorHistoryCheckResultSummaries(Monitor $monitor, CarbonImmutable $to, string $responseRange): void
+    {
+        $responseRangeConfig = $this->responseRangeConfig($responseRange);
+        $windows = collect([
+            $to->subHours(6),
+            $to->subDay(),
+            $to->subDays(7),
+            $to->subDays(14),
+            $to->subDays(30),
+            $to->subYear(),
+            $to->subSeconds($responseRangeConfig['seconds']),
+        ])->unique(fn (CarbonImmutable $from) => $from->timestamp)->values();
+
+        if ($windows->isEmpty()) {
+            return;
+        }
+
+        $selects = [];
+        $bindings = [];
+
+        foreach ($windows as $index => $from) {
+            $selects[] = "MIN(CASE WHEN checked_at >= ? THEN checked_at END) as first_checked_at_{$index}";
+            $bindings[] = $from;
+            $selects[] = "SUM(CASE WHEN checked_at >= ? THEN 1 ELSE 0 END) as total_results_{$index}";
+            $bindings[] = $from;
+            $selects[] = "SUM(CASE WHEN checked_at >= ? AND status = 'down' THEN 1 ELSE 0 END) as down_results_{$index}";
+            $bindings[] = $from;
+        }
+
+        $earliestFrom = $windows->sortBy(fn (CarbonImmutable $from) => $from->timestamp)->first();
+        $summary = CheckResult::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('checked_at', '>=', $earliestFrom)
+            ->where('checked_at', '<', $to)
+            ->selectRaw(implode(",\n", $selects), $bindings)
+            ->first();
+
+        foreach ($windows as $index => $from) {
+            $this->windowCheckResultSummaryCache[implode(':', ['summary', $monitor->id, $from->timestamp, $to->timestamp])] = [
+                'firstCheckedAt' => $summary?->{"first_checked_at_{$index}"}
+                    ? CarbonImmutable::parse($summary->{"first_checked_at_{$index}"})
+                    : null,
+                'totalResults' => (int) ($summary?->{"total_results_{$index}"} ?? 0),
+                'downResults' => (int) ($summary?->{"down_results_{$index}"} ?? 0),
+            ];
         }
     }
 
@@ -570,6 +676,7 @@ class MonitorPresenter
         return [
             'monitor' => [
                 'id' => $monitor?->id,
+                'publicId' => $monitor?->public_id,
                 'name' => $monitor?->name ?? '',
                 'type' => $monitor?->type ?? Monitor::TYPE_HTTP,
                 'target' => $monitor?->target ?? 'https://',
@@ -582,6 +689,7 @@ class MonitorPresenter
                 'auth_username' => $monitor?->auth_username ?? '',
                 'auth_password' => $monitor?->auth_password ?? '',
                 'expected_status_code' => $monitor?->expected_status_code ?? 200,
+                'accepted_http_statuses' => $monitor?->accepted_http_statuses ?? '200-299',
                 'expected_keyword' => $monitor?->expected_keyword ?? '',
                 'keyword_match_type' => $monitor?->keyword_match_type ?? 'contains',
                 'packet_count' => $monitor?->packet_count ?? 1,
@@ -814,7 +922,7 @@ class MonitorPresenter
         ];
     }
 
-    public function maintenance(User $user, ?int $focusMonitorId = null, int $historyPage = 1, string $monitorQuery = '', int $monitorPage = 1): array
+    public function maintenance(User $user, ?string $focusMonitor = null, int $historyPage = 1, string $monitorQuery = '', int $monitorPage = 1): array
     {
         $now = $this->currentTime();
         $activeQuery = $user->maintenanceWindows()
@@ -845,9 +953,7 @@ class MonitorPresenter
             ->orderByDesc('starts_at')
             ->paginate(10, ['*'], 'history_page', max(1, $historyPage))
             ->withQueryString();
-        $focusMonitor = $focusMonitorId
-            ? $user->monitors()->whereKey($focusMonitorId)->first()
-            : null;
+        $focusMonitor = $this->resolveMonitorReference($user, $focusMonitor);
         $monitorOptions = $this->monitorOptions(
             $user,
             $active
@@ -876,6 +982,7 @@ class MonitorPresenter
             'monitorOptionResults' => $monitorOptions['results'],
             'focusMonitor' => $focusMonitor ? [
                 'id' => $focusMonitor->id,
+                'publicId' => $focusMonitor->public_id,
                 'name' => $focusMonitor->name,
             ] : null,
             'formDefaults' => [
@@ -1297,6 +1404,20 @@ class MonitorPresenter
         return $this->capabilityItemFromMonitors($capability, $capability->monitors->unique('id')->values());
     }
 
+    protected function monitorCapabilityItem(Capability $capability, Monitor $monitor): array
+    {
+        $item = $this->capabilityItemFromMonitors($capability, collect([$monitor]));
+        $linkedChecks = array_key_exists('monitors_count', $capability->getAttributes())
+            ? (int) $capability->getAttribute('monitors_count')
+            : 1;
+
+        return [
+            ...$item,
+            'linkedChecks' => $linkedChecks,
+            'monitorNames' => [$monitor->name],
+        ];
+    }
+
     protected function applyCapabilityMonitorSummaryQuery(Builder|BelongsToMany $query): void
     {
         $now = $this->currentTime();
@@ -1440,6 +1561,7 @@ class MonitorPresenter
 
         return [
             'id' => $monitor->id,
+            'publicId' => $monitor->public_id,
             'name' => $monitor->name,
             'status' => $monitor->status,
             'type' => strtoupper($monitor->type),
@@ -1454,6 +1576,23 @@ class MonitorPresenter
             'showUrl' => route('monitors.show', $monitor),
             'editUrl' => route('monitors.edit', $monitor),
         ];
+    }
+
+    protected function resolveMonitorReference(User $user, ?string $reference): ?Monitor
+    {
+        if ($reference === null || $reference === '') {
+            return null;
+        }
+
+        return $user->monitors()
+            ->where(function ($query) use ($reference): void {
+                $query->where('public_id', $reference);
+
+                if (ctype_digit($reference)) {
+                    $query->orWhereKey((int) $reference);
+                }
+            })
+            ->first();
     }
 
     protected function aggregateMonitorWindow(Collection $monitors, int $days, ?string $mtbfLabel = null): array
@@ -1535,17 +1674,17 @@ class MonitorPresenter
         $fallbackSummary = $window['incidents']->isEmpty()
             ? $this->windowCheckResultSummary($monitor, $from, $to)
             : null;
-        $fallbackResults = $window['incidents']->isEmpty() && ($fallbackSummary['downResults'] ?? 0) > 0
-            ? $this->windowCheckResults($monitor, $from, $to)
-            : collect();
 
         if (! $window['monitoringStart']) {
             return array_fill(0, $segments, 'unknown');
         }
 
         $segmentLength = max(1, (int) floor(($hours * 3600) / $segments));
+        $fallbackSegmentStatuses = $window['incidents']->isEmpty() && ($fallbackSummary['downResults'] ?? 0) > 0
+            ? $this->checkResultSegmentStatuses($monitor, $from, $to, $segmentLength, $segments)
+            : [];
 
-        return collect(range(0, $segments - 1))->map(function (int $segment) use ($from, $to, $segmentLength, $segments, $window, $fallbackResults) {
+        return collect(range(0, $segments - 1))->map(function (int $segment) use ($from, $to, $segmentLength, $segments, $window, $fallbackSegmentStatuses) {
             $start = $from->addSeconds($segment * $segmentLength);
             $end = $segment === $segments - 1
                 ? $to
@@ -1555,18 +1694,55 @@ class MonitorPresenter
                 return 'unknown';
             }
 
-            if ($window['incidents']->isEmpty() && ($fallbackSummary['downResults'] ?? 0) > 0) {
-                $slice = $fallbackResults->filter(fn (CheckResult $result) => $result->checked_at?->betweenIncluded($start, $end));
-
-                if ($slice->isEmpty()) {
-                    return 'unknown';
-                }
-
-                return $slice->contains(fn (CheckResult $result) => $result->status === 'down') ? 'down' : 'up';
+            if ($window['incidents']->isEmpty() && $fallbackSegmentStatuses !== []) {
+                return $fallbackSegmentStatuses[$segment] ?? 'unknown';
             }
 
             return $this->incidentOverlapSeconds($window['incidents'], $start, $end) > 0 ? 'down' : 'up';
         })->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function checkResultSegmentStatuses(
+        Monitor $monitor,
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        int $segmentLength,
+        int $segments,
+    ): array {
+        $cacheKey = implode(':', ['segments', $monitor->id, $from->timestamp, $to->timestamp, $segmentLength, $segments]);
+
+        if (array_key_exists($cacheKey, $this->windowCheckResultSegmentStatusCache)) {
+            return $this->windowCheckResultSegmentStatusCache[$cacheKey];
+        }
+
+        [$bucketExpression, $bucketBindings] = $this->bucketIndexExpression($from, $segmentLength);
+
+        $rows = CheckResult::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('checked_at', '>=', $from)
+            ->where('checked_at', '<', $to)
+            ->selectRaw($bucketExpression.' as segment_index', $bucketBindings)
+            ->selectRaw("COUNT(*) as total_results, SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END) as down_results")
+            ->groupBy('segment_index')
+            ->orderBy('segment_index')
+            ->get();
+
+        $statuses = [];
+
+        foreach ($rows as $row) {
+            $segmentIndex = (int) $row->segment_index;
+
+            if ($segmentIndex < 0 || $segmentIndex >= $segments) {
+                continue;
+            }
+
+            $statuses[$segmentIndex] = (int) $row->down_results > 0 ? 'down' : 'up';
+        }
+
+        return $this->windowCheckResultSegmentStatusCache[$cacheKey] = $statuses;
     }
 
     /**
@@ -2069,6 +2245,14 @@ class MonitorPresenter
             ];
         }
 
+        if ($monitor->last_error_type === 'awaiting_recovery_confirmation') {
+            return [
+                'label' => 'Verifying recovery',
+                'tone' => 'warning',
+                'detail' => $monitor->last_error_message ?: 'Awaiting confirmation from another probe region.',
+            ];
+        }
+
         if ($monitor->status === Monitor::STATUS_DOWN || $this->monitorHasOpenIncidentType($monitor, [Incident::TYPE_DOWNTIME])) {
             return [
                 'label' => 'Major outage',
@@ -2388,33 +2572,25 @@ class MonitorPresenter
         $granularityConfig = $this->responseGranularityConfig($range, $granularity);
         $to = $this->currentTime();
         $from = $to->subSeconds($config['seconds']);
+        $summary = $this->responseTimeSummary($monitor, $from, $to);
         $windowStats = $this->windowStatsSince($monitor, $from, $range);
 
-        $results = $this->windowCheckResults($monitor, $from, $to);
-
-        $latencies = $results
-            ->pluck('response_time_ms')
-            ->filter(fn ($value) => $value !== null)
-            ->map(fn ($value) => (int) $value)
-            ->values()
-            ->all();
-
         $stats = [
-            'average' => $latencies !== [] ? (int) round(array_sum($latencies) / count($latencies)) : null,
-            'median' => $this->median($latencies),
-            'minimum' => $latencies !== [] ? min($latencies) : null,
-            'maximum' => $latencies !== [] ? max($latencies) : null,
-            'p95' => $this->percentile($latencies, 95),
+            'average' => $summary['average'],
+            'median' => $this->responseTimeMedian($monitor, $from, $to, $summary['latencySamples']),
+            'minimum' => $summary['minimum'],
+            'maximum' => $summary['maximum'],
+            'p95' => $this->responseTimePercentile($monitor, $from, $to, 95, $summary['latencySamples']),
             'downtimeLabel' => $windowStats['downtimeLabel'],
         ];
-        $sampleCount = $results->count();
-        $failedChecks = $results->where('status', 'down')->count();
-        $slowChecks = $results->filter(fn (CheckResult $result) => (bool) data_get($result->meta, 'slow', false))->count();
+        $sampleCount = $summary['sampleCount'];
+        $failedChecks = $summary['failedChecks'];
+        $slowChecks = $summary['slowChecks'];
 
         return [
             'label' => $config['label'],
             'granularity_label' => $granularityConfig['label'],
-            'points' => $this->responseTimePoints($results, $from, $granularityConfig['seconds'], $granularityConfig['short_label_format']),
+            'points' => $this->responseTimePoints($monitor, $from, $to, $granularityConfig['seconds'], $granularityConfig['short_label_format']),
             'stats' => $stats,
             'signals' => [
                 'sampleCount' => $sampleCount,
@@ -2423,6 +2599,121 @@ class MonitorPresenter
                 'successRate' => $sampleCount > 0 ? round((($sampleCount - $failedChecks) / $sampleCount) * 100, 2) : null,
             ],
         ];
+    }
+
+    /**
+     * @return array{
+     *     sampleCount: int,
+     *     failedChecks: int,
+     *     slowChecks: int,
+     *     latencySamples: int,
+     *     average: int|null,
+     *     minimum: int|null,
+     *     maximum: int|null
+     * }
+     */
+    protected function responseTimeSummary(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $cacheKey = implode(':', ['response-summary', $monitor->id, $from->timestamp, $to->timestamp]);
+
+        if (array_key_exists($cacheKey, $this->responseTimeSummaryCache)) {
+            return $this->responseTimeSummaryCache[$cacheKey];
+        }
+
+        $slowExpression = $this->slowCheckSqlExpression();
+        $summary = $this->checkResultWindowQuery($monitor, $from, $to)
+            ->selectRaw(
+                "COUNT(*) as sample_count,
+                SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END) as failed_checks,
+                SUM(CASE WHEN {$slowExpression} THEN 1 ELSE 0 END) as slow_checks,
+                COUNT(response_time_ms) as latency_samples,
+                MIN(checked_at) as first_checked_at,
+                AVG(response_time_ms) as average_response_time,
+                MIN(response_time_ms) as minimum_response_time,
+                MAX(response_time_ms) as maximum_response_time"
+            )
+            ->first();
+
+        $this->windowCheckResultSummaryCache[implode(':', ['summary', $monitor->id, $from->timestamp, $to->timestamp])] = [
+            'firstCheckedAt' => $summary?->first_checked_at
+                ? CarbonImmutable::parse($summary->first_checked_at)
+                : null,
+            'totalResults' => (int) ($summary?->sample_count ?? 0),
+            'downResults' => (int) ($summary?->failed_checks ?? 0),
+        ];
+
+        return $this->responseTimeSummaryCache[$cacheKey] = [
+            'sampleCount' => (int) ($summary?->sample_count ?? 0),
+            'failedChecks' => (int) ($summary?->failed_checks ?? 0),
+            'slowChecks' => (int) ($summary?->slow_checks ?? 0),
+            'latencySamples' => (int) ($summary?->latency_samples ?? 0),
+            'average' => $summary?->average_response_time !== null ? (int) round((float) $summary->average_response_time) : null,
+            'minimum' => $summary?->minimum_response_time !== null ? (int) $summary->minimum_response_time : null,
+            'maximum' => $summary?->maximum_response_time !== null ? (int) $summary->maximum_response_time : null,
+        ];
+    }
+
+    protected function responseTimeMedian(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to, int $sampleCount): ?int
+    {
+        if ($sampleCount <= 0) {
+            return null;
+        }
+
+        $middle = intdiv($sampleCount, 2);
+
+        if ($sampleCount % 2 === 1) {
+            return $this->responseTimeValueAtOffset($monitor, $from, $to, $middle);
+        }
+
+        $lowerValue = $this->responseTimeValueAtOffset($monitor, $from, $to, $middle - 1);
+        $upperValue = $this->responseTimeValueAtOffset($monitor, $from, $to, $middle);
+
+        if ($lowerValue === null || $upperValue === null) {
+            return null;
+        }
+
+        return (int) round(($lowerValue + $upperValue) / 2);
+    }
+
+    protected function responseTimePercentile(
+        Monitor $monitor,
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        int $percentile,
+        int $sampleCount,
+    ): ?int {
+        if ($sampleCount <= 0) {
+            return null;
+        }
+
+        $offset = (int) ceil(($sampleCount * $percentile) / 100) - 1;
+        $offset = max(0, min($sampleCount - 1, $offset));
+
+        return $this->responseTimeValueAtOffset($monitor, $from, $to, $offset);
+    }
+
+    protected function responseTimeValueAtOffset(
+        Monitor $monitor,
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        int $offset,
+    ): ?int {
+        $value = $this->checkResultWindowQuery($monitor, $from, $to)
+            ->whereNotNull('response_time_ms')
+            ->orderBy('response_time_ms')
+            ->offset($offset)
+            ->limit(1)
+            ->value('response_time_ms');
+
+        return $value !== null ? (int) $value : null;
+    }
+
+    protected function checkResultWindowQuery(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to): Builder
+    {
+        return CheckResult::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('checked_at', '>=', $from)
+            ->where('checked_at', '<', $to);
     }
 
     /**
@@ -2641,46 +2932,78 @@ class MonitorPresenter
      * @return array<int, array{label: string, shortLabel: string, value: ?int, status: string}>
      */
     protected function responseTimePoints(
-        Collection $results,
+        Monitor $monitor,
         CarbonImmutable $from,
+        CarbonImmutable $to,
         int $bucketSeconds,
         string $shortLabelFormat,
     ): array {
-        if ($results->isEmpty()) {
-            return [];
-        }
-
         $bucketAnchor = $this->responseTimeBucketAnchor($from, $bucketSeconds);
-        $buckets = [];
+        [$bucketExpression, $bucketBindings] = $this->bucketIndexExpression($bucketAnchor, $bucketSeconds);
+        $slowExpression = $this->slowCheckSqlExpression();
 
-        foreach ($results as $result) {
-            $checkedAt = CarbonImmutable::parse($result->checked_at)->setTimezone(config('app.timezone'));
-            $bucketIndex = (int) floor($bucketAnchor->diffInSeconds($checkedAt) / $bucketSeconds);
-            $buckets[$bucketIndex] ??= [];
-            $buckets[$bucketIndex][] = $result;
-        }
+        $rows = $this->checkResultWindowQuery($monitor, $from, $to)
+            ->selectRaw($bucketExpression.' as bucket_index', $bucketBindings)
+            ->selectRaw(
+                "AVG(response_time_ms) as average_response_time,
+                SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END) as down_count,
+                SUM(CASE WHEN {$slowExpression} THEN 1 ELSE 0 END) as slow_count"
+            )
+            ->groupBy('bucket_index')
+            ->orderBy('bucket_index')
+            ->get();
 
-        ksort($buckets);
+        return $rows->map(function ($row) use ($bucketAnchor, $bucketSeconds, $shortLabelFormat): array {
+            $bucketStart = $bucketAnchor->addSeconds(((int) $row->bucket_index) * $bucketSeconds);
 
-        return collect($buckets)->map(function (array $bucket, int $index) use ($bucketAnchor, $bucketSeconds, $shortLabelFormat): array {
-            $bucketStart = $bucketAnchor->addSeconds($index * $bucketSeconds);
-            $responseTimes = collect($bucket)
-                ->pluck('response_time_ms')
-                ->filter(fn ($value) => $value !== null)
-                ->map(fn ($value) => (int) $value)
-                ->values();
-
-            $status = collect($bucket)->contains(fn (CheckResult $result) => $result->status === 'down')
+            $status = (int) $row->down_count > 0
                 ? 'down'
-                : (collect($bucket)->contains(fn (CheckResult $result) => (bool) data_get($result->meta, 'slow', false)) ? 'warning' : 'up');
+                : ((int) $row->slow_count > 0 ? 'warning' : 'up');
 
             return [
                 'label' => $bucketStart->format('M j, Y H:i'),
                 'shortLabel' => $bucketStart->format($shortLabelFormat),
-                'value' => $responseTimes->isNotEmpty() ? (int) round($responseTimes->avg()) : null,
+                'value' => $row->average_response_time !== null ? (int) round((float) $row->average_response_time) : null,
                 'status' => $status,
             ];
         })->values()->all();
+    }
+
+    /**
+     * @return array{0: string, 1: array<int, int>}
+     */
+    protected function bucketIndexExpression(CarbonImmutable $anchor, int $bucketSeconds): array
+    {
+        $anchorTimestamp = $anchor->timestamp;
+
+        return match (DB::connection()->getDriverName()) {
+            'sqlite' => [
+                "CAST(((strftime('%s', checked_at) - ?) / ?) AS INTEGER)",
+                [$anchorTimestamp, $bucketSeconds],
+            ],
+            'pgsql' => [
+                'FLOOR((EXTRACT(EPOCH FROM checked_at) - ?) / ?)',
+                [$anchorTimestamp, $bucketSeconds],
+            ],
+            'sqlsrv' => [
+                "FLOOR((DATEDIFF_BIG(second, '1970-01-01', checked_at) - ?) / ?)",
+                [$anchorTimestamp, $bucketSeconds],
+            ],
+            default => [
+                'FLOOR((UNIX_TIMESTAMP(checked_at) - ?) / ?)',
+                [$anchorTimestamp, $bucketSeconds],
+            ],
+        };
+    }
+
+    protected function slowCheckSqlExpression(): string
+    {
+        return match (DB::connection()->getDriverName()) {
+            'sqlite' => "json_extract(meta, '$.slow') IN (1, '1', 'true')",
+            'pgsql' => "(meta->>'slow') IN ('true', '1')",
+            'sqlsrv' => "JSON_VALUE(meta, '$.slow') IN ('true', '1')",
+            default => "JSON_UNQUOTE(JSON_EXTRACT(meta, '$.slow')) IN ('true', '1')",
+        };
     }
 
     protected function responseTimeBucketAnchor(CarbonImmutable $from, int $bucketSeconds): CarbonImmutable
@@ -2766,6 +3089,7 @@ class MonitorPresenter
     {
         return match ($incident->type) {
             Incident::TYPE_DEGRADED_PERFORMANCE => 'Degraded performance',
+            Incident::TYPE_TRANSIENT_FAILURE => 'Transient edge failure',
             Incident::TYPE_SSL_EXPIRY => 'SSL expiry',
             Incident::TYPE_DOMAIN_EXPIRY => 'Domain expiry',
             default => 'Downtime',

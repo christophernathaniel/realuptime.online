@@ -36,9 +36,12 @@ class MonitoringSectionController extends Controller
 
     public function maintenance(Request $request): Response
     {
+        $focusMonitor = (string) $request->query('monitor', '');
+        $legacyFocusMonitorId = $request->integer('monitor_id');
+
         return Inertia::render('monitoring/maintenance', $this->presenter->maintenance(
             $this->workspaces->current($request),
-            $request->integer('monitor_id') ?: null,
+            $focusMonitor !== '' ? $focusMonitor : ($legacyFocusMonitorId > 0 ? (string) $legacyFocusMonitorId : null),
             max(1, $request->integer('history_page', 1)),
             (string) $request->query('monitor_query', ''),
             max(1, $request->integer('monitor_page', 1)),

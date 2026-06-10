@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Monitoring\EmailNotificationService;
 use App\Services\Monitoring\Integrations\WorkspaceIntegrationNotificationService;
 use App\Services\Monitoring\MonitorPresenter;
+use App\Support\MonitorQueueResolver;
 use App\Support\WorkspaceResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -107,11 +108,11 @@ class MonitorController extends Controller
             ...$this->presenter->showPage($monitor),
             'monitorHistory' => Inertia::defer(
                 fn () => $this->presenter->showHistory($monitor->fresh(), $responseRange, $responseGranularity)['monitorHistory'],
-                'monitor-insights',
+                'monitor-history',
             ),
             'monitorCapabilities' => Inertia::defer(
                 fn () => $this->presenter->showCapabilities($monitor->fresh())['monitorCapabilities'],
-                'monitor-insights',
+                'monitor-capabilities',
             ),
         ]);
     }
@@ -179,7 +180,12 @@ class MonitorController extends Controller
             return back()->with('error', 'Resume the monitor before running an on-demand check.');
         }
 
-        RunMonitorCheckJob::dispatch($monitor->id, now()->toIso8601String())->afterCommit();
+        RunMonitorCheckJob::dispatch(
+            $monitor->id,
+            now()->toIso8601String(),
+            $monitor->type,
+            MonitorQueueResolver::usesRegionQueues() ? $monitor->region : null,
+        )->afterCommit();
 
         return back()->with('success', sprintf('Queued an on-demand check for %s.', $monitor->name));
     }

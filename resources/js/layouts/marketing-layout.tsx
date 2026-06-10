@@ -1,9 +1,10 @@
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { ChevronDown, Instagram, Linkedin, Menu, Twitter, X } from 'lucide-react';
 import type { PropsWithChildren } from 'react';
 import { useMemo, useState } from 'react';
 import AppLogoIcon from '@/components/app-logo-icon';
 import { FeatureIcon } from '@/components/marketing/feature-icon';
+import { SeoHead, type SeoBreadcrumb, type SeoStructuredData } from '@/components/seo/seo-head';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { footerGroups, marketingFeatures } from '@/lib/marketing-content';
 import { cn } from '@/lib/utils';
@@ -13,6 +14,16 @@ type MarketingLayoutProps = PropsWithChildren<{
     title: string;
     description?: string;
     pageClassName?: string;
+    seo?: {
+        canonicalPath?: string;
+        imagePath?: string;
+        imageAlt?: string;
+        type?: 'website' | 'article';
+        keywords?: string[];
+        noIndex?: boolean;
+        breadcrumbs?: SeoBreadcrumb[];
+        structuredData?: SeoStructuredData | SeoStructuredData[];
+    };
 }>;
 
 type MarketingSharedProps = {
@@ -26,7 +37,7 @@ const socialButtons = [
     { label: 'Instagram', Icon: Instagram },
 ];
 
-export default function MarketingLayout({ title, description, children, pageClassName }: MarketingLayoutProps) {
+export default function MarketingLayout({ title, description, children, pageClassName, seo }: MarketingLayoutProps) {
     const { auth, canRegister = true } = usePage<MarketingSharedProps>().props;
     const { isCurrentUrl, isCurrentOrParentUrl } = useCurrentUrl();
     const [featuresOpen, setFeaturesOpen] = useState(false);
@@ -60,9 +71,19 @@ export default function MarketingLayout({ title, description, children, pageClas
 
     return (
         <>
-            <Head title={title}>
-                {description ? <meta name="description" content={description} /> : null}
-            </Head>
+            <SeoHead
+                title={title}
+                description={description}
+                canonicalPath={seo?.canonicalPath}
+                imagePath={seo?.imagePath}
+                imageAlt={seo?.imageAlt}
+                type={seo?.type}
+                keywords={seo?.keywords}
+                noIndex={seo?.noIndex}
+                breadcrumbs={seo?.breadcrumbs}
+                structuredData={seo?.structuredData}
+                includeSiteSchemas
+            />
             <div className="min-h-screen bg-[#071326] text-[#f3f7ff]">
                 <div className="fixed inset-x-0 top-0 z-50 border-b border-white/8 bg-[#071326]/78 backdrop-blur-xl">
                     <div className="mx-auto flex h-[74px] max-w-[1380px] items-center justify-between gap-5 px-5 lg:px-8">

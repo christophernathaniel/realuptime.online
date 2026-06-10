@@ -10,7 +10,7 @@ Route::middleware(['api', 'throttle:api', 'api.token'])
     ->group(function () {
         Route::get('workspace', [WorkspaceController::class, 'show']);
         Route::get('monitors', [MonitorController::class, 'index']);
-        Route::get('monitors/{monitor}', [MonitorController::class, 'show']);
-        Route::post('monitors/{monitor}/run-now', [MonitorController::class, 'runNow']);
+        Route::get('monitors/{monitor:id}', [MonitorController::class, 'show']);
+        Route::post('monitors/{monitor:id}/run-now', [MonitorController::class, 'runNow']);
         Route::get('incidents', [IncidentController::class, 'index']);
     });

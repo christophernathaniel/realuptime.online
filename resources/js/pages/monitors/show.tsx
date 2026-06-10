@@ -64,7 +64,7 @@ function SignalWindowCard({
 }) {
     return (
         <PageCard className="p-5">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-[14px] uppercase tracking-[0.18em] text-[#8e9aac]">{title}</div>
                 <div className="text-[22px] font-semibold tracking-[-0.04em] text-white">{uptimeLabel}</div>
             </div>
@@ -83,8 +83,8 @@ function InfoTile({ label, value, hint }: { label: string; value: string; hint: 
     return (
         <div className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4">
             <div className="text-[13px] uppercase tracking-[0.18em] text-[#8e9aac]">{label}</div>
-            <div className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-white">{value}</div>
-            <div className="mt-1 text-[14px] text-[#9ca7b9]">{hint}</div>
+            <div className="mt-2 break-words text-[16px] font-semibold tracking-[-0.03em] text-white sm:text-[18px]">{value}</div>
+            <div className="mt-1 break-words text-[14px] text-[#9ca7b9]">{hint}</div>
         </div>
     );
 }
@@ -130,7 +130,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
         }
 
         router.get(
-            `/monitors/${monitor.id}`,
+            `/monitors/${monitor.publicId}`,
             {
                 response_range: event.target.value,
                 response_granularity: monitorHistory.responseTimeGranularity,
@@ -145,7 +145,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
         }
 
         router.get(
-            `/monitors/${monitor.id}`,
+            `/monitors/${monitor.publicId}`,
             {
                 response_range: monitorHistory.responseTimeRange,
                 response_granularity: event.target.value,
@@ -158,7 +158,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
         <MonitoringLayout>
             <Head title={monitor.name} />
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_308px]">
-                <section className="space-y-4">
+                <section className="min-w-0 space-y-4">
                     <PageCard className="p-4 lg:p-5">
                         <Link
                             href="/monitors"
@@ -168,13 +168,13 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                             Checks
                         </Link>
 
-                        <div className="mt-4 flex items-start gap-4">
+                        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
                             <StatusChip status={monitor.status} large />
                             <div className="min-w-0">
                                 <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#7f8b9b]">
                                     Check profile
                                 </div>
-                                <h1 className="mt-2 text-[34px] font-semibold tracking-[-0.06em] text-white lg:text-[38px]">
+                                <h1 className="mt-2 break-words text-[30px] font-semibold tracking-[-0.06em] text-white sm:text-[34px] lg:text-[38px]">
                                     {monitor.name}
                                 </h1>
                                 <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[14px] text-[#cfd8ec]">
@@ -196,10 +196,10 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                                             href={monitor.target}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="inline-flex items-center gap-2 text-[#57c7c2] underline decoration-[#57c7c2]/25 underline-offset-4"
+                                            className="inline-flex items-center gap-2 break-all leading-none text-[#57c7c2] underline decoration-[#57c7c2]/25 underline-offset-4"
                                         >
                                             {monitor.target}
-                                            <ExternalLink className="size-4" />
+                                            <ExternalLink className="relative top-px size-4 shrink-0" />
                                         </a>
                                     ) : (
                                         <span className="text-[#dbe4f9]">Heartbeat endpoint</span>
@@ -208,34 +208,34 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                             </div>
                         </div>
 
-                        <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3]"
-                                onClick={() => router.post(`/monitors/${monitor.id}/run-now`)}
+                                className="inline-flex w-full items-center justify-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3] sm:w-auto"
+                                onClick={() => router.post(`/monitors/${monitor.publicId}/run-now`)}
                             >
                                 <Play className="size-4 text-[#57c7c2]" />
                                 Run check
                             </button>
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3]"
-                                onClick={() => router.post(`/monitors/${monitor.id}/test-notification`)}
+                                className="inline-flex w-full items-center justify-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3] sm:w-auto"
+                                onClick={() => router.post(`/monitors/${monitor.publicId}/test-notification`)}
                             >
                                 <BellRing className="size-4 text-[#57c7c2]" />
                                 Test alert
                             </button>
                             <button
                                 type="button"
-                                className="inline-flex items-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3]"
-                                onClick={() => router.post(`/monitors/${monitor.id}/toggle`)}
+                                className="inline-flex w-full items-center justify-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3] sm:w-auto"
+                                onClick={() => router.post(`/monitors/${monitor.publicId}/toggle`)}
                             >
                                 <Pause className="size-4 text-[#7c8cff]" />
                                 {monitor.status === 'paused' ? 'Resume' : 'Pause'}
                             </button>
                             <Link
-                                href={`/monitors/${monitor.id}/edit`}
-                                className="inline-flex items-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3]"
+                                href={`/monitors/${monitor.publicId}/edit`}
+                                className="inline-flex w-full items-center justify-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3] sm:w-auto"
                             >
                                 <Pencil className="size-4 text-[#7c8cff]" />
                                 Edit
@@ -312,15 +312,14 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
 
                     <Deferred
                         data="monitorCapabilities"
-                        fallback={
-                            <LoadingPanel
-                                title="Customer-facing capabilities."
-                                description="Loading capability impact for this check…"
-                            />
-                        }
+                        fallback={null}
                     >
                         {(() => {
                             const capabilities = monitorCapabilities ?? [];
+
+                            if (capabilities.length === 0) {
+                                return null;
+                            }
 
                             return (
                                 <PageCard className="p-6">
@@ -335,43 +334,37 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                                         </div>
                                     </div>
 
-                                    {capabilities.length === 0 ? (
-                                        <div className="mt-5 rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4 text-sm text-[#9ca7b9]">
-                                            This check is not mapped to a customer-facing capability yet. Add capability labels from the check editor to connect it to sign in, checkout, API delivery, or any other user-facing workflow.
-                                        </div>
-                                    ) : (
-                                        <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                                            {capabilities.map((capability) => (
-                                                <div key={capability.id} className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4">
-                                                    <div className="flex items-start justify-between gap-3">
-                                                        <div>
-                                                            <div className="text-[18px] font-semibold text-white">{capability.name}</div>
-                                                            <div className="mt-1 text-sm text-[#9ca7b9]">{capability.regions}</div>
-                                                        </div>
-                                                        <span
-                                                            className={
-                                                                capability.tone === 'up'
-                                                                    ? 'rounded-full bg-[#57c7c2]/15 px-3 py-1 text-xs font-medium text-[#57c7c2]'
-                                                                    : capability.tone === 'down'
-                                                                      ? 'rounded-full bg-[#ff7a72]/15 px-3 py-1 text-xs font-medium text-[#ffb2ad]'
-                                                                      : capability.tone === 'maintenance'
-                                                                        ? 'rounded-full bg-[#7483a5]/15 px-3 py-1 text-xs font-medium text-[#bfc9da]'
-                                                                        : 'rounded-full bg-[#7c8cff]/15 px-3 py-1 text-xs font-medium text-[#d0d8ff]'
-                                                            }
-                                                        >
-                                                            {capability.status}
-                                                        </span>
+                                    <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                                        {capabilities.map((capability) => (
+                                            <div key={capability.id} className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <div className="text-[18px] font-semibold text-white">{capability.name}</div>
+                                                        <div className="mt-1 text-sm text-[#9ca7b9]">{capability.regions}</div>
                                                     </div>
-                                                    <div className="mt-3 text-sm text-[#dce6fb]">{capability.customerImpact}</div>
-                                                    <div className="mt-3 text-sm text-[#9ca7b9]">{capability.summary}</div>
-                                                    <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#aebadc]">
-                                                        <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.linkedChecks} linked checks</span>
-                                                        <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.openIncidents} open incidents</span>
-                                                    </div>
+                                                    <span
+                                                        className={
+                                                            capability.tone === 'up'
+                                                                ? 'rounded-full bg-[#57c7c2]/15 px-3 py-1 text-xs font-medium text-[#57c7c2]'
+                                                                : capability.tone === 'down'
+                                                                  ? 'rounded-full bg-[#ff7a72]/15 px-3 py-1 text-xs font-medium text-[#ffb2ad]'
+                                                                  : capability.tone === 'maintenance'
+                                                                    ? 'rounded-full bg-[#7483a5]/15 px-3 py-1 text-xs font-medium text-[#bfc9da]'
+                                                                    : 'rounded-full bg-[#7c8cff]/15 px-3 py-1 text-xs font-medium text-[#d0d8ff]'
+                                                        }
+                                                    >
+                                                        {capability.status}
+                                                    </span>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    )}
+                                                <div className="mt-3 text-sm text-[#dce6fb]">{capability.customerImpact}</div>
+                                                <div className="mt-3 text-sm text-[#9ca7b9]">{capability.summary}</div>
+                                                <div className="mt-4 flex flex-wrap gap-2 text-xs text-[#aebadc]">
+                                                    <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.linkedChecks} linked checks</span>
+                                                    <span className="rounded-full bg-[#171d28] px-3 py-1">{capability.openIncidents} open incidents</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </PageCard>
                             );
                         })()}
@@ -443,14 +436,14 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                                 </PageCard>
 
                                 <PageCard className="p-6">
-                                    <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                                    <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                         <div>
                                             <h2 className="text-[26px] font-semibold tracking-[-0.05em] text-white lg:text-[28px]">
                                                 Latency profile<span className="text-[#7c8cff]">.</span>
                                             </h2>
                                         </div>
-                                        <div className="flex flex-wrap items-center gap-3">
-                                            <label className="inline-flex items-center gap-3 rounded-[14px] border border-[#2b3544] bg-[#171d28] px-3 py-2 text-sm text-[#d5def3]">
+                                        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+                                            <label className="inline-flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#2b3544] bg-[#171d28] px-3 py-2 text-sm text-[#d5def3] sm:w-auto sm:justify-start">
                                                 <span className="text-[#8fa0bf]">Window</span>
                                                 <select
                                                     value={monitorHistory.responseTimeRange}
@@ -464,7 +457,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                                                     ))}
                                                 </select>
                                             </label>
-                                            <label className="inline-flex items-center gap-3 rounded-[14px] border border-[#2b3544] bg-[#171d28] px-3 py-2 text-sm text-[#d5def3]">
+                                            <label className="inline-flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#2b3544] bg-[#171d28] px-3 py-2 text-sm text-[#d5def3] sm:w-auto sm:justify-start">
                                                 <span className="text-[#8fa0bf]">Bucket</span>
                                                 <select
                                                     value={monitorHistory.responseTimeGranularity}
@@ -544,7 +537,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                     </Deferred>
 
                     <PageCard className="p-6">
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <h2 className="text-[24px] font-semibold tracking-[-0.05em] text-white lg:text-[26px]">
                                 Recent events<span className="text-[#7c8cff]">.</span>
                             </h2>
@@ -564,7 +557,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                                         href={incident.showUrl}
                                         className="block rounded-[18px] border border-[#2b3544] bg-[#171d28] px-4 py-4 transition hover:border-[#57c7c2]/25 hover:bg-[#1b2330]"
                                     >
-                                        <div className="flex flex-wrap items-center justify-between gap-3 text-[15px] text-[#dfe8fb] lg:text-[16px]">
+                                        <div className="flex flex-col gap-3 text-[15px] text-[#dfe8fb] sm:flex-row sm:flex-wrap sm:items-center sm:justify-between lg:text-[16px]">
                                             <div className="flex flex-wrap items-center gap-3">
                                                 <span>{incident.reason}</span>
                                                 <span className="rounded-full bg-[#121821] px-3 py-1 text-[12px] text-[#a7b6cb]">
@@ -576,7 +569,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                                             </div>
                                             <div className="text-[#9ca7b9]">{incident.duration}</div>
                                         </div>
-                                        <div className="mt-2 text-[16px] text-[#9ca7b9]">
+                                        <div className="mt-2 break-words text-[16px] text-[#9ca7b9]">
                                             {incident.startedAt} to {incident.endedAt} • {incident.statusLabel}
                                         </div>
                                     </Link>
@@ -628,7 +621,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                     ) : null}
                 </section>
 
-                <aside className="space-y-4">
+                <aside className="min-w-0 space-y-4">
                     <PageCard className="p-6">
                         <div className="flex items-center justify-between gap-3">
                             <div className="text-[17px] font-semibold text-white">
@@ -637,7 +630,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                             <CalendarDays className="size-4 text-[#7d8aa7]" />
                         </div>
                         <div className="mt-5 text-[15px] text-[#9ca7b9] lg:text-[16px]">{monitor.nextMaintenance}</div>
-                        <div className="mt-5 flex gap-3">
+                        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                             <button
                                 type="button"
                                 className="inline-flex flex-1 items-center justify-center rounded-[16px] border border-[#2b3544] bg-[#171d28] px-5 py-3 text-base text-white"
@@ -646,7 +639,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                                 {showMaintenanceForm ? 'Hide form' : 'Set up maintenance'}
                             </button>
                             <Link
-                                href={`/maintenance?monitor_id=${monitor.id}`}
+                                href={`/maintenance?monitor=${monitor.publicId}`}
                                 className="inline-flex items-center justify-center rounded-[16px] border border-[#2b3544] px-4 py-3 text-sm text-[#d5def3]"
                             >
                                 Manage all
@@ -729,7 +722,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                             <div className="mt-5 space-y-3">
                                 {monitor.maintenanceWindows.map((window) => (
                                     <div key={window.id} className="rounded-[16px] bg-[#171d28] px-4 py-3.5">
-                                        <div className="flex items-center justify-between gap-3 text-[14px] text-white">
+                                        <div className="flex flex-col gap-2 text-[14px] text-white sm:flex-row sm:items-center sm:justify-between">
                                             <span>{window.title}</span>
                                             <span className="text-[#57c7c2]">{window.status}</span>
                                         </div>
@@ -752,6 +745,32 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                         <div className="mt-4 text-[30px] font-semibold tracking-[-0.05em] text-white lg:text-[34px]">
                             {monitor.region}
                         </div>
+                        <div className="mt-5 space-y-3">
+                            <InfoTile
+                                label="Accepted statuses"
+                                value={monitor.acceptedHttpStatuses}
+                                hint="HTTP responses matching this policy are treated as healthy."
+                            />
+                            <InfoTile
+                                label="Last probe region"
+                                value={monitor.lastProbeRegion}
+                                hint="The most recent region that actually executed a check."
+                            />
+                            <InfoTile
+                                label="Queue lag"
+                                value={monitor.lastQueueLagLabel}
+                                hint="Delay between dispatch and execution on the last completed check."
+                            />
+                        </div>
+                        {monitor.recoveryConfirmation ? (
+                            <div className="mt-5 rounded-[18px] border border-[#7c8cff]/30 bg-[#151b2f] px-4 py-4 text-[14px] text-[#d9e1ff]">
+                                <div className="text-[13px] uppercase tracking-[0.18em] text-[#9aa8d4]">Recovery confirmation</div>
+                                <div className="mt-2 text-[16px] font-semibold text-white">{monitor.recoveryConfirmation.status}</div>
+                                <div className="mt-2 break-words text-[#b7c3e6]">
+                                    Waiting on {monitor.recoveryConfirmation.regions} since {monitor.recoveryConfirmation.requestedAt}.
+                                </div>
+                            </div>
+                        ) : null}
                     </PageCard>
 
                     <PageCard className="p-6">
@@ -770,7 +789,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                                         rel="noreferrer"
                                         className="block rounded-[16px] bg-[#171d28] px-4 py-4 transition hover:bg-[#1b2330]"
                                     >
-                                        <div className="flex items-center justify-between gap-3 text-[15px] text-white">
+                                        <div className="flex flex-col gap-2 text-[15px] text-white sm:flex-row sm:items-center sm:justify-between">
                                             <span>{page.name}</span>
                                             <ExternalLink className="size-4 text-[#7f8eab]" />
                                         </div>
@@ -796,7 +815,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                             ) : (
                                 monitor.notificationLog.map((entry) => (
                                     <div key={`${entry.time}-${entry.subject}`} className="rounded-[18px] bg-[#171d28] px-4 py-4">
-                                        <div className="flex items-center justify-between gap-3 text-[15px] text-white">
+                                        <div className="flex flex-col gap-2 text-[15px] text-white sm:flex-row sm:items-center sm:justify-between">
                                             <span>{entry.type}</span>
                                             <span className="text-[#57c7c2]">{entry.status}</span>
                                         </div>
@@ -824,7 +843,7 @@ export default function MonitorShow({ monitor, monitorHistory, monitorCapabiliti
                             className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[16px] border border-[#ff7a72]/25 bg-[#231817] px-5 py-3 text-sm font-medium text-[#ffd4d7]"
                             onClick={() => {
                                 if (window.confirm(`Delete monitor "${monitor.name}"? This cannot be undone.`)) {
-                                    router.delete(`/monitors/${monitor.id}`);
+                                    router.delete(`/monitors/${monitor.publicId}`);
                                 }
                             }}
                         >

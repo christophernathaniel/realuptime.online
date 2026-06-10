@@ -123,3 +123,98 @@ it('shards monitor check jobs across configured monitor queues', function () {
             && $job->queue === 'monitor-checks-c'
     );
 });
+
+it('routes ping monitors onto the network queue family when configured', function () {
+    Queue::fake();
+    config()->set('realuptime.queues.network_monitor_check_shards', [
+        'monitor-network-a',
+        'monitor-network-b',
+    ]);
+
+    $user = User::factory()->create();
+
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Network ping',
+        'type' => Monitor::TYPE_PING,
+        'status' => Monitor::STATUS_UP,
+        'target' => '1.1.1.1',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 5,
+        'retry_limit' => 0,
+        'region' => 'North America',
+        'next_check_at' => now()->subMinute(),
+    ]);
+
+    Artisan::call('monitors:run-due', [
+        '--batch' => 100,
+        '--max-batches' => 2,
+    ]);
+
+    Queue::assertPushed(
+        RunMonitorCheckJob::class,
+        fn (RunMonitorCheckJob $job) => $job->monitorId === $monitor->id
+            && $job->monitorType === Monitor::TYPE_PING
+            && str_starts_with((string) $job->queue, 'monitor-network-')
+    );
+});
+
+it('routes monitor jobs onto region-specific queues when regional probes are enabled', function () {
+    Queue::fake();
+    config()->set('realuptime.probe_regions.use_region_queues', true);
+
+    $user = User::factory()->create();
+
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'European API',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com/eu',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 15,
+        'retry_limit' => 2,
+        'region' => 'Europe',
+        'next_check_at' => now()->subMinute(),
+    ]);
+
+    Artisan::call('monitors:run-due', [
+        '--batch' => 100,
+        '--max-batches' => 2,
+    ]);
+
+    Queue::assertPushed(
+        RunMonitorCheckJob::class,
+        fn (RunMonitorCheckJob $job) => $job->monitorId === $monitor->id
+            && $job->probeRegion === 'Europe'
+            && str_ends_with((string) $job->queue, '-eu')
+    );
+});
+
+it('dispatch loop can run a single iteration on demand', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Loop API',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com/health',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 2,
+        'region' => 'North America',
+        'next_check_at' => now()->subMinute(),
+    ]);
+
+    Artisan::call('monitors:dispatch-loop', [
+        '--batch' => 100,
+        '--max-batches' => 2,
+        '--once' => true,
+    ]);
+
+    Queue::assertPushed(RunMonitorCheckJob::class, 1);
+});

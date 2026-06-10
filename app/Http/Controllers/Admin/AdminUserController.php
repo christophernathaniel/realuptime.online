@@ -6,6 +6,7 @@ use App\Enums\MembershipPlan;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\Admin\AdminPresenter;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -17,9 +18,17 @@ class AdminUserController extends Controller
 {
     public function __construct(protected AdminPresenter $presenter) {}
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
-        return Inertia::render('admin/users', $this->presenter->users());
+        return Inertia::render('admin/users', $this->presenter->users(
+            (string) $request->string('search')->trim(),
+            (int) $request->integer('page', 1),
+        ));
+    }
+
+    public function show(User $user): Response
+    {
+        return Inertia::render('admin/user-show', $this->presenter->user($user));
     }
 
     public function store(Request $request): RedirectResponse
@@ -87,6 +96,45 @@ class AdminUserController extends Controller
         return back()->with('success', $override !== null
             ? sprintf('%s is now on the %s plan via admin override.', $user->email, MembershipPlan::from($override)->label())
             : sprintf('%s now uses subscription / default plan resolution.', $user->email));
+    }
+
+    public function extendSupportMembership(Request $request, User $user): RedirectResponse
+    {
+        $data = $request->validate([
+            'plan' => ['required', Rule::in(array_map(fn (MembershipPlan $plan) => $plan->value, MembershipPlan::paidCases()))],
+        ]);
+
+        $plan = MembershipPlan::from($data['plan']);
+        $baseTime = $user->support_plan_expires_at !== null && $user->support_plan_expires_at->isFuture()
+            ? CarbonImmutable::parse($user->support_plan_expires_at)
+            : CarbonImmutable::now();
+        $expiresAt = $baseTime->addMonthNoOverflow();
+
+        $user->forceFill([
+            'support_plan_extension' => $plan->value,
+            'support_plan_granted_by' => $request->user()?->id,
+            'support_plan_granted_at' => now(),
+            'support_plan_expires_at' => $expiresAt,
+        ])->save();
+
+        return back()->with('success', sprintf(
+            '%s now has a %s courtesy extension until %s.',
+            $user->email,
+            $plan->label(),
+            $expiresAt->format('M j, Y H:i'),
+        ));
+    }
+
+    public function clearSupportMembership(User $user): RedirectResponse
+    {
+        $user->forceFill([
+            'support_plan_extension' => null,
+            'support_plan_granted_by' => null,
+            'support_plan_granted_at' => null,
+            'support_plan_expires_at' => null,
+        ])->save();
+
+        return back()->with('success', sprintf('Cleared the courtesy extension for %s.', $user->email));
     }
 
     public function destroy(Request $request, User $user): RedirectResponse

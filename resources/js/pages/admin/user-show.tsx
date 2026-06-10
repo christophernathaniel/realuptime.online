@@ -1,0 +1,911 @@
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import {
+    ArrowLeft,
+    Cable,
+    CreditCard,
+    ExternalLink,
+    KeyRound,
+    Mail,
+    ReceiptText,
+    ShieldCheck,
+    ShieldOff,
+    TimerReset,
+    Trash2,
+    Users,
+} from 'lucide-react';
+import { PageCard } from '@/components/monitoring/page-card';
+import MonitoringLayout from '@/layouts/monitoring-layout';
+import { cn } from '@/lib/utils';
+
+type PlanOption = {
+    value: string;
+    label: string;
+};
+
+type AdminUserShowProps = {
+    account: {
+        id: number;
+        name: string;
+        email: string;
+        isAdmin: boolean;
+        emailVerified: boolean;
+        createdAt: string | null;
+        lastActiveAt: string | null;
+        lastActiveLabel: string;
+        membershipPlan: string;
+        membershipPlanLabel: string;
+        membershipSource: string;
+        membershipSourceLabel: string;
+        publicStatusKey: string | null;
+    };
+    usage: {
+        monitors: number;
+        statusPages: number;
+        contacts: number;
+        integrations: number;
+        apiTokens: number;
+        activeSessions: number;
+        acceptedMembers: number;
+        pendingInvitations: number;
+        openIncidents: number;
+    };
+    support: {
+        adminOverride: {
+            plan: string;
+            planLabel: string;
+            assignedAt: string | null;
+            assignedBy: string | null;
+        } | null;
+        courtesyExtension: {
+            plan: string;
+            planLabel: string;
+            grantedAt: string | null;
+            grantedBy: string | null;
+            expiresAt: string | null;
+            expiresLabel: string | null;
+        } | null;
+        supportPlanOptions: PlanOption[];
+    };
+    billing: {
+        customerId: string | null;
+        paymentMethodLabel: string;
+        currentSubscription: {
+            stripeId: string;
+            status: string;
+            planLabel: string | null;
+            priceIds: string[];
+            quantity: number | null;
+            trialEndsAt: string | null;
+            endsAt: string | null;
+            createdAt: string | null;
+            valid: boolean;
+        } | null;
+        invoiceStatus: 'none' | 'loaded' | 'error' | 'unavailable';
+        invoiceError: string | null;
+        invoices: Array<{
+            id: string;
+            number: string | null;
+            status: string;
+            tone: 'paid' | 'failed' | 'pending';
+            date: string;
+            dueDate: string | null;
+            paidAt: string | null;
+            total: string;
+            amountPaid: string;
+            currency: string;
+            attemptCount: number;
+            hostedInvoiceUrl: string | null;
+            invoicePdf: string | null;
+        }>;
+    };
+    monitors: Array<{
+        id: number;
+        name: string;
+        status: string;
+        statusValue: string;
+        typeLabel: string;
+        target: string | null;
+        region: string;
+        intervalLabel: string;
+        timeoutLabel: string;
+        retries: number;
+        lastCheckedAt: string | null;
+        lastCheckedLabel: string;
+        lastResponseTimeLabel: string;
+        lastHttpStatus: number | null;
+        lastError: string | null;
+        openIncidentsCount: number;
+        checkResultsCount: number;
+        notificationLogsCount: number;
+        statusPages: string[];
+        contacts: string[];
+        capabilities: string[];
+    }>;
+    statusPages: Array<{
+        id: number;
+        name: string;
+        headline: string | null;
+        published: boolean;
+        slug: string;
+        monitorCount: number;
+        incidentsCount: number;
+        monitorNames: string[];
+        publicUrl: string;
+    }>;
+    contacts: Array<{
+        id: number;
+        name: string;
+        email: string;
+        enabled: boolean;
+        isPrimary: boolean;
+        logsCount: number;
+        monitorNames: string[];
+    }>;
+    integrations: Array<{
+        id: number;
+        name: string;
+        provider: string;
+        status: string;
+        events: string[];
+        notificationLogsCount: number;
+        lastTestedAt: string | null;
+        lastError: string | null;
+    }>;
+    apiTokens: Array<{
+        id: number;
+        name: string;
+        createdAt: string | null;
+        lastUsedAt: string | null;
+        lastUsedLabel: string;
+    }>;
+    team: Array<{
+        id: number;
+        email: string;
+        memberName: string | null;
+        memberEmail: string | null;
+        status: string;
+        invitedAt: string | null;
+        acceptedAt: string | null;
+        invitedBy: string | null;
+    }>;
+    sessions: Array<{
+        id: number;
+        active: boolean;
+        lastActiveAt: string | null;
+        lastActiveLabel: string;
+        lastPath: string | null;
+        ipAddress: string | null;
+        userAgent: string | null;
+    }>;
+    recentIncidents: Array<{
+        id: number;
+        monitor: string | null;
+        status: string;
+        startedAt: string | null;
+        resolvedAt: string | null;
+        duration: string | null;
+        reason: string;
+    }>;
+    recentNotifications: Array<{
+        id: number;
+        type: string;
+        channel: string;
+        status: string;
+        subject: string;
+        destination: string;
+        monitor: string | null;
+        sentAt: string | null;
+        failureMessage: string | null;
+    }>;
+};
+
+function SummaryCard({ label, value }: { label: string; value: string | number }) {
+    return (
+        <PageCard className="px-5 py-4">
+            <div className="text-sm text-[#9ca7b9]">{label}</div>
+            <div className="mt-1 text-[28px] font-semibold text-white">{value}</div>
+        </PageCard>
+    );
+}
+
+function SectionHeading({ title, description }: { title: string; description?: string }) {
+    return (
+        <div>
+            <div className="text-[22px] font-semibold text-white">{title}</div>
+            {description ? <div className="mt-2 text-[14px] text-[#9ca7b9]">{description}</div> : null}
+        </div>
+    );
+}
+
+export default function AdminUserShowPage({
+    account,
+    usage,
+    support,
+    billing,
+    monitors,
+    statusPages,
+    contacts,
+    integrations,
+    apiTokens,
+    team,
+    sessions,
+    recentIncidents,
+    recentNotifications,
+}: AdminUserShowProps) {
+    const auth = usePage<{ auth: { user: { id: number } } }>().props.auth;
+    const isCurrentAdmin = auth.user.id === account.id;
+
+    return (
+        <MonitoringLayout>
+            <Head title={`Platform admin · ${account.email}`} />
+            <div className="space-y-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <Link href="/admin/users" className="inline-flex items-center gap-2 text-sm text-[#9ca7b9]">
+                            <ArrowLeft className="size-4" />
+                            Back to accounts
+                        </Link>
+                        <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-[#7f8b9b]">
+                            <span>{account.emailVerified ? 'Verified account' : 'Unverified account'}</span>
+                            <span className="rounded-full border border-[#4d7cff]/20 bg-[#102240] px-2 py-1 text-[#dce6fb]">
+                                {account.membershipPlanLabel}
+                            </span>
+                            <span className="rounded-full border border-white/8 px-2 py-1 text-[#dce6fb]">
+                                {account.membershipSourceLabel}
+                            </span>
+                            {account.isAdmin ? (
+                                <span className="rounded-full border border-[#7c8cff]/20 bg-[#171c33] px-2 py-1 text-[#dbe1ff]">Admin</span>
+                            ) : null}
+                            {auth.user.id === account.id ? (
+                                <span className="rounded-full border border-white/8 px-2 py-1 text-[#dce6fb]">You</span>
+                            ) : null}
+                        </div>
+                        <h1 className="mt-3 text-[38px] font-semibold tracking-[-0.06em] text-white lg:text-[46px]">
+                            {account.name}<span className="text-[#7c8cff]">.</span>
+                        </h1>
+                        <div className="mt-2 break-all text-[16px] text-[#9ca7b9]">{account.email}</div>
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-[13px] text-[#7081a2]">
+                            <span>Created {account.createdAt ?? 'Unknown'}</span>
+                            <span>Last active {account.lastActiveLabel}</span>
+                            {account.publicStatusKey ? <span>Status key {account.publicStatusKey}</span> : null}
+                        </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <SummaryCard label="Monitors" value={usage.monitors} />
+                        <SummaryCard label="Open incidents" value={usage.openIncidents} />
+                        <SummaryCard label="Sessions" value={usage.activeSessions} />
+                        <SummaryCard label="Status pages" value={usage.statusPages} />
+                    </div>
+                </div>
+
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_420px]">
+                    <section className="space-y-5">
+                        <PageCard className="space-y-5 p-6">
+                            <SectionHeading
+                                title="Billing and membership"
+                                description="Subscription state is shown from local Cashier records. Invoice and payment proof is fetched live from Stripe when a Stripe customer exists."
+                            />
+
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <div className="rounded-[18px] bg-[#121821] px-5 py-5">
+                                    <div className="flex items-center gap-3 text-[16px] font-semibold text-white">
+                                        <CreditCard className="size-4 text-[#7c8cff]" />
+                                        Current membership
+                                    </div>
+                                    <div className="mt-4 space-y-3 text-[14px] text-[#9ca7b9]">
+                                        <div className="flex items-center justify-between gap-4">
+                                            <span>Effective plan</span>
+                                            <span className="font-medium text-white">{account.membershipPlanLabel}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-4">
+                                            <span>Source</span>
+                                            <span className="font-medium text-white">{account.membershipSourceLabel}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-4">
+                                            <span>Payment method</span>
+                                            <span className="font-medium text-white">{billing.paymentMethodLabel}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-4">
+                                            <span>Stripe customer</span>
+                                            <span className="font-mono text-[12px] text-white">{billing.customerId ?? 'None'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-[18px] bg-[#121821] px-5 py-5">
+                                    <div className="flex items-center gap-3 text-[16px] font-semibold text-white">
+                                        <ReceiptText className="size-4 text-[#7c8cff]" />
+                                        Subscription record
+                                    </div>
+                                    {billing.currentSubscription ? (
+                                        <div className="mt-4 space-y-3 text-[14px] text-[#9ca7b9]">
+                                            <div className="flex items-center justify-between gap-4">
+                                                <span>Status</span>
+                                                <span className="font-medium text-white">{billing.currentSubscription.status}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-4">
+                                                <span>Plan</span>
+                                                <span className="font-medium text-white">{billing.currentSubscription.planLabel ?? 'Unknown from Stripe price'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-4">
+                                                <span>Valid</span>
+                                                <span className="font-medium text-white">{billing.currentSubscription.valid ? 'Yes' : 'No'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-4">
+                                                <span>Stripe sub</span>
+                                                <span className="font-mono text-[12px] text-white">{billing.currentSubscription.stripeId}</span>
+                                            </div>
+                                            {billing.currentSubscription.endsAt ? (
+                                                <div className="flex items-center justify-between gap-4">
+                                                    <span>Ends</span>
+                                                    <span className="font-medium text-white">{billing.currentSubscription.endsAt}</span>
+                                                </div>
+                                            ) : null}
+                                            {billing.currentSubscription.trialEndsAt ? (
+                                                <div className="flex items-center justify-between gap-4">
+                                                    <span>Trial ends</span>
+                                                    <span className="font-medium text-white">{billing.currentSubscription.trialEndsAt}</span>
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    ) : (
+                                        <div className="mt-4 text-[14px] text-[#9ca7b9]">
+                                            No local subscription record is attached to this account.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="text-[16px] font-semibold text-white">Recent Stripe invoices</div>
+                                {billing.invoiceStatus === 'none' ? (
+                                    <div className="rounded-[18px] bg-[#121821] px-5 py-5 text-[14px] text-[#9ca7b9]">
+                                        This account does not currently have a Stripe customer ID, so there is no live invoice history to fetch.
+                                    </div>
+                                ) : billing.invoiceStatus === 'error' ? (
+                                    <div className="rounded-[18px] border border-[#ff6269]/20 bg-[#2a1621] px-5 py-5 text-[14px] text-[#ffd4d7]">
+                                        {billing.invoiceError ?? 'Stripe invoice history is unavailable right now.'}
+                                    </div>
+                                ) : billing.invoices.length === 0 ? (
+                                    <div className="rounded-[18px] bg-[#121821] px-5 py-5 text-[14px] text-[#9ca7b9]">
+                                        No recent Stripe invoices were returned for this customer.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {billing.invoices.map((invoice) => (
+                                            <div key={invoice.id} className="rounded-[18px] bg-[#121821] px-5 py-5">
+                                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                                    <div>
+                                                        <div className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-white">
+                                                            <span>{invoice.number ?? invoice.id}</span>
+                                                            <span
+                                                                className={cn(
+                                                                    'rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.16em]',
+                                                                    invoice.tone === 'paid' && 'bg-[#0f2527] text-[#9de5e0]',
+                                                                    invoice.tone === 'failed' && 'bg-[#2a1621] text-[#ffd4d7]',
+                                                                    invoice.tone === 'pending' && 'bg-[#171c33] text-[#dbe1ff]',
+                                                                )}
+                                                            >
+                                                                {invoice.status}
+                                                            </span>
+                                                        </div>
+                                                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-[13px] text-[#9ca7b9]">
+                                                            <span>Issued {invoice.date}</span>
+                                                            <span>Total {invoice.total}</span>
+                                                            <span>Paid {invoice.amountPaid}</span>
+                                                            <span>{invoice.currency}</span>
+                                                            <span>{invoice.attemptCount} attempts</span>
+                                                            {invoice.paidAt ? <span>Paid at {invoice.paidAt}</span> : null}
+                                                            {invoice.dueDate ? <span>Due {invoice.dueDate}</span> : null}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {invoice.hostedInvoiceUrl ? (
+                                                            <a
+                                                                href={invoice.hostedInvoiceUrl}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className="inline-flex items-center gap-2 rounded-[12px] border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
+                                                            >
+                                                                Hosted invoice
+                                                                <ExternalLink className="size-3.5" />
+                                                            </a>
+                                                        ) : null}
+                                                        {invoice.invoicePdf ? (
+                                                            <a
+                                                                href={invoice.invoicePdf}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className="inline-flex items-center gap-2 rounded-[12px] border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
+                                                            >
+                                                                PDF
+                                                                <ExternalLink className="size-3.5" />
+                                                            </a>
+                                                        ) : null}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </PageCard>
+
+                        <PageCard className="space-y-5 p-6">
+                            <SectionHeading
+                                title="Monitors and sites"
+                                description="Targets, cadence, timeout, recent response timing, linked status pages, and the latest operational signal for each monitor."
+                            />
+                            <div className="space-y-4">
+                                {monitors.length === 0 ? (
+                                    <div className="rounded-[18px] bg-[#121821] px-5 py-5 text-[14px] text-[#9ca7b9]">
+                                        This account has not created any monitors yet.
+                                    </div>
+                                ) : (
+                                    monitors.map((monitor) => (
+                                        <div key={monitor.id} className="rounded-[18px] bg-[#121821] px-5 py-5">
+                                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                                <div className="min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-2 text-[16px] font-semibold text-white">
+                                                        <span>{monitor.name}</span>
+                                                        <span
+                                                            className={cn(
+                                                                'rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.16em]',
+                                                                monitor.statusValue === 'up' && 'bg-[#0f2527] text-[#9de5e0]',
+                                                                monitor.statusValue === 'down' && 'bg-[#2a1621] text-[#ffd4d7]',
+                                                                monitor.statusValue === 'paused' && 'bg-[#171c33] text-[#dbe1ff]',
+                                                            )}
+                                                        >
+                                                            {monitor.status}
+                                                        </span>
+                                                        <span className="rounded-full border border-white/8 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-[#dce6fb]">
+                                                            {monitor.typeLabel}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-2 break-all text-[14px] text-[#9ca7b9]">{monitor.target ?? 'No target stored'}</div>
+                                                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-[13px] text-[#7081a2]">
+                                                        <span>Region {monitor.region}</span>
+                                                        <span>Interval {monitor.intervalLabel}</span>
+                                                        <span>Timeout {monitor.timeoutLabel}</span>
+                                                        <span>Retries {monitor.retries}</span>
+                                                        <span>Last checked {monitor.lastCheckedLabel}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="grid gap-3 sm:grid-cols-3">
+                                                    <div className="rounded-[14px] bg-[#171d28] px-4 py-3">
+                                                        <div className="text-[12px] text-[#7f8eab]">Response</div>
+                                                        <div className="mt-1 text-[16px] font-semibold text-white">{monitor.lastResponseTimeLabel}</div>
+                                                    </div>
+                                                    <div className="rounded-[14px] bg-[#171d28] px-4 py-3">
+                                                        <div className="text-[12px] text-[#7f8eab]">Open incidents</div>
+                                                        <div className="mt-1 text-[16px] font-semibold text-white">{monitor.openIncidentsCount}</div>
+                                                    </div>
+                                                    <div className="rounded-[14px] bg-[#171d28] px-4 py-3">
+                                                        <div className="text-[12px] text-[#7f8eab]">Check results</div>
+                                                        <div className="mt-1 text-[16px] font-semibold text-white">{monitor.checkResultsCount}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {monitor.lastHttpStatus ? (
+                                                <div className="mt-3 text-[13px] text-[#9ca7b9]">Last HTTP status {monitor.lastHttpStatus}</div>
+                                            ) : null}
+                                            {monitor.lastError ? (
+                                                <div className="mt-3 rounded-[14px] border border-[#ff6269]/20 bg-[#2a1621] px-4 py-3 text-[13px] text-[#ffd4d7]">
+                                                    {monitor.lastError}
+                                                </div>
+                                            ) : null}
+                                            {monitor.capabilities.length > 0 ? (
+                                                <div className="mt-3 flex flex-wrap gap-2 text-[12px] text-[#dce6fb]">
+                                                    {monitor.capabilities.map((capability) => (
+                                                        <span key={`${monitor.id}-${capability}`} className="rounded-full bg-[#171d28] px-3 py-1">
+                                                            {capability}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            ) : null}
+                                            {(monitor.statusPages.length > 0 || monitor.contacts.length > 0) ? (
+                                                <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                                                    <div className="rounded-[14px] bg-[#171d28] px-4 py-3 text-[13px] text-[#9ca7b9]">
+                                                        <div className="text-[12px] uppercase tracking-[0.18em] text-[#7f8eab]">Status pages</div>
+                                                        <div className="mt-2 text-white">{monitor.statusPages.join(', ') || 'None linked'}</div>
+                                                    </div>
+                                                    <div className="rounded-[14px] bg-[#171d28] px-4 py-3 text-[13px] text-[#9ca7b9]">
+                                                        <div className="text-[12px] uppercase tracking-[0.18em] text-[#7f8eab]">Contacts</div>
+                                                        <div className="mt-2 text-white">{monitor.contacts.join(', ') || 'No contacts attached'}</div>
+                                                    </div>
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </PageCard>
+
+                        <PageCard className="space-y-5 p-6">
+                            <SectionHeading
+                                title="Status pages and public surface"
+                                description="Published status hubs attached to this account, including linked monitors and incident post volume."
+                            />
+                            <div className="space-y-4">
+                                {statusPages.length === 0 ? (
+                                    <div className="rounded-[18px] bg-[#121821] px-5 py-5 text-[14px] text-[#9ca7b9]">
+                                        No status pages have been created.
+                                    </div>
+                                ) : (
+                                    statusPages.map((statusPage) => (
+                                        <div key={statusPage.id} className="rounded-[18px] bg-[#121821] px-5 py-5">
+                                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                                <div>
+                                                    <div className="flex flex-wrap items-center gap-2 text-[16px] font-semibold text-white">
+                                                        <span>{statusPage.name}</span>
+                                                        <span className={cn(
+                                                            'rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.16em]',
+                                                            statusPage.published ? 'bg-[#0f2527] text-[#9de5e0]' : 'bg-[#171c33] text-[#dbe1ff]',
+                                                        )}>
+                                                            {statusPage.published ? 'Published' : 'Draft'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-2 text-[14px] text-[#9ca7b9]">{statusPage.headline ?? statusPage.slug}</div>
+                                                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-[13px] text-[#7081a2]">
+                                                        <span>{statusPage.monitorCount} monitors</span>
+                                                        <span>{statusPage.incidentsCount} incident posts</span>
+                                                        <span>Slug {statusPage.slug}</span>
+                                                    </div>
+                                                </div>
+                                                {statusPage.published ? (
+                                                    <a
+                                                        href={statusPage.publicUrl}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex items-center gap-2 rounded-[12px] border border-white/10 bg-white/5 px-3 py-2 text-xs text-white"
+                                                    >
+                                                        Open public page
+                                                        <ExternalLink className="size-3.5" />
+                                                    </a>
+                                                ) : null}
+                                            </div>
+                                            {statusPage.monitorNames.length > 0 ? (
+                                                <div className="mt-3 flex flex-wrap gap-2 text-[12px] text-[#dce6fb]">
+                                                    {statusPage.monitorNames.map((monitor) => (
+                                                        <span key={`${statusPage.id}-${monitor}`} className="rounded-full bg-[#171d28] px-3 py-1">
+                                                            {monitor}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </PageCard>
+                    </section>
+
+                    <aside className="space-y-5">
+                        <PageCard className="space-y-5 p-6">
+                            <SectionHeading
+                                title="Support actions"
+                                description="Use these controls for admin access, plan overrides, and time-boxed courtesy membership extensions."
+                            />
+
+                            <div className="space-y-4">
+                                <div className="rounded-[18px] bg-[#121821] px-5 py-5">
+                                    <div className="text-[15px] font-semibold text-white">Admin access</div>
+                                    <div className="mt-2 text-[14px] text-[#9ca7b9]">
+                                        Promote or demote this account as a platform admin.
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => router.patch(`/admin/users/${account.id}`, { is_admin: !account.isAdmin }, { preserveScroll: true })}
+                                        disabled={isCurrentAdmin && account.isAdmin}
+                                        className={cn(
+                                            'mt-4 inline-flex items-center gap-2 rounded-[14px] px-4 py-2.5 text-sm',
+                                            account.isAdmin
+                                                ? 'border border-white/10 bg-[#101b2f] text-[#dce6fb]'
+                                                : 'bg-[#7c8cff] text-white',
+                                            isCurrentAdmin && account.isAdmin && 'cursor-not-allowed opacity-60',
+                                        )}
+                                    >
+                                        {account.isAdmin ? <ShieldOff className="size-4" /> : <ShieldCheck className="size-4" />}
+                                        {isCurrentAdmin && account.isAdmin ? 'Current admin account' : account.isAdmin ? 'Remove admin access' : 'Grant admin access'}
+                                    </button>
+                                </div>
+
+                                <div className="rounded-[18px] bg-[#121821] px-5 py-5">
+                                    <div className="text-[15px] font-semibold text-white">Membership override</div>
+                                    <div className="mt-2 text-[14px] text-[#9ca7b9]">
+                                        Force a plan indefinitely, or return plan resolution to Stripe / free defaults.
+                                    </div>
+                                    {support.adminOverride ? (
+                                        <div className="mt-3 rounded-[14px] border border-[#7c8cff]/20 bg-[#171c33] px-4 py-3 text-[13px] text-[#dbe1ff]">
+                                            Active override: {support.adminOverride.planLabel}
+                                            {support.adminOverride.assignedBy ? ` by ${support.adminOverride.assignedBy}` : ''}
+                                            {support.adminOverride.assignedAt ? ` on ${support.adminOverride.assignedAt}` : ''}
+                                        </div>
+                                    ) : null}
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        {[
+                                            { value: '', label: 'Subscription / default' },
+                                            { value: 'free', label: 'Free' },
+                                            { value: 'premium', label: 'Premium' },
+                                            { value: 'ultra', label: 'Ultra' },
+                                        ].map((option) => {
+                                            const active = (support.adminOverride?.plan ?? '') === option.value;
+
+                                            return (
+                                                <button
+                                                    key={option.value || 'default'}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        router.patch(`/admin/users/${account.id}/membership`, {
+                                                            admin_plan_override: option.value || null,
+                                                        }, { preserveScroll: true })
+                                                    }
+                                                    className={cn(
+                                                        'rounded-[12px] px-3 py-2 text-xs font-medium',
+                                                        active
+                                                            ? 'bg-[#7c8cff] text-white'
+                                                            : 'border border-white/10 bg-[#171d28] text-[#dce6fb]',
+                                                    )}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="rounded-[18px] bg-[#121821] px-5 py-5">
+                                    <div className="flex items-center gap-2 text-[15px] font-semibold text-white">
+                                        <TimerReset className="size-4 text-[#57c7c2]" />
+                                        Courtesy extension
+                                    </div>
+                                    <div className="mt-2 text-[14px] text-[#9ca7b9]">
+                                        Add one month of paid access without permanently overriding the account plan.
+                                    </div>
+                                    {support.courtesyExtension ? (
+                                        <div className="mt-3 rounded-[14px] border border-[#57c7c2]/20 bg-[#0f2527] px-4 py-3 text-[13px] text-[#9de5e0]">
+                                            {support.courtesyExtension.planLabel} until {support.courtesyExtension.expiresAt ?? 'set'}
+                                            {support.courtesyExtension.grantedBy ? ` • granted by ${support.courtesyExtension.grantedBy}` : ''}
+                                        </div>
+                                    ) : null}
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        {support.supportPlanOptions.map((option) => (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                onClick={() =>
+                                                    router.patch(`/admin/users/${account.id}/support-extension`, {
+                                                        plan: option.value,
+                                                    }, { preserveScroll: true })
+                                                }
+                                                className="rounded-[12px] border border-[#57c7c2]/20 bg-[#0f2527] px-3 py-2 text-xs font-medium text-[#9de5e0]"
+                                            >
+                                                Add 1 month {option.label}
+                                            </button>
+                                        ))}
+                                        {support.courtesyExtension ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => router.delete(`/admin/users/${account.id}/support-extension`, { preserveScroll: true })}
+                                                className="rounded-[12px] border border-white/10 bg-[#171d28] px-3 py-2 text-xs font-medium text-[#dce6fb]"
+                                            >
+                                                Clear extension
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                </div>
+
+                                {!isCurrentAdmin ? (
+                                    <div className="rounded-[18px] border border-[#ff6269]/20 bg-[#2a1621] px-5 py-5">
+                                        <div className="text-[15px] font-semibold text-white">Danger zone</div>
+                                        <div className="mt-2 text-[14px] text-[#ffd4d7]">
+                                            Delete the account and all workspace data if support determines it should be removed.
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (window.confirm(`Delete user "${account.email}"? This also deletes monitors, incidents, status pages, and workspace data.`)) {
+                                                    router.delete(`/admin/users/${account.id}`);
+                                                }
+                                            }}
+                                            className="mt-4 inline-flex items-center gap-2 rounded-[14px] border border-[#ff6269]/25 bg-[#231320] px-4 py-2.5 text-sm text-[#ffd4d7]"
+                                        >
+                                            <Trash2 className="size-4" />
+                                            Delete account
+                                        </button>
+                                    </div>
+                                ) : null}
+                            </div>
+                        </PageCard>
+
+                        <PageCard className="space-y-5 p-6">
+                            <SectionHeading title="Automation surface" description="Contacts, webhook integrations, and API tokens attached to this workspace." />
+
+                            <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                                <div className="rounded-[16px] bg-[#121821] px-4 py-4">
+                                    <div className="flex items-center gap-2 text-sm text-[#9ca7b9]">
+                                        <Mail className="size-4 text-[#7c8cff]" />
+                                        Contacts
+                                    </div>
+                                    <div className="mt-2 text-[20px] font-semibold text-white">{usage.contacts}</div>
+                                </div>
+                                <div className="rounded-[16px] bg-[#121821] px-4 py-4">
+                                    <div className="flex items-center gap-2 text-sm text-[#9ca7b9]">
+                                        <Cable className="size-4 text-[#7c8cff]" />
+                                        Integrations
+                                    </div>
+                                    <div className="mt-2 text-[20px] font-semibold text-white">{usage.integrations}</div>
+                                </div>
+                                <div className="rounded-[16px] bg-[#121821] px-4 py-4">
+                                    <div className="flex items-center gap-2 text-sm text-[#9ca7b9]">
+                                        <KeyRound className="size-4 text-[#7c8cff]" />
+                                        API tokens
+                                    </div>
+                                    <div className="mt-2 text-[20px] font-semibold text-white">{usage.apiTokens}</div>
+                                </div>
+                            </div>
+
+                            {contacts.length > 0 ? (
+                                <div className="space-y-3">
+                                    <div className="text-[15px] font-semibold text-white">Notification contacts</div>
+                                    {contacts.map((contact) => (
+                                        <div key={contact.id} className="rounded-[16px] bg-[#121821] px-4 py-4 text-[13px] text-[#9ca7b9]">
+                                            <div className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-white">
+                                                <span>{contact.name}</span>
+                                                {contact.isPrimary ? <span className="rounded-full bg-[#171c33] px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-[#dbe1ff]">Primary</span> : null}
+                                                {!contact.enabled ? <span className="rounded-full bg-[#231320] px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-[#ffd4d7]">Disabled</span> : null}
+                                            </div>
+                                            <div className="mt-1 break-all">{contact.email}</div>
+                                            <div className="mt-2 text-white">{contact.monitorNames.join(', ') || 'No monitors assigned'}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+
+                            {integrations.length > 0 ? (
+                                <div className="space-y-3">
+                                    <div className="text-[15px] font-semibold text-white">Webhook integrations</div>
+                                    {integrations.map((integration) => (
+                                        <div key={integration.id} className="rounded-[16px] bg-[#121821] px-4 py-4 text-[13px] text-[#9ca7b9]">
+                                            <div className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-white">
+                                                <span>{integration.name}</span>
+                                                <span className="rounded-full bg-[#171c33] px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-[#dbe1ff]">{integration.status}</span>
+                                            </div>
+                                            <div className="mt-1">{integration.provider}</div>
+                                            <div className="mt-2 text-white">{integration.events.join(', ') || 'All events'}</div>
+                                            {integration.lastError ? <div className="mt-2 text-[#ffd4d7]">{integration.lastError}</div> : null}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+
+                            {apiTokens.length > 0 ? (
+                                <div className="space-y-3">
+                                    <div className="text-[15px] font-semibold text-white">API tokens</div>
+                                    {apiTokens.map((token) => (
+                                        <div key={token.id} className="rounded-[16px] bg-[#121821] px-4 py-4 text-[13px] text-[#9ca7b9]">
+                                            <div className="text-[14px] font-medium text-white">{token.name}</div>
+                                            <div className="mt-1">Created {token.createdAt ?? 'Unknown'}</div>
+                                            <div className="mt-1">Last used {token.lastUsedLabel}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+                        </PageCard>
+
+                        <PageCard className="space-y-5 p-6">
+                            <SectionHeading title="Workspace people and sessions" description="Recent membership invites and the latest tracked sessions for this account." />
+
+                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                                <div className="rounded-[16px] bg-[#121821] px-4 py-4">
+                                    <div className="flex items-center gap-2 text-sm text-[#9ca7b9]">
+                                        <Users className="size-4 text-[#7c8cff]" />
+                                        Team members
+                                    </div>
+                                    <div className="mt-2 text-[20px] font-semibold text-white">{usage.acceptedMembers}</div>
+                                </div>
+                                <div className="rounded-[16px] bg-[#121821] px-4 py-4">
+                                    <div className="text-sm text-[#9ca7b9]">Pending invites</div>
+                                    <div className="mt-2 text-[20px] font-semibold text-white">{usage.pendingInvitations}</div>
+                                </div>
+                            </div>
+
+                            {team.length > 0 ? (
+                                <div className="space-y-3">
+                                    {team.map((member) => (
+                                        <div key={member.id} className="rounded-[16px] bg-[#121821] px-4 py-4 text-[13px] text-[#9ca7b9]">
+                                            <div className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-white">
+                                                <span>{member.memberName ?? member.email}</span>
+                                                <span className="rounded-full bg-[#171c33] px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-[#dbe1ff]">{member.status}</span>
+                                            </div>
+                                            <div className="mt-1 break-all">{member.memberEmail ?? member.email}</div>
+                                            <div className="mt-2">
+                                                Invited {member.invitedAt ?? 'Unknown'}
+                                                {member.acceptedAt ? ` • Accepted ${member.acceptedAt}` : ''}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+
+                            {sessions.length > 0 ? (
+                                <div className="space-y-3">
+                                    {sessions.map((session) => (
+                                        <div key={session.id} className="rounded-[16px] bg-[#121821] px-4 py-4 text-[13px] text-[#9ca7b9]">
+                                            <div className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-white">
+                                                <span>{session.lastActiveLabel}</span>
+                                                <span className={cn(
+                                                    'rounded-full px-2 py-1 text-[11px] uppercase tracking-[0.16em]',
+                                                    session.active ? 'bg-[#0f2527] text-[#9de5e0]' : 'bg-[#231320] text-[#ffd4d7]',
+                                                )}>
+                                                    {session.active ? 'Active' : 'Revoked'}
+                                                </span>
+                                            </div>
+                                            <div className="mt-1">{session.ipAddress ?? 'Unknown IP'}</div>
+                                            <div className="mt-1 break-all">{session.lastPath ?? 'No path recorded'}</div>
+                                            <div className="mt-2 break-words">{session.userAgent ?? 'No user agent recorded'}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+                        </PageCard>
+
+                        <PageCard className="space-y-5 p-6">
+                            <SectionHeading title="Recent activity" description="Recent incidents and outgoing notifications for support context." />
+
+                            <div className="space-y-3">
+                                {recentIncidents.length === 0 ? (
+                                    <div className="rounded-[16px] bg-[#121821] px-4 py-4 text-[14px] text-[#9ca7b9]">
+                                        No recent incidents for this account.
+                                    </div>
+                                ) : (
+                                    recentIncidents.map((incident) => (
+                                        <div key={incident.id} className="rounded-[16px] bg-[#121821] px-4 py-4 text-[13px] text-[#9ca7b9]">
+                                            <div className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-white">
+                                                <span>{incident.monitor ?? 'Unknown monitor'}</span>
+                                                <span className="rounded-full bg-[#171c33] px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-[#dbe1ff]">{incident.status}</span>
+                                            </div>
+                                            <div className="mt-2 text-white">{incident.reason}</div>
+                                            <div className="mt-2">
+                                                Started {incident.startedAt ?? 'Unknown'}
+                                                {incident.resolvedAt ? ` • Resolved ${incident.resolvedAt}` : ''}
+                                                {incident.duration ? ` • Duration ${incident.duration}` : ''}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            <div className="space-y-3">
+                                {recentNotifications.length === 0 ? (
+                                    <div className="rounded-[16px] bg-[#121821] px-4 py-4 text-[14px] text-[#9ca7b9]">
+                                        No recent notifications for this account.
+                                    </div>
+                                ) : (
+                                    recentNotifications.map((notification) => (
+                                        <div key={notification.id} className="rounded-[16px] bg-[#121821] px-4 py-4 text-[13px] text-[#9ca7b9]">
+                                            <div className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-white">
+                                                <span>{notification.type}</span>
+                                                <span className="rounded-full bg-[#171c33] px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-[#dbe1ff]">{notification.status}</span>
+                                            </div>
+                                            <div className="mt-2 text-white">{notification.subject}</div>
+                                            <div className="mt-2">{notification.destination}</div>
+                                            <div className="mt-1">
+                                                {notification.monitor ?? 'Unknown monitor'} • {notification.sentAt ?? 'Unknown time'}
+                                            </div>
+                                            {notification.failureMessage ? (
+                                                <div className="mt-2 text-[#ffd4d7]">{notification.failureMessage}</div>
+                                            ) : null}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </PageCard>
+                    </aside>
+                </div>
+            </div>
+        </MonitoringLayout>
+    );
+}

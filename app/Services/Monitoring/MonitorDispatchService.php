@@ -4,6 +4,7 @@ namespace App\Services\Monitoring;
 
 use App\Jobs\RunMonitorCheckJob;
 use App\Models\Monitor;
+use App\Support\MonitorQueueResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -77,7 +78,12 @@ class MonitorDispatchService
             }
 
             foreach ($claimed as $monitor) {
-                RunMonitorCheckJob::dispatch($monitor->id, $now->toIso8601String());
+                RunMonitorCheckJob::dispatch(
+                    $monitor->id,
+                    $now->toIso8601String(),
+                    $monitor->type,
+                    MonitorQueueResolver::usesRegionQueues() ? $monitor->region : null,
+                );
             }
 
             $total += $claimed->count();

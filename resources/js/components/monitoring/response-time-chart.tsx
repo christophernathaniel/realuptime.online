@@ -57,8 +57,10 @@ export function ResponseTimeChart({ points }: { points: ResponsePoint[] }) {
     const yLabels = [0, Math.round(max * 0.25), Math.round(max * 0.5), Math.round(max * 0.75), max].reverse();
 
     return (
-        <div className="rounded-[28px] border border-[#2a3342] bg-[linear-gradient(180deg,rgba(17,22,31,0.97)_0%,rgba(15,19,27,0.97)_100%)] p-6">
-            <svg viewBox={`0 0 ${width} ${height}`} className="h-[260px] w-full overflow-visible lg:h-[280px]">
+        <div className="rounded-[28px] border border-[#2a3342] bg-[linear-gradient(180deg,rgba(17,22,31,0.97)_0%,rgba(15,19,27,0.97)_100%)] p-4 sm:p-6">
+            <div className="overflow-x-auto">
+                <div className="min-w-[720px]">
+                    <svg viewBox={`0 0 ${width} ${height}`} className="h-[240px] w-full overflow-visible lg:h-[280px]">
                 {yLabels.map((label, index) => {
                     const y = padding.top + ((height - padding.top - padding.bottom) / (yLabels.length - 1)) * index;
                     return (
@@ -118,7 +120,9 @@ export function ResponseTimeChart({ points }: { points: ResponsePoint[] }) {
                         {point.shortLabel}
                     </text>
                 ))}
-            </svg>
+                    </svg>
+                </div>
+            </div>
         </div>
     );
 }

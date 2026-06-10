@@ -25,8 +25,10 @@ class RunMonitorCheckJob implements ShouldQueue
     public function __construct(
         public int $monitorId,
         public ?string $checkedAtIso = null,
+        public ?string $monitorType = null,
+        public ?string $probeRegion = null,
     ) {
-        $this->onQueue(MonitorQueueResolver::monitorCheckQueue($this->monitorId));
+        $this->onQueue(MonitorQueueResolver::monitorCheckQueue($this->monitorId, $this->monitorType, $this->probeRegion));
     }
 
     public function middleware(): array
@@ -58,8 +60,11 @@ class RunMonitorCheckJob implements ShouldQueue
         $checkedAt = $this->checkedAtIso
             ? CarbonImmutable::parse($this->checkedAtIso)
             : CarbonImmutable::now();
+        $queueLagMs = $this->checkedAtIso
+            ? max(0, CarbonImmutable::now()->getTimestampMs() - $checkedAt->getTimestampMs())
+            : 0;
 
-        $runner->runMonitor($monitor, $checkedAt);
+        $runner->runMonitor($monitor, $checkedAt, $queueLagMs, $this->probeRegion);
     }
 
     public function failed(?Throwable $exception = null): void

@@ -5,7 +5,14 @@ import { marketingFaqs } from '@/lib/marketing-content';
 
 export default function PricingPage({ canRegister = true }: { canRegister?: boolean }) {
     return (
-        <MarketingLayout title="Pricing" description="Compare Free, Premium, and Ultra plans for RealUptime.">
+        <MarketingLayout
+            title="Pricing & Plans"
+            description="Compare Free, Premium, and Ultra plans for RealUptime."
+            seo={{
+                breadcrumbs: [{ name: 'Pricing', path: '/pricing' }],
+                keywords: ['uptime monitoring pricing', 'status page pricing', 'website monitoring plans'],
+            }}
+        >
             <section className="mx-auto max-w-[1380px] px-6 py-16 lg:px-10 lg:py-22">
                 <div className="grid gap-10 lg:grid-cols-[1fr_auto] lg:items-start">
                     <div>

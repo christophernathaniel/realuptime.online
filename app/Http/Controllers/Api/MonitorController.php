@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Jobs\RunMonitorCheckJob;
 use App\Models\Monitor;
+use App\Support\MonitorQueueResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -60,7 +61,12 @@ class MonitorController extends Controller
             ], 422);
         }
 
-        RunMonitorCheckJob::dispatch($monitor->id, now()->toIso8601String());
+        RunMonitorCheckJob::dispatch(
+            $monitor->id,
+            now()->toIso8601String(),
+            $monitor->type,
+            MonitorQueueResolver::usesRegionQueues() ? $monitor->region : null,
+        );
 
         return response()->json([
             'message' => 'Monitor check dispatched.',
@@ -74,6 +80,7 @@ class MonitorController extends Controller
     {
         return [
             'id' => $monitor->id,
+            'public_id' => $monitor->public_id,
             'name' => $monitor->name,
             'type' => $monitor->type,
             'status' => $monitor->status,
@@ -81,9 +88,12 @@ class MonitorController extends Controller
             'interval_seconds' => $monitor->interval_seconds,
             'timeout_seconds' => $monitor->timeout_seconds,
             'region' => $monitor->region,
+            'accepted_http_statuses' => $monitor->accepted_http_statuses ?: '200-299',
             'last_checked_at' => $monitor->last_checked_at?->toIso8601String(),
             'next_check_at' => $monitor->next_check_at?->toIso8601String(),
             'last_response_time_ms' => $monitor->last_response_time_ms,
+            'last_queue_lag_ms' => $monitor->last_queue_lag_ms,
+            'last_probe_region' => $monitor->last_probe_region,
             'last_http_status' => $monitor->last_http_status,
             'last_error_type' => $monitor->last_error_type,
             'last_error_message' => $monitor->last_error_message,

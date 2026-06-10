@@ -6,7 +6,14 @@ import { marketingFeatures } from '@/lib/marketing-content';
 
 export default function FeaturesPage() {
     return (
-        <MarketingLayout title="Features" description="Explore RealUptime monitoring, alerting, incidents, and public status page features.">
+        <MarketingLayout
+            title="Monitoring Features"
+            description="Explore RealUptime monitoring, alerting, incidents, and public status page features."
+            seo={{
+                breadcrumbs: [{ name: 'Features', path: '/features' }],
+                keywords: ['monitoring software features', 'incident management software', 'public status page software'],
+            }}
+        >
             <section className="mx-auto max-w-[1380px] px-6 py-16 lg:px-10 lg:py-22">
                 <div className="max-w-[920px]">
                     <div className="text-[14px] font-semibold uppercase tracking-[0.22em] text-[#6f82a3]">Features</div>

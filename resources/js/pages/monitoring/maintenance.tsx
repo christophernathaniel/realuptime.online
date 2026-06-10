@@ -158,6 +158,7 @@ type MaintenancePageProps = {
     monitorOptionResults: PaginatedData<MonitorOption>;
     focusMonitor: {
         id: number;
+        publicId: string;
         name: string;
     } | null;
     formDefaults: MaintenanceFormData;
@@ -182,7 +183,7 @@ export default function MaintenancePage({
         router.get(
             '/maintenance',
             {
-                ...(focusMonitor ? { monitor_id: focusMonitor.id } : {}),
+                ...(focusMonitor ? { monitor: focusMonitor.publicId } : {}),
                 history_page: history.currentPage,
                 monitor_query: query,
                 monitor_page: 1,

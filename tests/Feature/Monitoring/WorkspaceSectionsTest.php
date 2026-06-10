@@ -228,7 +228,7 @@ it('prefills the focused monitor on the maintenance page', function () {
     ]);
 
     $this->actingAs($user)
-        ->get("/maintenance?monitor_id={$monitor->id}")
+        ->get('/maintenance?monitor='.$monitor->public_id)
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('monitoring/maintenance')
@@ -493,12 +493,13 @@ it('queues a test payload for workspace integrations from the integrations secti
         ->post("/workspace-integrations/{$integration->id}/test")
         ->assertRedirect();
 
-    Http::assertSent(function ($request) use ($monitor) {
+    Http::assertSent(function ($request) {
         return $request->url() === 'https://workflows.example.test/realuptime-alerts'
             && data_get($request->data(), 'event') === 'monitor.test'
             && data_get($request->data(), 'is_test') === true
-            && data_get($request->data(), 'monitor_name') === $monitor->name
-            && data_get($request->data(), 'incident_reason') === 'This is a test alert from RealUptime.';
+            && data_get($request->data(), 'monitor_name') === 'Example website'
+            && data_get($request->data(), 'monitor_target') === 'https://example-site.test/health'
+            && data_get($request->data(), 'incident_reason') === 'This is a synthetic webhook test from RealUptime.';
     });
 
     $this->assertDatabaseHas('notification_logs', [

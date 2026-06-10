@@ -8,9 +8,32 @@ import type { FeatureSlug } from '@/lib/marketing-content';
 
 export default function FeatureShowPage({ slug, canRegister = true }: { slug: FeatureSlug; canRegister?: boolean }) {
     const feature = marketingFeatureMap[slug];
+    const faqSchema = feature.faqs.length > 0 ? {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: feature.faqs.map((faq) => ({
+            '@type': 'Question',
+            name: faq.question,
+            acceptedAnswer: {
+                '@type': 'Answer',
+                text: faq.answer,
+            },
+        })),
+    } : null;
 
     return (
-        <MarketingLayout title={feature.label} description={feature.summary}>
+        <MarketingLayout
+            title={`${feature.label} Software`}
+            description={feature.summary}
+            seo={{
+                breadcrumbs: [
+                    { name: 'Features', path: '/features' },
+                    { name: feature.label, path: `/features/${feature.slug}` },
+                ],
+                keywords: [feature.label, feature.shortLabel, ...feature.useCases].map((value) => value.toLowerCase()),
+                structuredData: faqSchema ?? undefined,
+            }}
+        >
             <section className="mx-auto max-w-[1380px] px-6 py-16 lg:px-10 lg:py-22">
                 <div className="grid gap-10 lg:grid-cols-[0.92fr_1.08fr] lg:items-end">
                     <div>

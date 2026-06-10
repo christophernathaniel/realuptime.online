@@ -30,6 +30,7 @@ class MembershipController extends Controller
                     'sourceLabel' => match ($user->membershipSource()) {
                         'admin' => 'Managed by admin override',
                         'stripe' => 'Stripe subscription',
+                        'support' => 'Courtesy extension from support',
                         default => 'Free access',
                     },
                     'advancedFeaturesUnlocked' => $user->allowsAdvancedWorkspaceFeatures(),
@@ -50,6 +51,11 @@ class MembershipController extends Controller
                 'subscriptionActive' => $subscription?->valid() ?? false,
                 'subscriptionStatus' => $subscription?->stripe_status,
                 'adminOverride' => $user->adminPlanOverride()?->value,
+                'supportExtension' => $user->supportPlanExtension() ? [
+                    'plan' => $user->supportPlanExtension()?->value,
+                    'planLabel' => $user->supportPlanExtension()?->label(),
+                    'expiresAt' => $user->support_plan_expires_at?->format('M j, Y H:i'),
+                ] : null,
                 'checkoutSuccess' => $request->boolean('checkout'),
                 'checkoutCancelled' => $request->boolean('cancelled'),
             ],

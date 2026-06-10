@@ -2,7 +2,14 @@ import MarketingLayout from '@/layouts/marketing-layout';
 
 export default function CareersPage() {
     return (
-        <MarketingLayout title="Careers" description="Careers at RealUptime.">
+        <MarketingLayout
+            title="Careers at RealUptime"
+            description="See whether RealUptime is currently hiring and learn what the team values."
+            seo={{
+                breadcrumbs: [{ name: 'Careers', path: '/careers' }],
+                keywords: ['realuptime careers', 'monitoring software jobs', 'engineering careers'],
+            }}
+        >
             <section className="mx-auto max-w-[1380px] px-6 py-16 lg:px-10 lg:py-22">
                 <div className="max-w-[920px]">
                     <div className="text-[14px] font-semibold uppercase tracking-[0.22em] text-[#7083a2]">Careers</div>

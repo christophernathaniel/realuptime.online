@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Monitoring;
 
 use App\Models\Monitor;
+use App\Support\HttpStatusPolicy;
 use App\Support\WorkspaceResolver;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -56,6 +57,17 @@ class UpsertMonitorRequest extends FormRequest
             'auth_username' => ['nullable', 'string', 'max:255'],
             'auth_password' => ['nullable', 'string', 'max:255'],
             'expected_status_code' => ['nullable', 'integer', 'between:100,599'],
+            'accepted_http_statuses' => ['nullable', 'string', 'max:120',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value === null || trim((string) $value) === '') {
+                        return;
+                    }
+
+                    if (! HttpStatusPolicy::isValid((string) $value)) {
+                        $fail('Accepted HTTP statuses must use comma-separated codes or ranges such as 200-299,301,302.');
+                    }
+                },
+            ],
             'expected_keyword' => ['nullable', 'string', 'max:255'],
             'keyword_match_type' => ['nullable', Rule::in(['contains', 'exact', 'regex'])],
             'packet_count' => ['nullable', 'integer', 'min:1', 'max:1'],
@@ -112,6 +124,9 @@ class UpsertMonitorRequest extends FormRequest
         $data['downtime_webhook_urls'] = $downtimeWebhookUrls;
         $data['follow_redirects'] = $this->boolean('follow_redirects');
         $data['critical_alert_after_minutes'] = $data['critical_alert_after_minutes'] ?? 30;
+        $data['accepted_http_statuses'] = HttpStatusPolicy::normalize(
+            (string) ($data['accepted_http_statuses'] ?? ($data['expected_status_code'] ?? ''))
+        );
 
         if ($data['type'] === Monitor::TYPE_PORT) {
             $data['target'] = $this->normalizePortTarget((string) $data['target']);
@@ -128,6 +143,7 @@ class UpsertMonitorRequest extends FormRequest
             if ($data['type'] !== Monitor::TYPE_HTTP) {
                 $data['request_method'] = null;
                 $data['expected_status_code'] = null;
+                $data['accepted_http_statuses'] = null;
             }
         } else {
             $data['request_method'] = $data['type'] === Monitor::TYPE_HTTP ? 'GET' : null;
@@ -138,6 +154,7 @@ class UpsertMonitorRequest extends FormRequest
             $data['auth_username'] = null;
             $data['auth_password'] = null;
             $data['expected_status_code'] = $data['type'] === Monitor::TYPE_HTTP ? 200 : null;
+            $data['accepted_http_statuses'] = $data['type'] === Monitor::TYPE_HTTP ? HttpStatusPolicy::DEFAULT : null;
             $data['latency_threshold_ms'] = 1500;
             $data['degraded_consecutive_checks'] = 3;
             $data['critical_alert_after_minutes'] = 30;
@@ -154,6 +171,10 @@ class UpsertMonitorRequest extends FormRequest
 
         if ($data['type'] !== Monitor::TYPE_HTTP) {
             $data['request_method'] = null;
+            $data['expected_status_code'] = null;
+            $data['accepted_http_statuses'] = null;
+        } else {
+            $data['accepted_http_statuses'] = HttpStatusPolicy::normalize($data['accepted_http_statuses'] ?? HttpStatusPolicy::DEFAULT);
             $data['expected_status_code'] = null;
         }
 

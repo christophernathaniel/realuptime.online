@@ -46,7 +46,7 @@ class WorkspaceIntegrationPayloadFactory
             ] : null,
             'message' => [
                 'title' => $this->messageTitle($event),
-                'summary' => $this->messageSummary($event, $monitor),
+                'summary' => $this->messageSummary($event, $monitor->name),
                 'status_label' => $this->statusLabel($event),
                 'status_tone' => $this->statusTone($event),
                 'icon' => $this->statusIcon($event),
@@ -94,12 +94,62 @@ class WorkspaceIntegrationPayloadFactory
             ],
             'message' => [
                 'title' => $this->messageTitle(WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST),
-                'summary' => $this->messageSummary(WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST, $monitor),
+                'summary' => $this->messageSummary(WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST, $monitor->name),
                 'status_label' => $this->statusLabel(WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST),
                 'status_tone' => $this->statusTone(WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST),
                 'icon' => $this->statusIcon(WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST),
                 'reason' => $reason,
                 'link_label' => 'Open monitor',
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function makeIntegrationTest(User $workspace): array
+    {
+        $monitorName = 'Example website';
+        $monitorTarget = 'https://example-site.test/health';
+        $reason = 'This is a synthetic webhook test from RealUptime.';
+
+        return [
+            'event' => WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST,
+            'is_test' => true,
+            'sent_at' => now()->toIso8601String(),
+            'workspace' => [
+                'id' => $workspace->id,
+                'name' => $workspace->name,
+                'plan' => $workspace->membershipPlan()->value,
+            ],
+            'monitor' => [
+                'id' => null,
+                'name' => $monitorName,
+                'type' => Monitor::TYPE_HTTP,
+                'status' => Monitor::STATUS_UP,
+                'target' => $monitorTarget,
+                'region' => 'North America',
+                'url' => route('monitors.index'),
+            ],
+            'incident' => [
+                'id' => null,
+                'type' => 'test',
+                'severity' => 'info',
+                'started_at' => now()->toIso8601String(),
+                'resolved_at' => null,
+                'reason' => $reason,
+                'error_type' => 'test',
+                'http_status_code' => null,
+                'url' => null,
+            ],
+            'message' => [
+                'title' => $this->messageTitle(WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST),
+                'summary' => $this->messageSummary(WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST, $monitorName),
+                'status_label' => $this->statusLabel(WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST),
+                'status_tone' => $this->statusTone(WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST),
+                'icon' => $this->statusIcon(WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST),
+                'reason' => $reason,
+                'link_label' => 'Open monitor dashboard',
             ],
         ];
     }
@@ -114,13 +164,13 @@ class WorkspaceIntegrationPayloadFactory
         };
     }
 
-    protected function messageSummary(string $event, Monitor $monitor): string
+    protected function messageSummary(string $event, string $monitorName): string
     {
         return match ($event) {
-            WorkspaceIntegrationNotificationService::EVENT_MONITOR_DOWN => sprintf('%s is currently unavailable.', $monitor->name),
-            WorkspaceIntegrationNotificationService::EVENT_MONITOR_RECOVERED => sprintf('%s is back up and responding again.', $monitor->name),
-            WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST => sprintf('%s sent a test alert from RealUptime.', $monitor->name),
-            default => sprintf('Update for %s.', $monitor->name),
+            WorkspaceIntegrationNotificationService::EVENT_MONITOR_DOWN => sprintf('%s is currently unavailable.', $monitorName),
+            WorkspaceIntegrationNotificationService::EVENT_MONITOR_RECOVERED => sprintf('%s is back up and responding again.', $monitorName),
+            WorkspaceIntegrationNotificationService::EVENT_MONITOR_TEST => sprintf('%s sent a test alert from RealUptime.', $monitorName),
+            default => sprintf('Update for %s.', $monitorName),
         };
     }
 

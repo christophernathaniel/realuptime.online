@@ -17,6 +17,7 @@ export type CapabilityHealth = {
 
 export type MonitorListItem = {
     id: number;
+    publicId: string;
     name: string;
     status: string;
     type: string;
@@ -126,6 +127,7 @@ export type MonitorHistory = {
 
 export type DetailedMonitor = {
     id: number;
+    publicId: string;
     name: string;
     type: string;
     typeLabel: string;
@@ -154,6 +156,15 @@ export type DetailedMonitor = {
     maintenanceDefaults: MaintenanceFormData;
     maintenanceWindows: MaintenanceWindowItem[];
     region: string;
+    acceptedHttpStatuses: string;
+    lastProbeRegion: string;
+    lastQueueLagLabel: string;
+    lastQueueLagValue: number | null;
+    recoveryConfirmation: {
+        status: string;
+        requestedAt: string;
+        regions: string;
+    } | null;
     heartbeatUrl: string | null;
     lastHeartbeatLabel: string | null;
     nextHeartbeatDeadlineLabel: string | null;
@@ -181,6 +192,7 @@ export type DetailedMonitor = {
 
 export type MonitorFormData = {
     id?: number | null;
+    publicId?: string | null;
     name: string;
     type: string;
     target: string;
@@ -193,6 +205,7 @@ export type MonitorFormData = {
     auth_username: string;
     auth_password: string;
     expected_status_code: number;
+    accepted_http_statuses: string;
     expected_keyword: string;
     keyword_match_type: string;
     packet_count: number;
@@ -250,6 +263,7 @@ export type NotificationContactOption = {
 
 export type MonitorOption = {
     id: number;
+    publicId?: string;
     name: string;
     status: string;
     type: string;

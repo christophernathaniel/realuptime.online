@@ -47,6 +47,15 @@ test('plans route redirects to pricing', function () {
         ->assertRedirect(route('pricing'));
 });
 
+test('sitemap route renders public marketing urls', function () {
+    $this->get(route('sitemap'))
+        ->assertOk()
+        ->assertHeader('Content-Type', 'application/xml')
+        ->assertSee(route('home'), false)
+        ->assertSee(route('pricing'), false)
+        ->assertSee(route('features.show', ['slug' => 'website-monitoring']), false);
+});
+
 test('unknown web routes render the custom not found page', function () {
     $this->get('/this-page-does-not-exist')
         ->assertNotFound()

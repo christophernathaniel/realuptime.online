@@ -106,7 +106,7 @@ function SidebarContent({
     onCloseMobile,
 }: SidebarContentProps) {
     const platformNavigation = user.is_admin
-        ? [{ label: 'Admin users', href: '/admin/users', icon: ShieldCheck, requiresPaid: false }]
+        ? [{ label: 'Platform admin', href: '/admin/users', icon: ShieldCheck, requiresPaid: false }]
         : [];
     const dropdownLinks = user.is_admin
         ? [{ label: 'Platform admin', href: '/admin/users', icon: ShieldCheck }, ...accountLinks]
@@ -404,9 +404,9 @@ export default function MonitoringLayout({ children }: PropsWithChildren) {
                     </div>
                 ) : null}
 
-                <main className="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(124,140,255,0.12)_0%,transparent_32%),radial-gradient(circle_at_right,rgba(87,199,194,0.08)_0%,transparent_38%),linear-gradient(180deg,#0b0f15_0%,#10141b_100%)] px-3.5 py-4 sm:px-[18px] lg:h-screen lg:overflow-y-auto lg:px-5 lg:py-4">
+                <main className="relative min-w-0 flex-1 overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(124,140,255,0.12)_0%,transparent_32%),radial-gradient(circle_at_right,rgba(87,199,194,0.08)_0%,transparent_38%),linear-gradient(180deg,#0b0f15_0%,#10141b_100%)] px-3.5 py-4 sm:px-[18px] lg:h-screen lg:overflow-y-auto lg:px-5 lg:py-4">
                     <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(145,157,179,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(145,157,179,0.04)_1px,transparent_1px)] [background-size:76px_76px]" />
-                    <div className="monitoring-page relative mx-auto w-full max-w-[1600px] space-y-3">
+                    <div className="monitoring-page relative mx-auto min-w-0 w-full max-w-[1600px] space-y-3">
                         <div className="flex items-center justify-between rounded-[18px] border border-[#273140] bg-[#111722]/88 px-3.5 py-2.5 lg:hidden">
                             <div className="flex items-center gap-3">
                                 <AppLogoIcon className="size-[26px]" />

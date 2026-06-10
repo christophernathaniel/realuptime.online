@@ -37,7 +37,13 @@ const sections = [
 
 export default function PrivacyPage() {
     return (
-        <MarketingLayout title="Privacy Policy" description="RealUptime privacy policy.">
+        <MarketingLayout
+            title="Privacy Policy"
+            description="Read the RealUptime privacy policy covering account, billing, monitoring, and public status page data."
+            seo={{
+                breadcrumbs: [{ name: 'Privacy Policy', path: '/privacy-policy' }],
+            }}
+        >
             <section className="mx-auto max-w-[1180px] px-6 py-16 lg:px-10 lg:py-22">
                 <div className="max-w-[860px]">
                     <div className="text-[14px] font-semibold uppercase tracking-[0.22em] text-[#7083a2]">Privacy policy</div>

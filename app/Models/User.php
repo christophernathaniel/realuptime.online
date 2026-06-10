@@ -27,6 +27,10 @@ class User extends Authenticatable
 
     protected ?MembershipPlan $resolvedMembershipPlan = null;
 
+    protected bool $supportPlanResolved = false;
+
+    protected ?MembershipPlan $resolvedSupportPlan = null;
+
     /**
      * The attributes that are mass assignable.
      *
@@ -43,6 +47,10 @@ class User extends Authenticatable
         'admin_plan_override',
         'admin_plan_assigned_by',
         'admin_plan_assigned_at',
+        'support_plan_extension',
+        'support_plan_granted_by',
+        'support_plan_granted_at',
+        'support_plan_expires_at',
     ];
 
     /**
@@ -70,6 +78,8 @@ class User extends Authenticatable
             'password_login_enabled' => 'boolean',
             'is_admin' => 'boolean',
             'admin_plan_assigned_at' => 'datetime',
+            'support_plan_granted_at' => 'datetime',
+            'support_plan_expires_at' => 'datetime',
             'two_factor_confirmed_at' => 'datetime',
         ];
     }
@@ -80,6 +90,14 @@ class User extends Authenticatable
             if (blank($user->public_status_key)) {
                 $user->public_status_key = static::generatePublicStatusKey();
             }
+        });
+
+        static::retrieved(function (self $user): void {
+            $user->resetResolvedMembershipState();
+        });
+
+        static::saved(function (self $user): void {
+            $user->resetResolvedMembershipState();
         });
     }
 
@@ -155,6 +173,11 @@ class User extends Authenticatable
         return $this->belongsTo(self::class, 'admin_plan_assigned_by');
     }
 
+    public function supportPlanGranter(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'support_plan_granted_by');
+    }
+
     public function adminPlanOverride(): ?MembershipPlan
     {
         return $this->admin_plan_override
@@ -185,6 +208,25 @@ class User extends Authenticatable
         return $this->resolvedSubscriptionPlan = MembershipPlan::fromStripePriceId($priceId);
     }
 
+    public function supportPlanExtension(): ?MembershipPlan
+    {
+        if ($this->supportPlanResolved) {
+            return $this->resolvedSupportPlan;
+        }
+
+        $this->supportPlanResolved = true;
+
+        if (
+            blank($this->support_plan_extension)
+            || $this->support_plan_expires_at === null
+            || $this->support_plan_expires_at->isPast()
+        ) {
+            return $this->resolvedSupportPlan = null;
+        }
+
+        return $this->resolvedSupportPlan = MembershipPlan::tryFrom($this->support_plan_extension);
+    }
+
     public function membershipPlan(): MembershipPlan
     {
         if ($this->membershipPlanResolved) {
@@ -194,7 +236,10 @@ class User extends Authenticatable
         $this->membershipPlanResolved = true;
 
         return $this->resolvedMembershipPlan = $this->adminPlanOverride()
-            ?? $this->subscriptionPlan()
+            ?? MembershipPlan::highest(
+                $this->subscriptionPlan(),
+                $this->supportPlanExtension(),
+            )
             ?? MembershipPlan::FREE;
     }
 
@@ -206,6 +251,10 @@ class User extends Authenticatable
 
         if ($this->subscriptionPlan() !== null) {
             return 'stripe';
+        }
+
+        if ($this->supportPlanExtension() !== null) {
+            return 'support';
         }
 
         return 'free';
@@ -234,6 +283,23 @@ class User extends Authenticatable
     public function hasReachedMonitorLimit(?self $actor = null): bool
     {
         return $this->monitors()->count() >= $this->monitorLimit();
+    }
+
+    public function refresh()
+    {
+        $this->resetResolvedMembershipState();
+
+        return parent::refresh();
+    }
+
+    protected function resetResolvedMembershipState(): void
+    {
+        $this->subscriptionPlanResolved = false;
+        $this->resolvedSubscriptionPlan = null;
+        $this->membershipPlanResolved = false;
+        $this->resolvedMembershipPlan = null;
+        $this->supportPlanResolved = false;
+        $this->resolvedSupportPlan = null;
     }
 
     protected static function generatePublicStatusKey(): string

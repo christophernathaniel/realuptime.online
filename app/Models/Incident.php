@@ -15,6 +15,8 @@ class Incident extends Model
 
     public const TYPE_DEGRADED_PERFORMANCE = 'degraded_performance';
 
+    public const TYPE_TRANSIENT_FAILURE = 'transient_failure';
+
     public const TYPE_SSL_EXPIRY = 'ssl_expiry';
 
     public const TYPE_DOMAIN_EXPIRY = 'domain_expiry';

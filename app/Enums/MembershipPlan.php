@@ -49,6 +49,15 @@ enum MembershipPlan: string
         return sprintf('£%0.2f / month', $pricePence / 100);
     }
 
+    public function rank(): int
+    {
+        return match ($this) {
+            self::FREE => 0,
+            self::PREMIUM => 1,
+            self::ULTRA => 2,
+        };
+    }
+
     public function stripePriceId(): ?string
     {
         return config("membership.plans.{$this->value}.stripe_price_id");
@@ -71,5 +80,13 @@ enum MembershipPlan: string
     public static function paidCases(): array
     {
         return [self::PREMIUM, self::ULTRA];
+    }
+
+    public static function highest(?self ...$plans): ?self
+    {
+        return collect($plans)
+            ->filter(fn (?self $plan) => $plan !== null)
+            ->sortByDesc(fn (self $plan) => $plan->rank())
+            ->first();
     }
 }

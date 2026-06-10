@@ -50,6 +50,7 @@ class Monitor extends Model
         'auth_username',
         'auth_password',
         'expected_status_code',
+        'accepted_http_statuses',
         'expected_keyword',
         'keyword_match_type',
         'packet_count',
@@ -62,6 +63,7 @@ class Monitor extends Model
         'domain_threshold_days',
         'heartbeat_grace_seconds',
         'region',
+        'last_probe_region',
         'heartbeat_token',
         'last_checked_at',
         'last_result_stored_at',
@@ -72,6 +74,7 @@ class Monitor extends Model
         'last_status_changed_at',
         'last_heartbeat_at',
         'last_response_time_ms',
+        'last_queue_lag_ms',
         'last_http_status',
         'last_error_type',
         'last_error_message',
@@ -109,6 +112,10 @@ class Monitor extends Model
     protected static function booted(): void
     {
         static::creating(function (Monitor $monitor): void {
+            if (empty($monitor->public_id)) {
+                $monitor->public_id = (string) Str::ulid();
+            }
+
             if ($monitor->type === self::TYPE_HEARTBEAT && empty($monitor->heartbeat_token)) {
                 $monitor->heartbeat_token = (string) Str::ulid();
             }
@@ -117,6 +124,11 @@ class Monitor extends Model
                 $monitor->next_check_at = now();
             }
         });
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'public_id';
     }
 
     public function user(): BelongsTo
@@ -160,6 +172,11 @@ class Monitor extends Model
     public function heartbeatEvents(): HasMany
     {
         return $this->hasMany(HeartbeatEvent::class);
+    }
+
+    public function probeConfirmations(): HasMany
+    {
+        return $this->hasMany(ProbeConfirmation::class);
     }
 
     public function statusPages(): BelongsToMany

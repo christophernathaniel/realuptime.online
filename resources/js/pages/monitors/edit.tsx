@@ -106,7 +106,7 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_250px]">
                 <section className="space-y-5">
                     <Link
-                        href={mode === 'create' ? '/monitors' : `/monitors/${monitor.id}`}
+                        href={mode === 'create' ? '/monitors' : `/monitors/${monitor.publicId}`}
                         className="inline-flex items-center gap-3 rounded-[16px] border border-[#2b3544] bg-[#171d28] px-4 py-2.5 text-base text-[#d5def3]"
                     >
                         <ChevronLeft className="size-4" />
@@ -173,7 +173,7 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
                                 return;
                             }
 
-                            form.put(`/monitors/${monitor.id}`);
+                            form.put(`/monitors/${monitor.publicId}`);
                         }}
                     >
                         <PageCard className="space-y-6 p-6">
@@ -301,14 +301,15 @@ export default function MonitorEdit({ mode, monitor, contacts, options, membersh
                                                 </Select>
                                             </div>
                                             <div className="space-y-3">
-                                                <FieldLabel>Expected status code</FieldLabel>
+                                                <FieldLabel>Accepted HTTP statuses</FieldLabel>
                                                 <Input
-                                                    type="number"
-                                                    min={100}
-                                                    max={599}
-                                                    value={form.data.expected_status_code}
-                                                    onChange={(event) => form.setData('expected_status_code', Number(event.target.value))}
+                                                    value={form.data.accepted_http_statuses}
+                                                    onChange={(event) => form.setData('accepted_http_statuses', event.target.value)}
+                                                    placeholder="200-299,301,302"
                                                 />
+                                                <div className="text-sm text-[#9ca7b9]">
+                                                    Use comma-separated status codes or ranges. Example: 200-299,301,302.
+                                                </div>
                                             </div>
                                         </div>
                                     ) : null}

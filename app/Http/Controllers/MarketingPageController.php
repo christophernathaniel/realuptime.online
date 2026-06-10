@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 use Laravel\Fortify\Features;
+use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 class MarketingPageController extends Controller
 {
@@ -69,6 +71,28 @@ class MarketingPageController extends Controller
     public function terms(): Response
     {
         return Inertia::render('marketing/terms', $this->sharedProps());
+    }
+
+    public function sitemap(): HttpResponse
+    {
+        $timestamp = CarbonImmutable::now()->toAtomString();
+        $urls = collect([
+            route('home'),
+            route('features.index'),
+            route('pricing'),
+            route('about'),
+            route('careers'),
+            route('privacy-policy'),
+            route('terms-and-conditions'),
+            ...collect(self::FEATURE_SLUGS)->map(fn (string $slug) => route('features.show', ['slug' => $slug]))->all(),
+        ])->map(fn (string $url) => [
+            'loc' => $url,
+            'lastmod' => $timestamp,
+        ])->all();
+
+        return response()
+            ->view('sitemap', ['urls' => $urls])
+            ->header('Content-Type', 'application/xml');
     }
 
     /**

@@ -181,14 +181,44 @@ it('defers monitor history and capability insights on the detail page', function
     $monitor->capabilities()->attach($capability);
 
     $this->actingAs($user)
-        ->get("/monitors/{$monitor->id}")
+        ->get(route('monitors.show', $monitor))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('monitors/show')
             ->where('monitor.name', 'Website')
             ->where('monitor.region', 'Europe')
             ->missingAll('monitorHistory', 'monitorCapabilities'))
-        ->assertViewHas('page.deferredProps.monitor-insights', fn (array $props) => $props === ['monitorHistory', 'monitorCapabilities']);
+        ->assertViewHas('page.deferredProps.monitor-history', fn (array $props) => $props === ['monitorHistory'])
+        ->assertViewHas('page.deferredProps.monitor-capabilities', fn (array $props) => $props === ['monitorCapabilities']);
+});
+
+it('uses public ids for monitor detail routes', function () {
+    $user = User::factory()->create();
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Website',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 2,
+        'region' => 'Europe',
+    ]);
+
+    expect(route('monitors.show', $monitor))->toBe(url('/monitors/'.$monitor->public_id));
+
+    $this->actingAs($user)
+        ->get(route('monitors.show', $monitor))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('monitors/show')
+            ->where('monitor.publicId', $monitor->public_id));
+
+    $this->actingAs($user)
+        ->get('/monitors/'.$monitor->id)
+        ->assertNotFound();
 });
 
 it('keeps dashboard uptime percentages aligned with downtime duration when healthy ping results are sampled', function () {
@@ -262,10 +292,11 @@ it('stores a new monitor and attaches selected email contacts', function () {
             'target' => 'https://example.com',
             'request_method' => 'GET',
             'interval_seconds' => 300,
-            'timeout_seconds' => 30,
+            'timeout_seconds' => 15,
             'retry_limit' => 2,
             'follow_redirects' => true,
             'expected_status_code' => 200,
+            'accepted_http_statuses' => '200-299',
             'region' => 'North America',
             'contact_ids' => [$contact->id],
         ])
@@ -287,10 +318,11 @@ it('creates capability mappings from capability labels on paid workspaces', func
             'target' => 'https://example.com',
             'request_method' => 'GET',
             'interval_seconds' => 300,
-            'timeout_seconds' => 30,
+            'timeout_seconds' => 15,
             'retry_limit' => 2,
             'follow_redirects' => true,
             'expected_status_code' => 200,
+            'accepted_http_statuses' => '200-299',
             'region' => 'North America',
             'capability_names' => "Sign in\nCheckout",
         ])
@@ -316,7 +348,7 @@ it('prevents free workspaces from creating more than ten monitors', function () 
             'target' => "https://example.com/{$index}",
             'request_method' => 'GET',
             'interval_seconds' => 300,
-            'timeout_seconds' => 30,
+            'timeout_seconds' => 15,
             'retry_limit' => 2,
             'region' => 'North America',
         ]);
@@ -333,10 +365,11 @@ it('prevents free workspaces from creating more than ten monitors', function () 
             'target' => 'https://example.com/overflow',
             'request_method' => 'GET',
             'interval_seconds' => 300,
-            'timeout_seconds' => 30,
+            'timeout_seconds' => 15,
             'retry_limit' => 2,
             'follow_redirects' => true,
             'expected_status_code' => 200,
+            'accepted_http_statuses' => '200-299',
             'region' => 'North America',
         ])
         ->assertRedirect('/settings/membership');
@@ -357,10 +390,11 @@ it('prevents free workspaces from saving intervals faster than five minutes', fu
             'target' => 'https://example.com',
             'request_method' => 'GET',
             'interval_seconds' => 30,
-            'timeout_seconds' => 30,
+            'timeout_seconds' => 15,
             'retry_limit' => 2,
             'follow_redirects' => true,
             'expected_status_code' => 200,
+            'accepted_http_statuses' => '200-299',
             'region' => 'North America',
         ])
         ->assertSessionHasErrors('interval_seconds');
@@ -376,12 +410,14 @@ it('allows paid workspaces to save 60 second intervals', function () {
             'target' => 'https://example.com',
             'request_method' => 'GET',
             'interval_seconds' => 60,
-            'timeout_seconds' => 30,
+            'timeout_seconds' => 15,
             'retry_limit' => 2,
             'follow_redirects' => true,
             'expected_status_code' => 200,
+            'accepted_http_statuses' => '200-299',
             'region' => 'North America',
         ])
+        ->assertSessionDoesntHaveErrors()
         ->assertRedirect();
 
     expect(Monitor::query()->first()?->interval_seconds)->toBe(60);
@@ -405,9 +441,10 @@ it('locks free workspaces to the standard check profile', function () {
             'request_method' => 'POST',
             'interval_seconds' => 300,
             'timeout_seconds' => 9,
-            'retry_limit' => 5,
+            'retry_limit' => 2,
             'follow_redirects' => false,
             'expected_status_code' => 204,
+            'accepted_http_statuses' => '204',
             'latency_threshold_ms' => 9999,
             'degraded_consecutive_checks' => 7,
             'critical_alert_after_minutes' => 120,
@@ -420,10 +457,11 @@ it('locks free workspaces to the standard check profile', function () {
 
     expect($monitor)->not->toBeNull();
     expect($monitor->request_method)->toBe('GET');
-    expect($monitor->timeout_seconds)->toBe(30);
+    expect($monitor->timeout_seconds)->toBe(15);
     expect($monitor->retry_limit)->toBe(2);
     expect($monitor->follow_redirects)->toBeTrue();
-    expect($monitor->expected_status_code)->toBe(200);
+    expect($monitor->expected_status_code)->toBeNull();
+    expect($monitor->accepted_http_statuses)->toBe('200-299');
     expect($monitor->region)->toBe('North America');
     expect($monitor->critical_alert_after_minutes)->toBe(30);
     expect($monitor->notificationContacts()->count())->toBe(1);
@@ -527,10 +565,11 @@ it('stores downtime webhook urls for paid workspaces and blocks them for free wo
             'target' => 'https://example.com/free-webhook',
             'request_method' => 'GET',
             'interval_seconds' => 300,
-            'timeout_seconds' => 30,
+            'timeout_seconds' => 15,
             'retry_limit' => 2,
             'follow_redirects' => true,
             'expected_status_code' => 200,
+            'accepted_http_statuses' => '200-299',
             'region' => 'North America',
             'downtime_webhook_urls' => "https://hooks.example.com/free\nhttps://ops.example.com/free",
         ])
@@ -545,10 +584,11 @@ it('stores downtime webhook urls for paid workspaces and blocks them for free wo
             'target' => 'https://example.com/premium-webhook',
             'request_method' => 'GET',
             'interval_seconds' => 60,
-            'timeout_seconds' => 30,
+            'timeout_seconds' => 15,
             'retry_limit' => 2,
             'follow_redirects' => true,
             'expected_status_code' => 200,
+            'accepted_http_statuses' => '200-299',
             'region' => 'North America',
             'downtime_webhook_urls' => "https://hooks.example.com/premium\nhttps://ops.example.com/premium",
         ])
@@ -601,10 +641,11 @@ it('requires platform admins to respect workspace monitor quotas and interval li
             'target' => 'https://example.com/admin-fast',
             'request_method' => 'GET',
             'interval_seconds' => 30,
-            'timeout_seconds' => 30,
+            'timeout_seconds' => 15,
             'retry_limit' => 2,
             'follow_redirects' => true,
             'expected_status_code' => 200,
+            'accepted_http_statuses' => '200-299',
             'region' => 'North America',
         ])
         ->assertRedirect('/monitors/create')
@@ -643,10 +684,11 @@ it('requires platform admins to respect workspace monitor quotas and interval li
             'target' => 'https://example.com/admin-quota',
             'request_method' => 'GET',
             'interval_seconds' => 300,
-            'timeout_seconds' => 30,
+            'timeout_seconds' => 15,
             'retry_limit' => 2,
             'follow_redirects' => true,
             'expected_status_code' => 200,
+            'accepted_http_statuses' => '200-299',
             'region' => 'North America',
         ])
         ->assertRedirect('/monitors');
@@ -881,7 +923,7 @@ it('sends a test notification and records it in the notification log', function 
     $monitor->notificationContacts()->attach($contact);
 
     $this->actingAs($user)
-        ->post("/monitors/{$monitor->id}/test-notification")
+        ->post(route('monitors.test-notification', $monitor))
         ->assertRedirect();
 
     Notification::assertSentOnDemand(MonitorAlertNotification::class);
@@ -933,7 +975,7 @@ it('includes active workspace integrations when sending a test alert', function 
     ]);
 
     $this->actingAs($user)
-        ->post("/monitors/{$monitor->id}/test-notification")
+        ->post(route('monitors.test-notification', $monitor))
         ->assertRedirect();
 
     Notification::assertSentOnDemand(MonitorAlertNotification::class);
@@ -1103,6 +1145,8 @@ it('keeps the default monitor detail presenter query count bounded', function ()
 });
 
 it('supports changing response time granularity on the monitor detail page', function () {
+    CarbonImmutable::setTestNow('2026-03-10 12:00:00');
+
     $user = User::factory()->create();
     $base = now()->startOfDay();
 
@@ -1154,6 +1198,8 @@ it('supports changing response time granularity on the monitor detail page', fun
     ]);
 
     $props = app(MonitorPresenter::class)->show($monitor->fresh(), 'week', '1d');
+
+    CarbonImmutable::setTestNow();
 
     expect($props['monitor']['responseTimeRange'])->toBe('week');
     expect($props['monitor']['responseTimeGranularity'])->toBe('1d');
@@ -1244,7 +1290,7 @@ it('renders region and domain ssl metadata on the monitor detail page', function
     ]);
 
     $this->actingAs($user)
-        ->get("/monitors/{$monitor->id}")
+        ->get(route('monitors.show', $monitor))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('monitors/show')

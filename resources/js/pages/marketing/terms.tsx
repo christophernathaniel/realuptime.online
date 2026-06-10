@@ -142,7 +142,13 @@ const sections = [
 
 export default function TermsPage() {
     return (
-        <MarketingLayout title="Terms & Conditions" description="RealUptime terms and conditions.">
+        <MarketingLayout
+            title="Terms & Conditions"
+            description="Read the RealUptime terms governing the hosted product, billing, status pages, APIs, and related services."
+            seo={{
+                breadcrumbs: [{ name: 'Terms & Conditions', path: '/terms-and-conditions' }],
+            }}
+        >
             <section className="mx-auto max-w-[1180px] px-6 py-16 lg:px-10 lg:py-22">
                 <div className="max-w-[900px]">
                     <div className="text-[14px] font-semibold uppercase tracking-[0.22em] text-[#7083a2]">Terms & conditions</div>

@@ -10,8 +10,11 @@ import { cn } from '@/lib/utils';
 export default function MarketingHome({ canRegister = true }: { canRegister?: boolean }) {
     return (
         <MarketingLayout
-            title="RealUptime"
+            title="Website Monitoring, Incident Alerts & Status Pages"
             description="Monitor websites, TCP ports, ping targets, incidents, and public status pages from one operational workspace."
+            seo={{
+                keywords: ['website monitoring', 'uptime monitoring', 'status pages', 'incident alerting', 'ping monitoring', 'port monitoring'],
+            }}
         >
             <section className="mx-auto grid max-w-[1380px] gap-12 px-6 py-14 lg:grid-cols-[1.05fr_0.95fr] lg:px-10 lg:py-22">
                 <div>

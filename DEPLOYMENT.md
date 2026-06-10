@@ -29,11 +29,14 @@ Set these before production traffic:
 - `REDIS_CACHE_CONNECTION=cache`
 - `REDIS_SESSION_CONNECTION=session`
 - `REALUPTIME_MONITOR_QUEUE=monitor-checks`
+- `REALUPTIME_HTTP_MONITOR_QUEUE=monitor-checks`
+- `REALUPTIME_NETWORK_MONITOR_QUEUE=monitor-checks`
+- `REALUPTIME_SYNTHETIC_MONITOR_QUEUE=monitor-checks`
 - `REALUPTIME_NOTIFICATION_QUEUE=notifications`
 - `REALUPTIME_METADATA_QUEUE=monitor-metadata`
 - `REALUPTIME_DISPATCH_BATCH_SIZE=250`
 - `REALUPTIME_DISPATCH_MAX_BATCHES=12`
-- `REALUPTIME_CHECK_CLAIM_TTL_SECONDS=600`
+- `REALUPTIME_CHECK_CLAIM_TTL_SECONDS=180`
 - `GOOGLE_*` and `GITHUB_*` if OAuth sign-in is enabled
 
 Do not enable `REALUPTIME_DEMO_DATA` in production.
@@ -103,6 +106,14 @@ RealUptime needs both the scheduler and queue workers running continuously.
 php artisan schedule:work
 ```
 
+### Dedicated dispatcher
+
+Run this as a separate long-running service for monitor throughput. It removes the 30-second scheduler burst pattern and dispatches due checks every second instead:
+
+```bash
+php artisan monitors:dispatch-loop --sleep-ms=1000
+```
+
 ### Queue workers
 
 ```bash
@@ -123,6 +134,51 @@ Then run dedicated workers against those shards:
 php artisan queue:work --queue=monitor-checks-a,monitor-checks-b,monitor-checks-c,monitor-checks-d,monitor-metadata --sleep=1 --timeout=120 --tries=1
 php artisan queue:work --queue=notifications,default --sleep=1 --timeout=120 --tries=3
 ```
+
+If you need to isolate slow check types, split the monitor queues by family:
+
+```env
+REALUPTIME_HTTP_MONITOR_QUEUE_SHARDS=monitor-http-a,monitor-http-b,monitor-http-c,monitor-http-d
+REALUPTIME_NETWORK_MONITOR_QUEUE_SHARDS=monitor-network-a,monitor-network-b
+REALUPTIME_SYNTHETIC_MONITOR_QUEUE=monitor-synthetic
+```
+
+Then run dedicated workers for those families:
+
+```bash
+php artisan queue:work --queue=monitor-http-a,monitor-http-b,monitor-http-c,monitor-http-d,monitor-metadata --sleep=1 --timeout=120 --tries=1
+php artisan queue:work --queue=monitor-network-a,monitor-network-b --sleep=1 --timeout=120 --tries=1
+php artisan queue:work --queue=monitor-synthetic --sleep=1 --timeout=180 --tries=1
+php artisan queue:work --queue=notifications,default --sleep=1 --timeout=120 --tries=3
+```
+
+If you want the monitor `region` setting to correspond to real probe origins, enable region queues and run workers from machines in those regions:
+
+```env
+REALUPTIME_USE_REGION_QUEUES=true
+REALUPTIME_REGION_RECOVERY_CONFIRMATION=true
+REALUPTIME_NORTH_AMERICA_QUEUE_TOKEN=na
+REALUPTIME_EUROPE_QUEUE_TOKEN=eu
+REALUPTIME_ASIA_PACIFIC_QUEUE_TOKEN=apac
+REALUPTIME_NORTH_AMERICA_CONFIRMATION_REGIONS=Europe
+REALUPTIME_EUROPE_CONFIRMATION_REGIONS=North America
+REALUPTIME_ASIA_PACIFIC_CONFIRMATION_REGIONS=Europe
+```
+
+Example region worker layout:
+
+```bash
+# North America host
+php artisan queue:work --queue=monitor-checks-na,monitor-http-a-na,monitor-http-b-na,monitor-network-a-na,monitor-metadata --sleep=1 --timeout=120 --tries=1
+
+# Europe host
+php artisan queue:work --queue=monitor-checks-eu,monitor-http-a-eu,monitor-http-b-eu,monitor-network-a-eu,monitor-metadata --sleep=1 --timeout=120 --tries=1
+
+# Asia Pacific host
+php artisan queue:work --queue=monitor-checks-apac,monitor-http-a-apac,monitor-http-b-apac,monitor-network-a-apac,monitor-metadata --sleep=1 --timeout=120 --tries=1
+```
+
+Regional recovery confirmation uses those queues to request a second opinion before resolving Cloudflare/CDN-style outages. If you enable `REALUPTIME_USE_REGION_QUEUES` but do not run workers for the suffixed queues, recovery confirmations will stay pending.
 
 For multi-node deployments, run multiple queue workers and keep the scheduler on one node or use Laravel's `onOneServer()` support with a shared cache backend.
 

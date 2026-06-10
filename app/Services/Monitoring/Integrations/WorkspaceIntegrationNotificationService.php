@@ -6,6 +6,7 @@ use App\Jobs\SendWorkspaceIntegrationNotificationJob;
 use App\Models\Incident;
 use App\Models\Monitor;
 use App\Models\NotificationLog;
+use App\Models\User;
 use App\Models\WorkspaceIntegration;
 
 class WorkspaceIntegrationNotificationService
@@ -23,12 +24,28 @@ class WorkspaceIntegrationNotificationService
 
     public function sendDownAlert(Monitor $monitor, Incident $incident): void
     {
-        $this->dispatch(self::EVENT_MONITOR_DOWN, $monitor, $incident);
+        $workspace = $monitor->relationLoaded('user')
+            ? $monitor->user
+            : $monitor->user()->first();
+
+        if (! $workspace || ! $workspace->allowsAdvancedWorkspaceFeatures()) {
+            return;
+        }
+
+        $this->dispatch(self::EVENT_MONITOR_DOWN, $workspace, $monitor, $incident);
     }
 
     public function sendRecoveryAlert(Monitor $monitor, Incident $incident): void
     {
-        $this->dispatch(self::EVENT_MONITOR_RECOVERED, $monitor, $incident);
+        $workspace = $monitor->relationLoaded('user')
+            ? $monitor->user
+            : $monitor->user()->first();
+
+        if (! $workspace || ! $workspace->allowsAdvancedWorkspaceFeatures()) {
+            return;
+        }
+
+        $this->dispatch(self::EVENT_MONITOR_RECOVERED, $workspace, $monitor, $incident);
     }
 
     public function sendTest(Monitor $monitor): void
@@ -43,6 +60,7 @@ class WorkspaceIntegrationNotificationService
 
         $this->dispatch(
             self::EVENT_MONITOR_TEST,
+            $workspace,
             $monitor,
             payload: $this->payloadFactory->makeTest($workspace, $monitor),
             ignoreScopes: true,
@@ -61,27 +79,25 @@ class WorkspaceIntegrationNotificationService
 
         $this->dispatch(
             self::EVENT_MONITOR_TEST,
+            $workspace,
             $monitor,
             integration: $integration,
-            payload: $this->payloadFactory->makeTest($workspace, $monitor),
+            payload: $this->payloadFactory->makeIntegrationTest($workspace),
             ignoreScopes: true,
         );
     }
 
     protected function dispatch(
         string $event,
-        Monitor $monitor,
+        User $workspace,
+        ?Monitor $monitor = null,
         ?Incident $incident = null,
         ?WorkspaceIntegration $integration = null,
         ?array $payload = null,
         bool $ignoreScopes = false,
     ): void
     {
-        $workspace = $monitor->relationLoaded('user')
-            ? $monitor->user
-            : $monitor->user()->first();
-
-        if (! $workspace || ! $workspace->allowsAdvancedWorkspaceFeatures()) {
+        if (! $workspace->allowsAdvancedWorkspaceFeatures()) {
             return;
         }
 
@@ -103,9 +119,13 @@ class WorkspaceIntegrationNotificationService
                 continue;
             }
 
+            if ($payload === null && ! $monitor) {
+                continue;
+            }
+
             $deliveryPayload = $payload ?? $this->payloadFactory->make($event, $workspace, $monitor, $incident);
             $log = NotificationLog::query()->create([
-                'monitor_id' => $monitor->id,
+                'monitor_id' => $monitor?->id,
                 'incident_id' => $incident?->id,
                 'integration_id' => $integration->id,
                 'channel' => $integration->provider,

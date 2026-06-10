@@ -91,7 +91,7 @@ export default function MonitorsIndex({
         <MonitoringLayout>
             <Head title="Checks" />
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-                <section className="space-y-5">
+                <section className="min-w-0 space-y-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div>
                             <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#7f8b9b]">
@@ -105,7 +105,7 @@ export default function MonitorsIndex({
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-3 self-start lg:self-auto">
+                        <div className="flex flex-wrap items-center gap-3 self-start lg:self-auto">
                             {summary.canCreate ? (
                                 <Link
                                     href="/monitors/create"
@@ -138,41 +138,29 @@ export default function MonitorsIndex({
                         </div>
                     </div>
 
-                    <PageCard className="space-y-4 p-5">
-                        <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
-                            <div>
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#7f8b9b]">
-                                    Customer-facing capabilities
-                                </div>
-                                <div className="mt-2 text-[22px] font-semibold tracking-[-0.05em] text-white">
-                                    User impact view<span className="text-[#7c8cff]">.</span>
-                                </div>
-                                <div className="mt-1 text-sm text-[#9ca7b9]">
-                                    Group checks into capabilities like sign in, checkout, or webhook delivery so incidents show customer impact, not just raw failures.
-                                </div>
-                            </div>
-                        </div>
+                    <Deferred data="capabilities" fallback={null}>
+                        {(() => {
+                            const capabilityList = capabilities ?? [];
 
-                        <Deferred
-                            data="capabilities"
-                            fallback={
-                                <div className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4 text-sm text-[#9ca7b9]">
-                                    Loading customer impact view…
-                                </div>
+                            if (capabilityList.length === 0) {
+                                return null;
                             }
-                        >
-                            {(() => {
-                                const capabilityList = capabilities ?? [];
 
-                                if (capabilityList.length === 0) {
-                                    return (
-                                        <div className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4 text-sm text-[#9ca7b9]">
-                                            No capabilities have been mapped yet. Add capability labels from a check editor to build an impact-oriented status layer.
+                            return (
+                                <PageCard className="space-y-4 p-5">
+                                    <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+                                        <div>
+                                            <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#7f8b9b]">
+                                                Customer-facing capabilities
+                                            </div>
+                                            <div className="mt-2 text-[22px] font-semibold tracking-[-0.05em] text-white">
+                                                User impact view<span className="text-[#7c8cff]">.</span>
+                                            </div>
+                                            <div className="mt-1 text-sm text-[#9ca7b9]">
+                                                Group checks into capabilities like sign in, checkout, or webhook delivery so incidents show customer impact, not just raw failures.
+                                            </div>
                                         </div>
-                                    );
-                                }
-
-                                return (
+                                    </div>
                                     <div className="grid gap-4 xl:grid-cols-3">
                                         {capabilityList.slice(0, 6).map((capability) => (
                                             <div key={capability.id} className="rounded-[18px] border border-[#2b3544] bg-[#121821] px-4 py-4">
@@ -202,14 +190,14 @@ export default function MonitorsIndex({
                                             </div>
                                         ))}
                                     </div>
-                                );
-                            })()}
-                        </Deferred>
-                    </PageCard>
+                                </PageCard>
+                            );
+                        })()}
+                    </Deferred>
 
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-end">
                         <div className="flex flex-col gap-3 sm:flex-row">
-                            <label className="relative block min-w-[280px]">
+                            <label className="relative block w-full sm:min-w-[280px]">
                                 <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#7f8b9b]" />
                                 <input
                                     value={search}
@@ -274,7 +262,7 @@ export default function MonitorsIndex({
                                             <div className="flex min-w-0 flex-1 items-center gap-4">
                                                 <StatusChip status={monitor.status} />
                                                 <div className="min-w-0">
-                                                    <div className="truncate text-[26px] font-semibold tracking-[-0.05em] text-white lg:text-[28px]">
+                                                    <div className="truncate text-[22px] font-semibold tracking-[-0.05em] text-white sm:text-[24px] lg:text-[28px]">
                                                         {monitor.name}
                                                     </div>
                                                     <div className="mt-1 flex flex-wrap items-center gap-3 text-[15px] text-[#9eacc7] lg:text-[16px]">
@@ -286,17 +274,17 @@ export default function MonitorsIndex({
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center gap-4 xl:min-w-[390px] xl:justify-end">
-                                                <div className="text-right text-[15px] text-[#8fa0bf] lg:text-base">
+                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 xl:min-w-[390px] xl:justify-end">
+                                                <div className="text-left text-[15px] text-[#8fa0bf] sm:text-right lg:text-base">
                                                     <div>{monitor.intervalLabel}</div>
                                                     <div className="mt-1 text-sm">{monitor.lastCheckedLabel}</div>
                                                 </div>
-                                                <div className="w-[92px] text-right text-[15px] text-[#8fa0bf] lg:text-base">
+                                                <div className="w-full text-left text-[15px] text-[#8fa0bf] sm:w-[92px] sm:text-right lg:text-base">
                                                     {monitor.responseTimeLabel}
                                                 </div>
-                                                <div className="w-full max-w-[190px] space-y-2 xl:w-[190px]">
+                                                <div className="w-full space-y-2 sm:max-w-[190px] xl:w-[190px]">
                                                     <UptimeBars bars={monitor.bars} compact />
-                                                    <div className="text-right text-base font-medium text-[#dfe7fa]">
+                                                    <div className="text-left text-base font-medium text-[#dfe7fa] sm:text-right">
                                                         {monitor.uptimePercentLabel}
                                                     </div>
                                                 </div>
@@ -323,7 +311,7 @@ export default function MonitorsIndex({
                     </PageCard>
                 </section>
 
-                <aside className="space-y-4">
+                <aside className="min-w-0 space-y-4">
                     <PageCard className="px-6 py-6">
                         <h2 className="text-[20px] font-semibold tracking-[-0.04em] text-white">
                             Workspace summary<span className="text-[#7c8cff]">.</span>

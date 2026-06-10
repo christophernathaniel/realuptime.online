@@ -1,4 +1,4 @@
-import { Head } from '@inertiajs/react';
+import { SeoHead } from '@/components/seo/seo-head';
 import { usePageAutoRefresh } from '@/hooks/use-page-auto-refresh';
 import { cn } from '@/lib/utils';
 import type { PublicStatusPageData } from '@/types/monitoring';
@@ -32,10 +32,15 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
     usePageAutoRefresh({ only: ['statusPage'], intervalMs: 60000 });
 
     return (
-        <div className="min-h-screen bg-[#0d1117] px-4 py-8 text-[#f4f7ff] sm:px-6 lg:px-8">
-            <Head title={statusPage.headline} />
+        <div className="min-h-screen bg-[#0d1117] px-3 py-6 text-[#f4f7ff] sm:px-6 sm:py-8 lg:px-8">
+            <SeoHead
+                title={`${statusPage.headline} Status Page`}
+                description={statusPage.description || `Live service status, incidents, and maintenance updates for ${statusPage.headline}.`}
+                keywords={['status page', 'service status', 'uptime status', statusPage.headline]}
+                imageAlt={`${statusPage.headline} status preview`}
+            />
             <div className="mx-auto max-w-[1180px] space-y-6">
-                <div className="rounded-[28px] border border-[#2b3544] bg-[#171d28] px-7 py-8">
+                <div className="rounded-[28px] border border-[#2b3544] bg-[#171d28] px-5 py-6 sm:px-7 sm:py-8">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
                             <div className="text-sm uppercase tracking-[0.26em] text-[#7f8eab]">Public status page</div>
@@ -44,7 +49,7 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
                                 <div className="mt-3 max-w-[720px] text-[16px] text-[#9eacc7]">{statusPage.description}</div>
                             ) : null}
                         </div>
-                        <div className={cn('inline-flex items-center gap-3 rounded-full border px-4 py-2 text-sm font-medium', tone.badge)}>
+                        <div className={cn('inline-flex self-start items-center gap-3 rounded-full border px-4 py-2 text-sm font-medium', tone.badge)}>
                             <span className={cn('inline-flex size-2.5 rounded-full', tone.dot)} />
                             {statusPage.overallStatus}
                         </div>
@@ -52,17 +57,13 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
                     <div className="mt-5 text-sm text-[#7f8eab]">{statusPage.updatedLabel}</div>
                 </div>
 
-                <section className="rounded-[24px] border border-[#2b3544] bg-[#171d28] p-6">
-                    <div className="text-[22px] font-semibold text-white">Customer-facing capabilities</div>
-                    <div className="mt-5 grid gap-4 md:grid-cols-2">
-                        {statusPage.capabilities.length === 0 ? (
-                            <div className="rounded-[18px] bg-[#121821] px-5 py-5 text-[15px] text-[#9ca7b9]">
-                                No customer-facing capabilities have been published on this status page yet.
-                            </div>
-                        ) : (
-                            statusPage.capabilities.map((capability) => (
+                {statusPage.capabilities.length > 0 ? (
+                    <section className="rounded-[24px] border border-[#2b3544] bg-[#171d28] p-6">
+                        <div className="text-[22px] font-semibold text-white">Customer-facing capabilities</div>
+                        <div className="mt-5 grid gap-4 md:grid-cols-2">
+                            {statusPage.capabilities.map((capability) => (
                                 <div key={capability.id} className="rounded-[18px] bg-[#121821] px-5 py-5">
-                                    <div className="flex items-start justify-between gap-3">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                         <div>
                                             <div className="text-[19px] font-semibold text-white">{capability.name}</div>
                                             <div className="mt-1 text-[14px] text-[#7f8eab]">{capability.regions}</div>
@@ -91,17 +92,17 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
                                     <div className="mt-3 text-[15px] text-[#dce6fb]">{capability.customerImpact}</div>
                                     <div className="mt-2 text-[13px] text-[#a7b6cb]">{capability.summary}</div>
                                 </div>
-                            ))
-                        )}
-                    </div>
-                </section>
+                            ))}
+                        </div>
+                    </section>
+                ) : null}
 
                 <section className="rounded-[24px] border border-[#2b3544] bg-[#171d28] p-6">
                     <div className="text-[22px] font-semibold text-white">Monitored services</div>
                     <div className="mt-5 grid gap-4 md:grid-cols-2">
                         {statusPage.monitors.map((monitor) => (
                             <div key={monitor.name} className="rounded-[18px] bg-[#121821] px-5 py-5">
-                                <div className="flex items-start justify-between gap-3">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                     <div>
                                         <div className="text-[19px] font-semibold text-white">{monitor.name}</div>
                                         <div className="mt-1 text-[14px] text-[#7f8eab]">{monitor.type}</div>
@@ -127,7 +128,7 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
                                         {monitor.status}
                                     </div>
                                 </div>
-                                <div className="mt-4 grid grid-cols-3 gap-3 text-[13px] text-[#8fa0bf]">
+                                <div className="mt-4 grid gap-3 text-[13px] text-[#8fa0bf] sm:grid-cols-3">
                                     <div><div>24h uptime</div><div className="mt-1 text-[16px] font-semibold text-white">{monitor.uptimeLabel}</div></div>
                                     <div><div>Last checked</div><div className="mt-1 text-[16px] font-semibold text-white">{monitor.lastCheckedLabel}</div></div>
                                     <div><div>Response</div><div className="mt-1 text-[16px] font-semibold text-white">{monitor.responseTimeLabel}</div></div>
@@ -163,7 +164,7 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
                             ) : (
                                 statusPage.incidents.map((incident) => (
                                     <div key={`${incident.title}-${incident.startedAt}`} className="rounded-[18px] bg-[#121821] px-5 py-5">
-                                        <div className="flex flex-wrap items-center justify-between gap-3 text-[15px] text-white">
+                                        <div className="flex flex-col gap-3 text-[15px] text-white sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                                             <span>{incident.title}</span>
                                             <span className={incident.status === 'Resolved' ? 'text-[#57c7c2]' : 'text-[#7c8cff]'}>{incident.status}</span>
                                         </div>
@@ -183,7 +184,7 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
                                         <div className="mt-4 space-y-3">
                                             {incident.updates.map((update, index) => (
                                                 <div key={`${update.createdAt}-${index}`} className="rounded-[14px] bg-[#171d28] px-4 py-4">
-                                                    <div className="flex items-center justify-between gap-3 text-[14px] text-white">
+                                                <div className="flex flex-col gap-2 text-[14px] text-white sm:flex-row sm:items-center sm:justify-between">
                                                         <span>{update.status}</span>
                                                         <span className="text-[#7f8eab]">{update.createdAt}</span>
                                                     </div>
@@ -208,7 +209,7 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
                                 ) : (
                                     statusPage.recentUpdates.map((update, index) => (
                                         <div key={`${update.incidentTitle}-${index}`} className="rounded-[18px] bg-[#121821] px-5 py-5">
-                                            <div className="flex items-center justify-between gap-3 text-[15px] text-white">
+                                            <div className="flex flex-col gap-2 text-[15px] text-white sm:flex-row sm:items-center sm:justify-between">
                                                 <span>{update.incidentTitle}</span>
                                                 <span className="text-[#7f8eab]">{update.createdAt}</span>
                                             </div>
@@ -230,7 +231,7 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
                                 ) : (
                                     statusPage.monitorIncidents.map((incident) => (
                                         <div key={`${incident.monitor}-${incident.startedAt}`} className="rounded-[18px] bg-[#121821] px-5 py-5">
-                                            <div className="flex items-center justify-between gap-3 text-[15px] text-white">
+                                            <div className="flex flex-col gap-2 text-[15px] text-white sm:flex-row sm:items-center sm:justify-between">
                                                 <span>{incident.monitor}</span>
                                                 <span className={incident.status === 'Resolved' ? 'text-[#57c7c2]' : 'text-[#7c8cff]'}>{incident.status}</span>
                                             </div>
@@ -267,7 +268,7 @@ export default function PublicStatusPage({ statusPage }: PublicStatusPageProps) 
                                             </div>
                                             {window.message ? <div className="mt-2 text-[14px] text-[#dce6fb]">{window.message}</div> : null}
                                             <div className="mt-2 text-[13px] text-[#7f8eab]">{window.startsAt} to {window.endsAt}</div>
-                                            <div className="mt-1 text-[13px] text-[#7f8eab]">{window.monitorNames.join(', ')}</div>
+                                            <div className="mt-1 break-words text-[13px] text-[#7f8eab]">{window.monitorNames.join(', ')}</div>
                                         </div>
                                     ))
                                 )}

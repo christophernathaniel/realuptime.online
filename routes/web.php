@@ -26,6 +26,7 @@ Route::get('/about', [MarketingPageController::class, 'about'])->name('about');
 Route::get('/careers', [MarketingPageController::class, 'careers'])->name('careers');
 Route::get('/privacy-policy', [MarketingPageController::class, 'privacy'])->name('privacy-policy');
 Route::get('/terms-and-conditions', [MarketingPageController::class, 'terms'])->name('terms-and-conditions');
+Route::get('/sitemap.xml', [MarketingPageController::class, 'sitemap'])->name('sitemap');
 
 Route::post('heartbeat/{token}', [HeartbeatController::class, 'store'])->name('heartbeat.store');
 Route::get('auth/{provider}/redirect', [OAuthController::class, 'redirect'])->name('oauth.redirect');
@@ -43,13 +44,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('monitors', [MonitorController::class, 'index'])->name('monitors.index');
     Route::get('monitors/create', [MonitorController::class, 'create'])->name('monitors.create');
     Route::post('monitors', [MonitorController::class, 'store'])->name('monitors.store');
-    Route::get('monitors/{monitor}', [MonitorController::class, 'show'])->name('monitors.show');
-    Route::get('monitors/{monitor}/edit', [MonitorController::class, 'edit'])->name('monitors.edit');
-    Route::put('monitors/{monitor}', [MonitorController::class, 'update'])->name('monitors.update');
-    Route::post('monitors/{monitor}/toggle', [MonitorController::class, 'toggle'])->name('monitors.toggle');
-    Route::post('monitors/{monitor}/run-now', [MonitorController::class, 'runNow'])->name('monitors.run-now');
-    Route::post('monitors/{monitor}/test-notification', [MonitorController::class, 'testNotification'])->name('monitors.test-notification');
-    Route::delete('monitors/{monitor}', [MonitorController::class, 'destroy'])->name('monitors.destroy');
+    Route::get('monitors/{monitor:public_id}', [MonitorController::class, 'show'])->name('monitors.show');
+    Route::get('monitors/{monitor:public_id}/edit', [MonitorController::class, 'edit'])->name('monitors.edit');
+    Route::put('monitors/{monitor:public_id}', [MonitorController::class, 'update'])->name('monitors.update');
+    Route::post('monitors/{monitor:public_id}/toggle', [MonitorController::class, 'toggle'])->name('monitors.toggle');
+    Route::post('monitors/{monitor:public_id}/run-now', [MonitorController::class, 'runNow'])->name('monitors.run-now');
+    Route::post('monitors/{monitor:public_id}/test-notification', [MonitorController::class, 'testNotification'])->name('monitors.test-notification');
+    Route::delete('monitors/{monitor:public_id}', [MonitorController::class, 'destroy'])->name('monitors.destroy');
 
     Route::middleware('workspace.feature:advanced')->group(function () {
         Route::post('notification-contacts', [NotificationContactController::class, 'store'])->name('notification-contacts.store');
@@ -89,8 +90,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
 Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('users', [AdminUserController::class, 'index'])->name('users.index');
     Route::post('users', [AdminUserController::class, 'store'])->name('users.store');
+    Route::get('users/{user}', [AdminUserController::class, 'show'])->name('users.show');
     Route::patch('users/{user}', [AdminUserController::class, 'update'])->name('users.update');
     Route::patch('users/{user}/membership', [AdminUserController::class, 'updateMembership'])->name('users.membership.update');
+    Route::patch('users/{user}/support-extension', [AdminUserController::class, 'extendSupportMembership'])->name('users.support-extension.extend');
+    Route::delete('users/{user}/support-extension', [AdminUserController::class, 'clearSupportMembership'])->name('users.support-extension.clear');
     Route::delete('users/{user}', [AdminUserController::class, 'destroy'])->name('users.destroy');
 });
 

@@ -4,7 +4,14 @@ import MarketingLayout from '@/layouts/marketing-layout';
 
 export default function AboutPage() {
     return (
-        <MarketingLayout title="About" description="Learn what RealUptime is building and how the product is designed.">
+        <MarketingLayout
+            title="About RealUptime"
+            description="Learn what RealUptime is building and how the product is designed."
+            seo={{
+                breadcrumbs: [{ name: 'About', path: '/about' }],
+                keywords: ['about realuptime', 'monitoring platform', 'uptime software company'],
+            }}
+        >
             <section className="mx-auto max-w-[1380px] px-6 py-16 lg:px-10 lg:py-22">
                 <div className="max-w-[980px]">
                     <div className="text-[14px] font-semibold uppercase tracking-[0.22em] text-[#7083a2]">About</div>

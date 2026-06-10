@@ -53,7 +53,7 @@ function StatusPageIncidentCard({ incident }: { incident: StatusPageIncidentItem
                         {incident.resolvedAt ? ` • Resolved ${incident.resolvedAt}` : ''}
                     </div>
                     <div className="mt-2 text-[15px] text-[#dce6fb]">{incident.message}</div>
-                    <div className="mt-2 text-[13px] text-[#7f8eab]">Affected monitors: {incident.monitorNames.join(', ')}</div>
+                        <div className="mt-2 break-words text-[13px] text-[#7f8eab]">Affected monitors: {incident.monitorNames.join(', ')}</div>
                 </div>
                 <button
                     type="button"
@@ -72,7 +72,7 @@ function StatusPageIncidentCard({ incident }: { incident: StatusPageIncidentItem
             <div className="space-y-3">
                 {incident.updates.map((update) => (
                     <div key={update.id} className="rounded-[14px] bg-[#121821] px-4 py-4">
-                        <div className="flex items-center justify-between gap-3 text-[14px] text-white">
+                        <div className="flex flex-col gap-2 text-[14px] text-white sm:flex-row sm:items-center sm:justify-between">
                             <span>{update.statusLabel}</span>
                             <span className="text-[#7f8eab]">{update.createdAt}</span>
                         </div>
@@ -513,7 +513,7 @@ export default function StatusPagesPage({
                             <input
                                 value={monitorSearch}
                                 onChange={(event) => setMonitorSearch(event.target.value)}
-                                className="h-11 min-w-[220px] rounded-[14px] border border-white/10 bg-[#0b1425] px-4 text-sm text-white outline-none"
+                                className="h-11 w-full sm:min-w-[220px] rounded-[14px] border border-white/10 bg-[#0b1425] px-4 text-sm text-white outline-none"
                                 placeholder="Search checks by name"
                             />
                             <div className="flex gap-3">

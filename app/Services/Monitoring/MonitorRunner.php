@@ -8,7 +8,9 @@ use App\Models\HeartbeatEvent;
 use App\Models\Incident;
 use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
+use App\Models\ProbeConfirmation;
 use App\Services\Monitoring\Integrations\WorkspaceIntegrationNotificationService;
+use App\Support\HttpStatusPolicy;
 use Carbon\CarbonImmutable;
 use GuzzleHttp\Cookie\CookieJar;
 use Illuminate\Support\Facades\Http;
@@ -46,17 +48,33 @@ class MonitorRunner
         return $monitors->count();
     }
 
-    public function runMonitor(Monitor $monitor, ?CarbonImmutable $checkedAt = null): MonitorCheckOutcome
-    {
+    /**
+     * @return array{
+     *     outcome: MonitorCheckOutcome,
+     *     meta: array<string, mixed>,
+     *     attemptHistory: array<int, array<string, mixed>>,
+     *     transientFailure: bool,
+     *     firstFailedAttempt: array<string, mixed>|null,
+     *     queueLagMs: int|null,
+     *     probeRegion: string|null,
+     *     statusPolicy: string|null
+     * }
+     */
+    public function probeMonitor(
+        Monitor $monitor,
+        ?CarbonImmutable $checkedAt = null,
+        ?int $attemptsOverride = null,
+        ?int $queueLagMs = null,
+        ?string $probeRegion = null,
+        bool $queueMetadataRefresh = true,
+    ): array {
         $checkedAt ??= CarbonImmutable::now();
-        $attempts = max(1, $monitor->retry_limit + 1);
+        $attempts = max(1, $attemptsOverride ?? ($monitor->retry_limit + 1));
         $outcome = null;
         $attemptHistory = [];
-        $previousStatus = $monitor->status;
-        $openIncidents = $this->openIncidentMap($monitor);
 
         for ($attempt = 1; $attempt <= $attempts; $attempt++) {
-            $outcome = $this->performCheck($monitor, $checkedAt, $attempt);
+            $outcome = $this->performCheck($monitor, $checkedAt, $attempt, $queueMetadataRefresh);
             $attemptHistory[] = $this->attemptHistoryEntry($outcome, $attempt);
 
             if ($outcome->isUp()) {
@@ -64,17 +82,72 @@ class MonitorRunner
             }
         }
 
+        $firstFailedAttempt = collect($attemptHistory)
+            ->first(fn (array $attempt) => ($attempt['status'] ?? null) === 'down');
+        $transientFailure = $outcome->isUp() && $firstFailedAttempt !== null;
+        $statusPolicy = $this->statusPolicyForMonitor($monitor);
         $meta = [
             ...$outcome->meta,
             'attempt_history' => $attemptHistory,
+            'status_policy' => $statusPolicy,
         ];
+
+        if ($queueLagMs !== null) {
+            $meta['queue_lag_ms'] = $queueLagMs;
+        }
+
+        if ($probeRegion !== null) {
+            $meta['probe_region'] = $probeRegion;
+        }
+
+        if ($transientFailure) {
+            $meta['transient_failure'] = true;
+            $meta['transient_failure_reason'] = $firstFailedAttempt['error_message'] ?? 'Recovered on retry.';
+            $meta['transient_failure_type'] = $firstFailedAttempt['error_type'] ?? null;
+        }
+
+        return [
+            'outcome' => $outcome,
+            'meta' => $meta,
+            'attemptHistory' => $attemptHistory,
+            'transientFailure' => $transientFailure,
+            'firstFailedAttempt' => $firstFailedAttempt,
+            'queueLagMs' => $queueLagMs,
+            'probeRegion' => $probeRegion,
+            'statusPolicy' => $statusPolicy,
+        ];
+    }
+
+    public function runMonitor(
+        Monitor $monitor,
+        ?CarbonImmutable $checkedAt = null,
+        ?int $queueLagMs = null,
+        ?string $probeRegion = null,
+    ): MonitorCheckOutcome
+    {
+        $checkedAt ??= CarbonImmutable::now();
+        $previousStatus = $monitor->status;
+        $openIncidents = $this->openIncidentMap($monitor);
+        $report = $this->probeMonitor(
+            $monitor,
+            checkedAt: $checkedAt,
+            queueLagMs: $queueLagMs,
+            probeRegion: $probeRegion,
+        );
+        /** @var MonitorCheckOutcome $outcome */
+        $outcome = $report['outcome'];
+        $meta = $report['meta'];
 
         $hasActiveMaintenance = $monitor->maintenanceWindows()
             ->where('status', '!=', MaintenanceWindow::STATUS_CANCELLED)
             ->where('starts_at', '<=', $checkedAt)
             ->where('ends_at', '>=', $checkedAt)
             ->exists();
-        $shouldStoreCheckResult = $this->shouldStoreCheckResult($monitor, $outcome, $checkedAt, $previousStatus, $openIncidents);
+        $activeDowntimeIncident = $openIncidents[Incident::TYPE_DOWNTIME] ?? null;
+        $shouldConfirmRecovery = app(ProbeConfirmationService::class)->shouldConfirmRecovery($monitor, $activeDowntimeIncident, $report);
+        $shouldStoreCheckResult = $shouldConfirmRecovery
+            || ($previousStatus === Monitor::STATUS_UP && (bool) $report['transientFailure'])
+            || $this->shouldStoreCheckResult($monitor, $outcome, $checkedAt, $previousStatus, $openIncidents);
         $checkResult = $shouldStoreCheckResult
             ? CheckResult::query()->create([
                 'monitor_id' => $monitor->id,
@@ -102,21 +175,32 @@ class MonitorRunner
             ]);
 
         $effectiveIntervalSeconds = $this->effectiveIntervalSeconds($monitor);
+        $nextStatus = $shouldConfirmRecovery
+            ? $previousStatus
+            : ($outcome->isUp() ? Monitor::STATUS_UP : Monitor::STATUS_DOWN);
         $monitor->forceFill([
-            'status' => $outcome->isUp() ? Monitor::STATUS_UP : Monitor::STATUS_DOWN,
+            'status' => $nextStatus,
             'last_checked_at' => $checkedAt,
             'last_result_stored_at' => $shouldStoreCheckResult ? $checkedAt : $monitor->last_result_stored_at,
-            'next_check_at' => $checkedAt->addSeconds($effectiveIntervalSeconds),
+            'next_check_at' => $this->scheduledNextCheckAt($monitor, $checkedAt, $effectiveIntervalSeconds),
             'check_claimed_at' => null,
             'check_claim_token' => null,
             'last_response_time_ms' => $outcome->responseTimeMs,
+            'last_queue_lag_ms' => $queueLagMs,
             'last_http_status' => $outcome->httpStatusCode,
-            'last_error_type' => $outcome->errorType,
-            'last_error_message' => $outcome->errorMessage,
-            'last_status_changed_at' => $previousStatus === ($outcome->isUp() ? Monitor::STATUS_UP : Monitor::STATUS_DOWN)
+            'last_probe_region' => $probeRegion,
+            'last_error_type' => $shouldConfirmRecovery ? 'awaiting_recovery_confirmation' : $outcome->errorType,
+            'last_error_message' => $shouldConfirmRecovery
+                ? 'Recovery observed. Awaiting confirmation from another probe region before resolving.'
+                : $outcome->errorMessage,
+            'last_status_changed_at' => $previousStatus === $nextStatus
                 ? $monitor->last_status_changed_at
                 : $checkedAt,
         ])->save();
+
+        if ($previousStatus === Monitor::STATUS_UP && (bool) $report['transientFailure']) {
+            $this->recordTransientFailureIncident($monitor, $checkResult, $checkedAt, $report);
+        }
 
         if (! $outcome->isUp()) {
             $this->resolveIncidentByType($monitor, Incident::TYPE_DEGRADED_PERFORMANCE, $checkResult, $checkedAt, $openIncidents);
@@ -141,6 +225,18 @@ class MonitorRunner
             return $outcome;
         }
 
+        if ($shouldConfirmRecovery && $activeDowntimeIncident) {
+            app(ProbeConfirmationService::class)->requestRecoveryConfirmation(
+                $monitor,
+                $activeDowntimeIncident,
+                $checkResult,
+                $checkedAt,
+                $report,
+            );
+
+            return $outcome;
+        }
+
         $this->resolveIncidentByType($monitor, Incident::TYPE_DOWNTIME, $checkResult, $checkedAt, $openIncidents);
         $this->evaluateDegradedPerformance($monitor, $checkResult, $checkedAt, $hasActiveMaintenance, $openIncidents);
         $this->evaluateExpiryIncidents($monitor, $checkResult, $checkedAt, $hasActiveMaintenance, $openIncidents);
@@ -148,10 +244,10 @@ class MonitorRunner
         return $outcome;
     }
 
-    protected function performCheck(Monitor $monitor, CarbonImmutable $checkedAt, int $attempt): MonitorCheckOutcome
+    protected function performCheck(Monitor $monitor, CarbonImmutable $checkedAt, int $attempt, bool $queueMetadataRefresh = true): MonitorCheckOutcome
     {
         return match ($monitor->type) {
-            Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD => $this->checkHttp($monitor, $checkedAt, $attempt),
+            Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD => $this->checkHttp($monitor, $checkedAt, $attempt, $queueMetadataRefresh),
             Monitor::TYPE_PING => $this->checkPing($monitor, $checkedAt, $attempt),
             Monitor::TYPE_PORT => $this->checkPort($monitor, $checkedAt, $attempt),
             Monitor::TYPE_SSL => $this->checkSsl($monitor, $checkedAt, $attempt),
@@ -161,7 +257,7 @@ class MonitorRunner
         };
     }
 
-    protected function checkHttp(Monitor $monitor, CarbonImmutable $checkedAt, int $attempt): MonitorCheckOutcome
+    protected function checkHttp(Monitor $monitor, CarbonImmutable $checkedAt, int $attempt, bool $queueMetadataRefresh = true): MonitorCheckOutcome
     {
         $started = microtime(true);
 
@@ -177,17 +273,27 @@ class MonitorRunner
             $response = $request->send($monitor->request_method ?: 'GET', $monitor->target ?: '');
             $responseTime = (int) round((microtime(true) - $started) * 1000);
             $httpStatus = $response->status();
+            $statusPolicy = $this->statusPolicyForMonitor($monitor);
+            $httpMeta = [
+                'status_policy' => $statusPolicy,
+                ...$this->httpEdgeMeta($response, $httpStatus),
+            ];
 
-            if ($monitor->expected_status_code && $httpStatus !== $monitor->expected_status_code) {
+            if (! HttpStatusPolicy::matches($httpStatus, $statusPolicy)) {
+                $errorType = $this->httpErrorType($httpStatus, $httpMeta);
+
                 return MonitorCheckOutcome::down(
                     $checkedAt,
                     $attempt,
-                    'invalid_status',
-                    sprintf('Expected HTTP %d but received %d.', $monitor->expected_status_code, $httpStatus),
+                    $errorType,
+                    $this->httpErrorMessage($httpStatus, $statusPolicy, $httpMeta),
                     $responseTime,
                     $httpStatus,
                     null,
-                    ['body_preview' => mb_substr($response->body(), 0, 240)],
+                    [
+                        'body_preview' => mb_substr($response->body(), 0, 240),
+                        ...$httpMeta,
+                    ],
                 );
             }
 
@@ -203,11 +309,16 @@ class MonitorRunner
                         $responseTime,
                         $httpStatus,
                         false,
-                        ['body_preview' => mb_substr($response->body(), 0, 240)],
+                        [
+                            'body_preview' => mb_substr($response->body(), 0, 240),
+                            ...$httpMeta,
+                        ],
                     );
                 }
 
-                $this->queueMetadataRefresh($monitor, $checkedAt);
+                if ($queueMetadataRefresh) {
+                    $this->queueMetadataRefresh($monitor, $checkedAt);
+                }
 
                 return MonitorCheckOutcome::up(
                     $checkedAt,
@@ -215,11 +326,16 @@ class MonitorRunner
                     $responseTime,
                     $httpStatus,
                     true,
-                    $this->responseAlertMeta($monitor, $responseTime, $checkedAt),
+                    [
+                        ...$this->responseAlertMeta($monitor, $responseTime, $checkedAt),
+                        ...$httpMeta,
+                    ],
                 );
             }
 
-            $this->queueMetadataRefresh($monitor, $checkedAt);
+            if ($queueMetadataRefresh) {
+                $this->queueMetadataRefresh($monitor, $checkedAt);
+            }
 
             return MonitorCheckOutcome::up(
                 $checkedAt,
@@ -227,7 +343,10 @@ class MonitorRunner
                 $responseTime,
                 $httpStatus,
                 null,
-                $this->responseAlertMeta($monitor, $responseTime, $checkedAt),
+                [
+                    ...$this->responseAlertMeta($monitor, $responseTime, $checkedAt),
+                    ...$httpMeta,
+                ],
             );
         } catch (Throwable $exception) {
             return MonitorCheckOutcome::down(
@@ -686,6 +805,26 @@ class MonitorRunner
         return max((int) $monitor->interval_seconds, $user->minimumMonitorIntervalSeconds());
     }
 
+    protected function scheduledNextCheckAt(Monitor $monitor, CarbonImmutable $checkedAt, int $intervalSeconds): CarbonImmutable
+    {
+        if ($intervalSeconds <= 1) {
+            return $checkedAt->addSecond();
+        }
+
+        $stableKey = $monitor->public_id ?: (string) $monitor->id;
+        $offsetSeconds = crc32($stableKey) % $intervalSeconds;
+        $checkedTimestamp = $checkedAt->getTimestamp();
+        $windowStart = intdiv($checkedTimestamp, $intervalSeconds) * $intervalSeconds;
+        $nextTimestamp = $windowStart + $offsetSeconds;
+
+        if ($nextTimestamp <= $checkedTimestamp) {
+            $nextTimestamp += $intervalSeconds;
+        }
+
+        return CarbonImmutable::createFromTimestampUTC($nextTimestamp)
+            ->setTimezone($checkedAt->getTimezone());
+    }
+
     protected function attemptHistoryEntry(MonitorCheckOutcome $outcome, int $attempt): array
     {
         return [
@@ -697,7 +836,55 @@ class MonitorRunner
             'error_type' => $outcome->errorType,
             'error_message' => $outcome->errorMessage,
             'slow' => (bool) data_get($outcome->meta, 'slow', false),
+            'status_policy' => data_get($outcome->meta, 'status_policy'),
+            'cdn' => data_get($outcome->meta, 'cdn'),
         ];
+    }
+
+    public function finalizeConfirmedRecovery(Monitor $monitor, ProbeConfirmation $confirmation): void
+    {
+        $incident = $confirmation->incident?->fresh();
+        $checkResult = $confirmation->primaryCheckResult?->fresh();
+
+        if (! $incident || $incident->resolved_at || ! $checkResult) {
+            return;
+        }
+
+        $checkedAt = CarbonImmutable::parse($checkResult->checked_at ?? now());
+        $effectiveIntervalSeconds = $this->effectiveIntervalSeconds($monitor);
+
+        $incident->forceFill([
+            'latest_check_result_id' => $checkResult->id,
+            'resolved_at' => $checkedAt,
+            'duration_seconds' => $incident->started_at?->diffInSeconds($checkedAt),
+            'meta' => [
+                ...($incident->meta ?? []),
+                'recovery_confirmation' => [
+                    'confirmed_at' => now()->toIso8601String(),
+                    'results' => $confirmation->results ?? [],
+                ],
+            ],
+        ])->save();
+
+        if (! data_get($incident->meta, 'suppressed_by_maintenance', false)) {
+            $this->sendResolutionNotification($monitor, $incident);
+        }
+
+        $monitor->forceFill([
+            'status' => Monitor::STATUS_UP,
+            'last_checked_at' => $checkedAt,
+            'last_result_stored_at' => $checkResult->checked_at,
+            'next_check_at' => $this->scheduledNextCheckAt($monitor, $checkedAt, $effectiveIntervalSeconds),
+            'last_response_time_ms' => $checkResult->response_time_ms,
+            'last_queue_lag_ms' => data_get($checkResult->meta, 'queue_lag_ms'),
+            'last_http_status' => $checkResult->http_status_code,
+            'last_probe_region' => data_get($checkResult->meta, 'probe_region'),
+            'last_error_type' => null,
+            'last_error_message' => null,
+            'last_status_changed_at' => $checkedAt,
+            'check_claimed_at' => null,
+            'check_claim_token' => null,
+        ])->save();
     }
 
     protected function responseAlertMeta(Monitor $monitor, int $responseTime, CarbonImmutable $checkedAt): array
@@ -731,6 +918,152 @@ class MonitorRunner
         }
 
         return $meta;
+    }
+
+    protected function statusPolicyForMonitor(Monitor $monitor): ?string
+    {
+        if (! in_array($monitor->type, [Monitor::TYPE_HTTP, Monitor::TYPE_KEYWORD], true)) {
+            return null;
+        }
+
+        $legacyPolicy = $monitor->expected_status_code ? (string) $monitor->expected_status_code : null;
+
+        return HttpStatusPolicy::normalize($monitor->accepted_http_statuses ?: $legacyPolicy);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function httpEdgeMeta($response, int $httpStatus): array
+    {
+        $server = trim((string) $response->header('server'));
+        $cfRay = trim((string) $response->header('cf-ray'));
+        $cfCacheStatus = trim((string) $response->header('cf-cache-status'));
+        $provider = $this->httpEdgeProvider($server, $cfRay, $cfCacheStatus, $httpStatus);
+
+        return [
+            'cdn' => [
+                'provider' => $provider,
+                'edge_detected' => $provider !== null || ($httpStatus >= 520 && $httpStatus <= 526),
+                'server' => $server !== '' ? $server : null,
+                'cf_ray' => $cfRay !== '' ? $cfRay : null,
+                'cf_cache_status' => $cfCacheStatus !== '' ? $cfCacheStatus : null,
+            ],
+        ];
+    }
+
+    protected function httpEdgeProvider(string $server, string $cfRay, string $cfCacheStatus, int $httpStatus): ?string
+    {
+        if ($cfRay !== '' || $cfCacheStatus !== '' || str_contains(strtolower($server), 'cloudflare') || ($httpStatus >= 520 && $httpStatus <= 526)) {
+            return 'cloudflare';
+        }
+
+        if (str_contains(strtolower($server), 'cloudfront')) {
+            return 'cloudfront';
+        }
+
+        if (str_contains(strtolower($server), 'fastly')) {
+            return 'fastly';
+        }
+
+        if (str_contains(strtolower($server), 'akamai')) {
+            return 'akamai';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $httpMeta
+     */
+    protected function httpErrorType(int $httpStatus, array $httpMeta): string
+    {
+        $provider = data_get($httpMeta, 'cdn.provider');
+
+        if ($provider === 'cloudflare' && $httpStatus >= 520 && $httpStatus <= 526) {
+            return sprintf('cloudflare_%d', $httpStatus);
+        }
+
+        return 'invalid_status';
+    }
+
+    /**
+     * @param  array<string, mixed>  $httpMeta
+     */
+    protected function httpErrorMessage(int $httpStatus, string $statusPolicy, array $httpMeta): string
+    {
+        $provider = data_get($httpMeta, 'cdn.provider');
+
+        if ($provider === 'cloudflare') {
+            return match ($httpStatus) {
+                520 => 'Cloudflare returned HTTP 520 (unknown origin error).',
+                521 => 'Cloudflare returned HTTP 521 (web server down).',
+                522 => 'Cloudflare returned HTTP 522 (connection timed out).',
+                523 => 'Cloudflare returned HTTP 523 (origin unreachable).',
+                524 => 'Cloudflare returned HTTP 524 (upstream timeout).',
+                525 => 'Cloudflare returned HTTP 525 (SSL handshake failed).',
+                526 => 'Cloudflare returned HTTP 526 (invalid SSL certificate).',
+                default => sprintf('Expected HTTP %s but received %d.', $statusPolicy, $httpStatus),
+            };
+        }
+
+        return sprintf('Expected HTTP %s but received %d.', $statusPolicy, $httpStatus);
+    }
+
+    /**
+     * @param  array<string, mixed>  $report
+     */
+    protected function recordTransientFailureIncident(Monitor $monitor, CheckResult $checkResult, CarbonImmutable $checkedAt, array $report): void
+    {
+        $firstFailedAttempt = $report['firstFailedAttempt'] ?? null;
+
+        if (! is_array($firstFailedAttempt)) {
+            return;
+        }
+
+        $reason = $this->transientFailureReason($firstFailedAttempt);
+
+        Incident::query()->create([
+            'monitor_id' => $monitor->id,
+            'first_check_result_id' => $checkResult->id,
+            'last_good_check_result_id' => $this->lastHealthyCheckResultId($monitor, Incident::TYPE_DOWNTIME, $checkedAt),
+            'latest_check_result_id' => $checkResult->id,
+            'started_at' => $checkedAt,
+            'resolved_at' => $checkedAt,
+            'duration_seconds' => 0,
+            'type' => Incident::TYPE_TRANSIENT_FAILURE,
+            'severity' => Incident::SEVERITY_WARNING,
+            'reason' => $reason,
+            'error_type' => $firstFailedAttempt['error_type'] ?? null,
+            'http_status_code' => $firstFailedAttempt['http_status_code'] ?? null,
+            'meta' => [
+                'transient_failure' => true,
+                'attempt_history' => $report['attemptHistory'] ?? [],
+                'queue_lag_ms' => $report['queueLagMs'] ?? null,
+                'probe_region' => $report['probeRegion'] ?? null,
+                'status_policy' => $report['statusPolicy'] ?? null,
+                'cdn' => $firstFailedAttempt['cdn'] ?? null,
+            ],
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $firstFailedAttempt
+     */
+    protected function transientFailureReason(array $firstFailedAttempt): string
+    {
+        $httpStatus = (int) ($firstFailedAttempt['http_status_code'] ?? 0);
+        $errorType = (string) ($firstFailedAttempt['error_type'] ?? '');
+
+        if (str_starts_with($errorType, 'cloudflare_') && $httpStatus > 0) {
+            return sprintf('Transient Cloudflare %d edge failure recovered on retry.', $httpStatus);
+        }
+
+        if ($httpStatus > 0) {
+            return sprintf('Transient HTTP %d failure recovered on retry.', $httpStatus);
+        }
+
+        return 'Transient probe failure recovered on retry.';
     }
 
     protected function evaluateDegradedPerformance(
