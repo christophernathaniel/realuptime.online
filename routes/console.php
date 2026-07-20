@@ -13,7 +13,13 @@ Schedule::command('monitors:run-due')
     ->withoutOverlapping()
     ->onOneServer();
 
-Schedule::command('realuptime:prune-monitoring-data')
-    ->dailyAt('03:15')
-    ->withoutOverlapping()
-    ->onOneServer();
+if (config('realuptime.retention.automatic_pruning_enabled', true)) {
+    Schedule::command('realuptime:prune-monitoring-data')
+        ->name('realuptime:prune-monitoring-data')
+        ->dailyAt((string) config('realuptime.retention.prune_at', '03:15'))
+        ->timezone(config('app.timezone'))
+        ->withoutOverlapping(360)
+        ->runInBackground()
+        ->evenInMaintenanceMode()
+        ->onOneServer();
+}

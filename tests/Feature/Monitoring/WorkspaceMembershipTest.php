@@ -6,6 +6,7 @@ use App\Models\WorkspaceMembership;
 use App\Notifications\WorkspaceInvitationNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
@@ -50,6 +51,14 @@ it('invites a teammate and grants them access to the shared workspace after acce
 
     $this->actingAs($member)
         ->get("/workspace-invitations/{$membership->token}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('workspace-invitations/show')
+            ->where('invitation.canAccept', true));
+
+    expect($membership->fresh()->accepted_at)->toBeNull();
+
+    $this->post("/workspace-invitations/{$membership->token}")
         ->assertRedirect(route('team-members.index'));
 
     $membership->refresh();
@@ -63,4 +72,25 @@ it('invites a teammate and grants them access to the shared workspace after acce
             ->component('monitors/index')
             ->where('summary.total', 1)
             ->where('monitors.0.name', 'Primary API'));
+});
+
+it('rejects expired workspace invitation tokens', function () {
+    $owner = User::factory()->premium()->create();
+    $member = User::factory()->create([
+        'email' => 'member@example.com',
+    ]);
+    $membership = WorkspaceMembership::query()->create([
+        'owner_user_id' => $owner->id,
+        'invited_by_user_id' => $owner->id,
+        'invited_email' => $member->email,
+        'token' => (string) Str::uuid(),
+        'invited_at' => now()->subDays(8),
+    ]);
+
+    $this->actingAs($member)
+        ->get("/workspace-invitations/{$membership->token}")
+        ->assertNotFound();
+
+    $this->post("/workspace-invitations/{$membership->token}")
+        ->assertNotFound();
 });

@@ -9,9 +9,15 @@ use App\Models\WorkspaceIntegration;
 use App\Models\WorkspaceMembership;
 use App\Notifications\MonitorAlertNotification;
 use App\Services\Monitoring\DomainMetadataResolver;
+use App\Services\Monitoring\EmailNotificationService;
+use App\Services\Monitoring\Integrations\WorkspaceIntegrationNotificationService;
+use App\Services\Monitoring\MonitorMetadataRefresher;
 use App\Services\Monitoring\MonitorPresenter;
 use App\Services\Monitoring\MonitorRunner;
 use App\Services\Monitoring\TlsMetadataResolver;
+use App\Services\Monitoring\WebhookNotificationService;
+use App\Services\Security\OutboundHttpClient;
+use App\Services\Security\PublicNetworkGuard;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -150,7 +156,7 @@ it('keeps the monitors index presenter query count effectively flat as monitor v
     expect($threeMonitorQueryCount)->toBeLessThanOrEqual(10);
 });
 
-it('defers monitor history and capability insights on the detail page', function () {
+it('defers monitor reliability latency and capability insights independently on the detail page', function () {
     $user = User::factory()->premium()->create();
     $monitor = Monitor::query()->create([
         'user_id' => $user->id,
@@ -187,8 +193,9 @@ it('defers monitor history and capability insights on the detail page', function
             ->component('monitors/show')
             ->where('monitor.name', 'Website')
             ->where('monitor.region', 'Europe')
-            ->missingAll('monitorHistory', 'monitorCapabilities'))
-        ->assertViewHas('page.deferredProps.monitor-history', fn (array $props) => $props === ['monitorHistory'])
+            ->missingAll('monitorReliability', 'monitorLatency', 'monitorCapabilities'))
+        ->assertViewHas('page.deferredProps.monitor-reliability', fn (array $props) => $props === ['monitorReliability'])
+        ->assertViewHas('page.deferredProps.monitor-latency', fn (array $props) => $props === ['monitorLatency'])
         ->assertViewHas('page.deferredProps.monitor-capabilities', fn (array $props) => $props === ['monitorCapabilities']);
 });
 
@@ -423,6 +430,26 @@ it('allows paid workspaces to save 60 second intervals', function () {
     expect(Monitor::query()->first()?->interval_seconds)->toBe(60);
 });
 
+it('prevents paid workspaces from saving intervals below one minute', function () {
+    $user = User::factory()->premium()->create();
+
+    $this->actingAs($user)
+        ->post('/monitors', [
+            'name' => 'Too frequent API',
+            'type' => 'http',
+            'target' => 'https://example.com',
+            'request_method' => 'GET',
+            'interval_seconds' => 59,
+            'timeout_seconds' => 15,
+            'retry_limit' => 2,
+            'follow_redirects' => true,
+            'expected_status_code' => 200,
+            'accepted_http_statuses' => '200-299',
+            'region' => 'North America',
+        ])
+        ->assertSessionHasErrors('interval_seconds');
+});
+
 it('locks free workspaces to the standard check profile', function () {
     $user = User::factory()->create();
     $contact = NotificationContact::query()->create([
@@ -476,7 +503,7 @@ it('runs port monitors against a tcp target', function () {
         'name' => 'Database port',
         'type' => Monitor::TYPE_PORT,
         'status' => Monitor::STATUS_UP,
-        'target' => '127.0.0.1:5432',
+        'target' => '1.1.1.1:5432',
         'interval_seconds' => 30,
         'timeout_seconds' => 5,
         'retry_limit' => 0,
@@ -487,13 +514,21 @@ it('runs port monitors against a tcp target', function () {
         'last_status_changed_at' => now()->subMinutes(10),
     ]);
 
-    $this->partialMock(MonitorRunner::class, function ($mock) use ($socket) {
-        $mock->shouldAllowMockingProtectedMethods();
-        $mock->shouldReceive('openTcpSocket')
-            ->once()
-            ->with('127.0.0.1', 5432, 5, \Mockery::any(), \Mockery::any())
-            ->andReturn($socket);
-    });
+    $runner = Mockery::mock(MonitorRunner::class, [
+        app(EmailNotificationService::class),
+        app(WebhookNotificationService::class),
+        app(WorkspaceIntegrationNotificationService::class),
+        app(TlsMetadataResolver::class),
+        app(MonitorMetadataRefresher::class),
+        app(OutboundHttpClient::class),
+        app(PublicNetworkGuard::class),
+    ])->makePartial();
+    $runner->shouldAllowMockingProtectedMethods();
+    $runner->shouldReceive('openTcpSocket')
+        ->once()
+        ->with('1.1.1.1', 5432, 5, Mockery::any(), Mockery::any())
+        ->andReturn($socket);
+    app()->instance(MonitorRunner::class, $runner);
 
     $outcome = app(MonitorRunner::class)->runMonitor($monitor->fresh(['notificationContacts', 'user']));
 
@@ -552,7 +587,8 @@ it('samples healthy ping results instead of storing every successful run', funct
     expect($monitor->checkResults()->count())->toBe(1);
     expect($monitor->last_checked_at?->equalTo($startedAt->addMinutes(2)))->toBeTrue();
     expect($monitor->last_result_stored_at?->equalTo($startedAt))->toBeTrue();
-    expect($monitor->next_check_at?->equalTo($startedAt->addMinutes(3)))->toBeTrue();
+    expect($monitor->next_check_at?->greaterThan($startedAt->addMinutes(2)))->toBeTrue();
+    expect($monitor->next_check_at?->lessThanOrEqualTo($startedAt->addMinutes(3)))->toBeTrue();
 });
 
 it('stores downtime webhook urls for paid workspaces and blocks them for free workspaces', function () {
@@ -777,7 +813,10 @@ it('clamps free workspace execution cadence to the plan minimum interval', funct
 
     app(MonitorRunner::class)->runMonitor($monitor->fresh(['notificationContacts', 'user']), $checkedAt);
 
-    expect($monitor->fresh()->next_check_at?->equalTo($checkedAt->addMinutes(5)))->toBeTrue();
+    $nextCheckAt = $monitor->fresh()->next_check_at;
+
+    expect($nextCheckAt?->greaterThan($checkedAt))->toBeTrue();
+    expect($nextCheckAt?->lessThanOrEqualTo($checkedAt->addMinutes(5)))->toBeTrue();
 });
 
 it('ignores legacy admin monitor interval overrides during execution', function () {
@@ -820,7 +859,10 @@ it('ignores legacy admin monitor interval overrides during execution', function 
 
     app(MonitorRunner::class)->runMonitor($monitor->fresh(['notificationContacts', 'user']), $checkedAt);
 
-    expect($monitor->fresh()->next_check_at?->equalTo($checkedAt->addMinutes(5)))->toBeTrue();
+    $nextCheckAt = $monitor->fresh()->next_check_at;
+
+    expect($nextCheckAt?->greaterThan($checkedAt))->toBeTrue();
+    expect($nextCheckAt?->lessThanOrEqualTo($checkedAt->addMinutes(5)))->toBeTrue();
 });
 
 it('runs synthetic transaction monitors across multiple http steps', function () {

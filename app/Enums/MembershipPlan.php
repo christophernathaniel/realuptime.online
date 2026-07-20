@@ -20,7 +20,10 @@ enum MembershipPlan: string
 
     public function minimumIntervalSeconds(): int
     {
-        return (int) config("membership.plans.{$this->value}.minimum_interval_seconds", 300);
+        return max(
+            (int) config('realuptime.dispatch.minimum_interval_seconds', 60),
+            (int) config("membership.plans.{$this->value}.minimum_interval_seconds", 300),
+        );
     }
 
     public function allowsAdvancedWorkspaceFeatures(): bool

@@ -25,7 +25,12 @@ class OAuthController extends Controller
 
         $request->session()->put('oauth.provider', $provider);
         $request->session()->put('oauth.intent', $request->user() ? 'link' : 'login');
-        $request->session()->put('oauth.user_id', $request->user()?->id);
+
+        if ($request->user()) {
+            $request->session()->put('oauth.user_id', $request->user()->id);
+        } else {
+            $request->session()->forget('oauth.user_id');
+        }
 
         return Socialite::driver($provider)->redirect();
     }
@@ -38,15 +43,23 @@ class OAuthController extends Controller
             return redirect()->route('login')->with('error', ucfirst($provider).' login is not configured yet.');
         }
 
+        $expectedProvider = $request->session()->get('oauth.provider');
+
+        if (! is_string($expectedProvider) || ! hash_equals($expectedProvider, $provider)) {
+            $request->session()->forget(['oauth.intent', 'oauth.provider', 'oauth.user_id']);
+
+            return redirect()->route('login')->with('error', 'That OAuth sign-in session is invalid or has expired. Please try again.');
+        }
+
         $socialiteUser = Socialite::driver($provider)->user();
         $intent = $request->session()->pull('oauth.intent', 'login');
-        $requestedUserId = $request->session()->pull('oauth.user_id');
+        $linkingUserId = $request->session()->pull('oauth.user_id');
         $request->session()->forget('oauth.provider');
 
         if ($intent === 'link') {
-            $user = $request->user() ?? User::query()->find($requestedUserId);
+            $user = $request->user();
 
-            if (! $user) {
+            if (! $user || (int) $linkingUserId !== $user->id) {
                 return redirect()->route('login')->with('error', 'Sign in before linking an OAuth provider.');
             }
 
@@ -85,35 +98,42 @@ class OAuthController extends Controller
             $this->syncConnectedAccount($connectedAccount, $socialiteUser);
             Auth::login($connectedAccount->user, true);
             $request->session()->regenerate();
+            $request->session()->passwordConfirmed();
 
             return redirect()->intended(route('dashboard'));
         }
 
-        $email = $socialiteUser->getEmail();
+        $email = Str::lower(trim((string) $socialiteUser->getEmail()));
 
-        if (! $email) {
+        if ($email === '') {
             return redirect()->route('login')->with('error', ucfirst($provider).' did not return an email address.');
         }
 
-        $user = User::query()->firstWhere('email', $email);
+        $user = User::query()
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->first();
 
-        if (! $user) {
-            $user = User::query()->create([
-                'name' => $socialiteUser->getName() ?: $socialiteUser->getNickname() ?: ucfirst($provider).' user',
-                'email' => $email,
-                'password' => Str::password(40),
-                'password_login_enabled' => false,
-            ]);
-
-            $user->forceFill(['email_verified_at' => now()])->save();
-        } elseif ($user->email_verified_at === null) {
-            $user->forceFill(['email_verified_at' => now()])->save();
+        if ($user) {
+            return redirect()->route('login')->with(
+                'error',
+                'An account already uses that email address. Sign in with its current method, then link '.ucfirst($provider).' from profile settings.',
+            );
         }
+
+        $user = User::query()->create([
+            'name' => $socialiteUser->getName() ?: $socialiteUser->getNickname() ?: ucfirst($provider).' user',
+            'email' => $email,
+            'password' => Str::password(40),
+            'password_login_enabled' => false,
+        ]);
+
+        $user->forceFill(['email_verified_at' => now()])->save();
 
         $this->upsertConnectedAccount($user, $provider, $socialiteUser);
 
         Auth::login($user, true);
         $request->session()->regenerate();
+        $request->session()->passwordConfirmed();
 
         return redirect()->intended(route('dashboard'));
     }

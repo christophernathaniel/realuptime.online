@@ -3,11 +3,17 @@
 namespace App\Services\Monitoring\Integrations;
 
 use App\Models\WorkspaceIntegration;
-use Illuminate\Support\Facades\Http;
+use App\Services\Security\OutboundHttpClient;
+use App\Services\Security\PublicNetworkGuard;
 use RuntimeException;
 
 class SlackWorkspaceIntegrationProvider implements WorkspaceIntegrationProvider
 {
+    public function __construct(
+        protected OutboundHttpClient $outboundHttp,
+        protected PublicNetworkGuard $network,
+    ) {}
+
     public function provider(): string
     {
         return WorkspaceIntegration::PROVIDER_SLACK;
@@ -47,16 +53,21 @@ class SlackWorkspaceIntegrationProvider implements WorkspaceIntegrationProvider
             throw new RuntimeException('Slack webhook URL is missing.');
         }
 
-        $response = Http::asJson()
-            ->acceptJson()
-            ->timeout(10)
-            ->withHeaders([
+        $this->network->validateSlackWebhookUrl($webhookUrl);
+
+        $response = $this->outboundHttp->send(
+            method: 'POST',
+            url: $webhookUrl,
+            timeoutSeconds: 10,
+            headers: [
+                'Accept' => 'application/json',
                 'User-Agent' => 'RealUptime Slack Integrations',
-            ])
-            ->post($webhookUrl, [
+            ],
+            options: ['json' => [
                 'text' => $this->plainText($event, $payload),
                 'blocks' => $this->blocks($event, $payload),
-            ]);
+            ]],
+        );
 
         if (! $response->successful()) {
             throw new RuntimeException(sprintf('Slack responded with HTTP %d.', $response->status()));

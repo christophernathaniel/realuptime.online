@@ -3,11 +3,15 @@
 namespace App\Http\Requests\Monitoring;
 
 use App\Models\Monitor;
+use App\Services\Security\MonitorSecretMasker;
+use App\Services\Security\PublicNetworkGuard;
 use App\Support\HttpStatusPolicy;
 use App\Support\WorkspaceResolver;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 use JsonException;
 
 class UpsertMonitorRequest extends FormRequest
@@ -23,7 +27,7 @@ class UpsertMonitorRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -111,7 +115,7 @@ class UpsertMonitorRequest extends FormRequest
                 'custom_headers' => 'Custom headers must be valid JSON.',
             ]);
         }
-        $customHeaders = $this->validateCustomHeaders($customHeaders);
+        $customHeaders = $this->validateCustomHeaders($customHeaders, $currentMonitor);
         $syntheticSteps = $this->decodeSyntheticSteps((string) ($data['synthetic_steps'] ?? ''), (string) $data['type']);
         $downtimeWebhookUrls = $this->decodeDowntimeWebhookUrls(
             $workspace,
@@ -127,6 +131,18 @@ class UpsertMonitorRequest extends FormRequest
         $data['accepted_http_statuses'] = HttpStatusPolicy::normalize(
             (string) ($data['accepted_http_statuses'] ?? ($data['expected_status_code'] ?? ''))
         );
+
+        try {
+            if ($data['type'] === Monitor::TYPE_HTTP) {
+                app(PublicNetworkGuard::class)->validateHttpUrl((string) $data['target']);
+            } elseif ($data['type'] === Monitor::TYPE_PING) {
+                app(PublicNetworkGuard::class)->validateHost((string) $data['target']);
+            }
+        } catch (InvalidArgumentException $exception) {
+            throw ValidationException::withMessages([
+                'target' => $exception->getMessage(),
+            ]);
+        }
 
         if ($data['type'] === Monitor::TYPE_PORT) {
             $data['target'] = $this->normalizePortTarget((string) $data['target']);
@@ -176,6 +192,14 @@ class UpsertMonitorRequest extends FormRequest
         } else {
             $data['accepted_http_statuses'] = HttpStatusPolicy::normalize($data['accepted_http_statuses'] ?? HttpStatusPolicy::DEFAULT);
             $data['expected_status_code'] = null;
+
+            if (
+                $currentMonitor !== null
+                && trim((string) ($data['auth_username'] ?? '')) !== ''
+                && trim((string) ($data['auth_password'] ?? '')) === ''
+            ) {
+                $data['auth_password'] = $currentMonitor->auth_password;
+            }
         }
 
         $data['expected_keyword'] = null;
@@ -267,6 +291,10 @@ class UpsertMonitorRequest extends FormRequest
             ->unique()
             ->values()
             ->all();
+        $urls = collect(app(MonitorSecretMasker::class)->restoreWebhookUrls($urls, $existingUrls))
+            ->unique()
+            ->values()
+            ->all();
 
         if (count($urls) > $maxWebhookUrls) {
             throw ValidationException::withMessages([
@@ -275,13 +303,16 @@ class UpsertMonitorRequest extends FormRequest
         }
 
         foreach ($urls as $index => $url) {
-            $validatedUrl = filter_var($url, FILTER_VALIDATE_URL);
-            $scheme = parse_url($url, PHP_URL_SCHEME);
+            try {
+                if (mb_strlen($url) > $maxWebhookUrlLength) {
+                    throw new InvalidArgumentException('The URL is too long.');
+                }
 
-            if (mb_strlen($url) > $maxWebhookUrlLength || ! $validatedUrl || ! in_array($scheme, ['http', 'https'], true)) {
+                app(PublicNetworkGuard::class)->validateHttpUrl($url);
+            } catch (InvalidArgumentException) {
                 throw ValidationException::withMessages([
                     'downtime_webhook_urls' => sprintf(
-                        'Downtime webhook URL %d must be a valid HTTP or HTTPS URL.',
+                        'Downtime webhook URL %d must be a valid public HTTP or HTTPS URL.',
                         $index + 1,
                     ),
                 ]);
@@ -304,7 +335,7 @@ class UpsertMonitorRequest extends FormRequest
     /**
      * @return array<string, string>|null
      */
-    protected function validateCustomHeaders(mixed $customHeaders): ?array
+    protected function validateCustomHeaders(mixed $customHeaders, ?Monitor $monitor = null): ?array
     {
         if ($customHeaders === null) {
             return null;
@@ -316,10 +347,16 @@ class UpsertMonitorRequest extends FormRequest
             ]);
         }
 
+        $customHeaders = app(MonitorSecretMasker::class)->restoreHeaders(
+            $customHeaders,
+            $monitor?->custom_headers,
+        );
+
         $guardrails = config('realuptime.guardrails');
         $maxHeaderCount = (int) ($guardrails['max_custom_header_count'] ?? 8);
         $maxHeaderNameLength = (int) ($guardrails['max_custom_header_name_length'] ?? 64);
         $maxHeaderValueLength = (int) ($guardrails['max_custom_header_value_length'] ?? 256);
+        $blockedHeaderNames = array_map('strtolower', config('realuptime.security.blocked_outbound_headers', []));
 
         if (count($customHeaders) > $maxHeaderCount) {
             throw ValidationException::withMessages([
@@ -339,6 +376,12 @@ class UpsertMonitorRequest extends FormRequest
             ) {
                 throw ValidationException::withMessages([
                     'custom_headers' => 'Each custom header name must be plain ASCII text without spaces or colons.',
+                ]);
+            }
+
+            if (in_array(strtolower($headerName), $blockedHeaderNames, true)) {
+                throw ValidationException::withMessages([
+                    'custom_headers' => sprintf('The "%s" header cannot be overridden by a monitor.', $headerName),
                 ]);
             }
 
@@ -481,6 +524,14 @@ class UpsertMonitorRequest extends FormRequest
         if ($host === '' || $port < 1 || $port > 65535) {
             throw ValidationException::withMessages([
                 'target' => 'Use a valid host and a TCP port between 1 and 65535.',
+            ]);
+        }
+
+        try {
+            app(PublicNetworkGuard::class)->validateHost($host);
+        } catch (InvalidArgumentException $exception) {
+            throw ValidationException::withMessages([
+                'target' => $exception->getMessage(),
             ]);
         }
 

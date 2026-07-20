@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileDeleteRequest;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
+use App\Services\Billing\SubscriptionManager;
 use App\Support\OAuthProviderCatalog;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
@@ -12,9 +13,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
+use Throwable;
 
 class ProfileController extends Controller
 {
+    public function __construct(protected SubscriptionManager $subscriptions) {}
+
     /**
      * Show the user's profile settings page.
      */
@@ -51,13 +55,49 @@ class ProfileController extends Controller
      */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
-        $request->user()->fill($request->validated());
+        $user = $request->user();
+        $data = $request->validated();
 
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
+        if (
+            $user->isMainAdmin()
+            && strcasecmp((string) $data['email'], (string) config('realuptime.admin.main_admin_email')) !== 0
+        ) {
+            return back()->withErrors([
+                'email' => 'Change REALUPTIME_MAIN_ADMIN_EMAIL before changing the main admin email address.',
+            ]);
         }
 
-        $request->user()->save();
+        if (
+            filled($user->stripe_id)
+            && ($user->name !== $data['name'] || strcasecmp($user->email, $data['email']) !== 0)
+        ) {
+            if (blank(config('cashier.secret'))) {
+                return back()->withErrors([
+                    'email' => 'Stripe must be configured before changing details for a Stripe customer.',
+                ]);
+            }
+
+            try {
+                $user->updateStripeCustomer([
+                    'name' => $data['name'],
+                    'email' => $data['email'],
+                ]);
+            } catch (Throwable $exception) {
+                report($exception);
+
+                return back()->withErrors([
+                    'email' => 'Stripe could not update your billing details. Your profile was not changed.',
+                ]);
+            }
+        }
+
+        $user->fill($data);
+
+        if ($user->isDirty('email')) {
+            $user->email_verified_at = null;
+        }
+
+        $user->save();
 
         return to_route('profile.edit');
     }
@@ -68,6 +108,14 @@ class ProfileController extends Controller
     public function destroy(ProfileDeleteRequest $request): RedirectResponse
     {
         $user = $request->user();
+
+        try {
+            $this->subscriptions->cancelImmediatelyForDeletion($user);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->with('error', 'Stripe billing could not be cancelled, so your account was not deleted.');
+        }
 
         Auth::logout();
 

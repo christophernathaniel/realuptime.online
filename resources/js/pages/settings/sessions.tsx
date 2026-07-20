@@ -12,7 +12,6 @@ import {
 
 type SessionItem = {
     id: number;
-    sessionId: string;
     deviceLabel: string;
     browser: string;
     platform: string;
@@ -40,7 +39,9 @@ export default function Sessions({ sessions }: { sessions: SessionItem[] }) {
                                     Active sessions
                                 </h2>
                                 <p className="mt-2 text-[14px] leading-6 text-[#9ca7b9]">
-                                    Keep only the devices you recognize. Ending a session removes access until the user signs in again.
+                                    Keep only the devices you recognize. Ending
+                                    a session removes access until the user
+                                    signs in again.
                                 </p>
                             </div>
 
@@ -71,41 +72,64 @@ export default function Sessions({ sessions }: { sessions: SessionItem[] }) {
                                                 <Laptop2 className="size-4 text-[#9ca7b9]" />
                                                 {session.deviceLabel}
                                                 {session.isCurrent ? (
-                                                    <span className="inline-flex items-center gap-1 rounded-full border border-[#7c8cff]/25 bg-[#171c33] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#dbe1ff]">
+                                                    <span className="inline-flex items-center gap-1 rounded-full border border-[#7c8cff]/25 bg-[#171c33] px-2.5 py-1 text-[11px] font-semibold tracking-[0.16em] text-[#dbe1ff] uppercase">
                                                         <ShieldCheck className="size-3" />
                                                         Current session
                                                     </span>
                                                 ) : null}
                                             </div>
-                                            <div className={surfaceMutedTextClass}>
-                                                {session.browser} on {session.platform} • {session.ipAddress}
+                                            <div
+                                                className={
+                                                    surfaceMutedTextClass
+                                                }
+                                            >
+                                                {session.browser} on{' '}
+                                                {session.platform} •{' '}
+                                                {session.ipAddress}
                                             </div>
-                                            <div className={surfaceMutedTextClass}>
-                                                Last active {session.lastActiveAgo ?? session.lastActiveAt ?? 'Unknown'}
+                                            <div
+                                                className={
+                                                    surfaceMutedTextClass
+                                                }
+                                            >
+                                                Last active{' '}
+                                                {session.lastActiveAgo ??
+                                                    session.lastActiveAt ??
+                                                    'Unknown'}
                                             </div>
                                             {session.lastPath ? (
                                                 <div className="text-[12px] text-[#7081a2]">
-                                                    Last path: /{session.lastPath}
+                                                    Last path: /
+                                                    {session.lastPath}
                                                 </div>
                                             ) : null}
                                         </div>
 
                                         <Button
                                             type="button"
-                                            variant={session.isCurrent ? 'destructive' : 'outline'}
+                                            variant={
+                                                session.isCurrent
+                                                    ? 'destructive'
+                                                    : 'outline'
+                                            }
                                             className={
                                                 session.isCurrent
                                                     ? surfaceDangerButtonClass
                                                     : surfaceSecondaryButtonClass
                                             }
                                             onClick={() =>
-                                                router.delete(`/settings/sessions/${session.id}`, {
-                                                    preserveScroll: true,
-                                                })
+                                                router.delete(
+                                                    `/settings/sessions/${session.id}`,
+                                                    {
+                                                        preserveScroll: true,
+                                                    },
+                                                )
                                             }
                                         >
                                             <LogOut className="size-4" />
-                                            {session.isCurrent ? 'Log out here' : 'End session'}
+                                            {session.isCurrent
+                                                ? 'Log out here'
+                                                : 'End session'}
                                         </Button>
                                     </div>
                                 </div>

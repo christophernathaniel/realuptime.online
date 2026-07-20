@@ -1,12 +1,13 @@
 <?php
 
-use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\AdminUserSubscriptionController;
+use App\Http\Controllers\Auth\OAuthController;
 use App\Http\Controllers\MarketingPageController;
+use App\Http\Controllers\Monitoring\ApiTokenController;
 use App\Http\Controllers\Monitoring\HeartbeatController;
 use App\Http\Controllers\Monitoring\IncidentController;
 use App\Http\Controllers\Monitoring\MaintenanceWindowController;
-use App\Http\Controllers\Monitoring\ApiTokenController;
 use App\Http\Controllers\Monitoring\MonitorController;
 use App\Http\Controllers\Monitoring\MonitoringSectionController;
 use App\Http\Controllers\Monitoring\NotificationContactController;
@@ -28,14 +29,25 @@ Route::get('/privacy-policy', [MarketingPageController::class, 'privacy'])->name
 Route::get('/terms-and-conditions', [MarketingPageController::class, 'terms'])->name('terms-and-conditions');
 Route::get('/sitemap.xml', [MarketingPageController::class, 'sitemap'])->name('sitemap');
 
-Route::post('heartbeat/{token}', [HeartbeatController::class, 'store'])->name('heartbeat.store');
-Route::get('auth/{provider}/redirect', [OAuthController::class, 'redirect'])->name('oauth.redirect');
+Route::post('heartbeat/{token}', [HeartbeatController::class, 'store'])
+    ->middleware('throttle:heartbeat')
+    ->whereUlid('token')
+    ->name('heartbeat.store');
+Route::get('auth/{provider}/redirect', [OAuthController::class, 'redirect'])
+    ->middleware('recent.auth:900')
+    ->name('oauth.redirect');
 Route::get('auth/{provider}/callback', [OAuthController::class, 'callback'])->name('oauth.callback');
 Route::get('status/{ownerKey}/{statusPage}', [PublicStatusPageController::class, 'show'])
     ->name('public-status-pages.show');
 
 Route::middleware(['auth'])->group(function () {
-    Route::get('workspace-invitations/{token}', [WorkspaceMembershipController::class, 'accept'])->name('workspace-invitations.accept');
+    Route::get('workspace-invitations/{token}', [WorkspaceMembershipController::class, 'show'])
+        ->whereUuid('token')
+        ->name('workspace-invitations.show');
+    Route::post('workspace-invitations/{token}', [WorkspaceMembershipController::class, 'accept'])
+        ->middleware('throttle:6,1')
+        ->whereUuid('token')
+        ->name('workspace-invitations.accept');
     Route::post('workspaces/switch', [WorkspaceMembershipController::class, 'switch'])->name('workspaces.switch');
 });
 
@@ -49,7 +61,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('monitors/{monitor:public_id}', [MonitorController::class, 'update'])->name('monitors.update');
     Route::post('monitors/{monitor:public_id}/toggle', [MonitorController::class, 'toggle'])->name('monitors.toggle');
     Route::post('monitors/{monitor:public_id}/run-now', [MonitorController::class, 'runNow'])->name('monitors.run-now');
-    Route::post('monitors/{monitor:public_id}/test-notification', [MonitorController::class, 'testNotification'])->name('monitors.test-notification');
+    Route::post('monitors/{monitor:public_id}/test-notification', [MonitorController::class, 'testNotification'])
+        ->middleware('throttle:6,1')
+        ->name('monitors.test-notification');
     Route::delete('monitors/{monitor:public_id}', [MonitorController::class, 'destroy'])->name('monitors.destroy');
 
     Route::middleware('workspace.feature:advanced')->group(function () {
@@ -58,10 +72,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('notification-contacts/{notificationContact}', [NotificationContactController::class, 'destroy'])->name('notification-contacts.destroy');
         Route::post('workspace-integrations', [WorkspaceIntegrationController::class, 'store'])->name('workspace-integrations.store');
         Route::put('workspace-integrations/{workspaceIntegration}', [WorkspaceIntegrationController::class, 'update'])->name('workspace-integrations.update');
-        Route::post('workspace-integrations/{workspaceIntegration}/test', [WorkspaceIntegrationController::class, 'test'])->name('workspace-integrations.test');
+        Route::post('workspace-integrations/{workspaceIntegration}/test', [WorkspaceIntegrationController::class, 'test'])
+            ->middleware('throttle:6,1')
+            ->name('workspace-integrations.test');
         Route::delete('workspace-integrations/{workspaceIntegration}', [WorkspaceIntegrationController::class, 'destroy'])->name('workspace-integrations.destroy');
-        Route::post('api-tokens', [ApiTokenController::class, 'store'])->name('api-tokens.store');
-        Route::delete('api-tokens/{apiToken}', [ApiTokenController::class, 'destroy'])->name('api-tokens.destroy');
+        Route::post('api-tokens', [ApiTokenController::class, 'store'])
+            ->middleware('recent.auth:900')
+            ->name('api-tokens.store');
+        Route::delete('api-tokens/{apiToken}', [ApiTokenController::class, 'destroy'])
+            ->middleware('recent.auth:900')
+            ->name('api-tokens.destroy');
 
         Route::post('status-pages', [StatusPageController::class, 'store'])->name('status-pages.store');
         Route::put('status-pages/{statusPage}', [StatusPageController::class, 'update'])->name('status-pages.update');
@@ -81,7 +101,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('status-pages', [MonitoringSectionController::class, 'statusPages'])->name('status-pages.index');
         Route::get('maintenance', [MonitoringSectionController::class, 'maintenance'])->name('maintenance.index');
         Route::get('team-members', [MonitoringSectionController::class, 'team'])->name('team-members.index');
-        Route::post('team-members/invitations', [WorkspaceMembershipController::class, 'store'])->name('team-members.invitations.store');
+        Route::post('team-members/invitations', [WorkspaceMembershipController::class, 'store'])
+            ->middleware('throttle:6,1')
+            ->name('team-members.invitations.store');
         Route::delete('team-members/invitations/{workspaceMembership}', [WorkspaceMembershipController::class, 'destroy'])->name('team-members.invitations.destroy');
         Route::get('integrations', [MonitoringSectionController::class, 'integrations'])->name('integrations.index');
     });
@@ -89,13 +111,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('users', [AdminUserController::class, 'index'])->name('users.index');
-    Route::post('users', [AdminUserController::class, 'store'])->name('users.store');
     Route::get('users/{user}', [AdminUserController::class, 'show'])->name('users.show');
-    Route::patch('users/{user}', [AdminUserController::class, 'update'])->name('users.update');
-    Route::patch('users/{user}/membership', [AdminUserController::class, 'updateMembership'])->name('users.membership.update');
-    Route::patch('users/{user}/support-extension', [AdminUserController::class, 'extendSupportMembership'])->name('users.support-extension.extend');
-    Route::delete('users/{user}/support-extension', [AdminUserController::class, 'clearSupportMembership'])->name('users.support-extension.clear');
-    Route::delete('users/{user}', [AdminUserController::class, 'destroy'])->name('users.destroy');
+
+    Route::middleware('recent.auth:900')->group(function () {
+        Route::post('users', [AdminUserController::class, 'store'])->name('users.store');
+        Route::patch('users/{user}', [AdminUserController::class, 'update'])->name('users.update');
+        Route::patch('users/{user}/subscription', [AdminUserSubscriptionController::class, 'update'])->name('users.subscription.update');
+        Route::post('users/{user}/subscription/reactivate', [AdminUserSubscriptionController::class, 'reactivate'])->name('users.subscription.reactivate');
+        Route::delete('users/{user}/subscription', [AdminUserSubscriptionController::class, 'destroy'])->name('users.subscription.destroy');
+        Route::patch('users/{user}/membership', [AdminUserController::class, 'updateMembership'])->name('users.membership.update');
+        Route::patch('users/{user}/support-extension', [AdminUserController::class, 'extendSupportMembership'])->name('users.support-extension.extend');
+        Route::delete('users/{user}/support-extension', [AdminUserController::class, 'clearSupportMembership'])->name('users.support-extension.clear');
+        Route::delete('users/{user}', [AdminUserController::class, 'destroy'])->name('users.destroy');
+    });
 });
 
 require __DIR__.'/settings.php';

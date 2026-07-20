@@ -12,8 +12,12 @@ Route::middleware(['auth'])->group(function () {
     Route::redirect('settings', '/settings/profile');
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('settings/oauth/{provider}', [OAuthController::class, 'destroy'])->name('oauth.disconnect');
+    Route::patch('settings/profile', [ProfileController::class, 'update'])
+        ->middleware('recent.auth:900')
+        ->name('profile.update');
+    Route::delete('settings/oauth/{provider}', [OAuthController::class, 'destroy'])
+        ->middleware('recent.auth:900')
+        ->name('oauth.disconnect');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
@@ -31,10 +35,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('two-factor.show');
 
     Route::get('settings/sessions', [SessionController::class, 'index'])->name('sessions.index');
-    Route::delete('settings/sessions/{session}', [SessionController::class, 'destroy'])->name('sessions.destroy');
-    Route::delete('settings/sessions', [SessionController::class, 'destroyOthers'])->name('sessions.destroy-others');
+    Route::delete('settings/sessions/{session}', [SessionController::class, 'destroy'])
+        ->middleware('recent.auth:900')
+        ->name('sessions.destroy');
+    Route::delete('settings/sessions', [SessionController::class, 'destroyOthers'])
+        ->middleware('recent.auth:900')
+        ->name('sessions.destroy-others');
 
     Route::get('settings/membership', [MembershipController::class, 'show'])->name('membership.show');
-    Route::post('settings/membership/checkout/{plan}', [MembershipController::class, 'checkout'])->name('membership.checkout');
-    Route::post('settings/membership/portal', [MembershipController::class, 'portal'])->name('membership.portal');
+    Route::post('settings/membership/checkout/{plan}', [MembershipController::class, 'checkout'])
+        ->middleware('recent.auth:900')
+        ->name('membership.checkout');
+    Route::post('settings/membership/portal', [MembershipController::class, 'portal'])
+        ->middleware('recent.auth:900')
+        ->name('membership.portal');
 });

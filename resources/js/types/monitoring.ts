@@ -91,7 +91,7 @@ export type StatusPageLink = {
     publicUrl: string;
 };
 
-export type MonitorHistory = {
+export type MonitorReliability = {
     last6Bars: MonitorBarState[];
     last24Bars: MonitorBarState[];
     last7Bars: MonitorBarState[];
@@ -102,6 +102,9 @@ export type MonitorHistory = {
     last365Days: WindowStats;
     customRange: WindowStats;
     mtbf: string;
+};
+
+export type MonitorLatency = {
     responseTimeRange: string;
     responseTimeRangeLabel: string;
     responseTimeRangeOptions: ResponseRangeOption[];
@@ -124,6 +127,8 @@ export type MonitorHistory = {
         successRate: number | null;
     };
 };
+
+export type MonitorHistory = MonitorReliability & MonitorLatency;
 
 export type DetailedMonitor = {
     id: number;

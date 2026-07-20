@@ -4,14 +4,13 @@ namespace App\Http\Controllers\Monitoring;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Monitoring\UpsertMonitorRequest;
-use App\Jobs\RunMonitorCheckJob;
 use App\Models\Capability;
 use App\Models\Monitor;
 use App\Models\User;
 use App\Services\Monitoring\EmailNotificationService;
 use App\Services\Monitoring\Integrations\WorkspaceIntegrationNotificationService;
+use App\Services\Monitoring\MonitorDispatchService;
 use App\Services\Monitoring\MonitorPresenter;
-use App\Support\MonitorQueueResolver;
 use App\Support\WorkspaceResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -25,6 +24,7 @@ class MonitorController extends Controller
         protected MonitorPresenter $presenter,
         protected EmailNotificationService $notifications,
         protected WorkspaceIntegrationNotificationService $integrations,
+        protected MonitorDispatchService $dispatcher,
         protected WorkspaceResolver $workspaces,
     ) {}
 
@@ -106,9 +106,13 @@ class MonitorController extends Controller
 
         return Inertia::render('monitors/show', [
             ...$this->presenter->showPage($monitor),
-            'monitorHistory' => Inertia::defer(
-                fn () => $this->presenter->showHistory($monitor->fresh(), $responseRange, $responseGranularity)['monitorHistory'],
-                'monitor-history',
+            'monitorReliability' => Inertia::defer(
+                fn () => $this->presenter->showReliability($monitor->fresh())['monitorReliability'],
+                'monitor-reliability',
+            ),
+            'monitorLatency' => Inertia::defer(
+                fn () => $this->presenter->showLatency($monitor->fresh(), $responseRange, $responseGranularity)['monitorLatency'],
+                'monitor-latency',
             ),
             'monitorCapabilities' => Inertia::defer(
                 fn () => $this->presenter->showCapabilities($monitor->fresh())['monitorCapabilities'],
@@ -180,12 +184,9 @@ class MonitorController extends Controller
             return back()->with('error', 'Resume the monitor before running an on-demand check.');
         }
 
-        RunMonitorCheckJob::dispatch(
-            $monitor->id,
-            now()->toIso8601String(),
-            $monitor->type,
-            MonitorQueueResolver::usesRegionQueues() ? $monitor->region : null,
-        )->afterCommit();
+        if (! $this->dispatcher->dispatchNow($monitor)) {
+            return back()->with('error', 'This monitor already ran or was queued within its allowed check interval.');
+        }
 
         return back()->with('success', sprintf('Queued an on-demand check for %s.', $monitor->name));
     }

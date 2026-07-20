@@ -2,6 +2,10 @@
 
 use App\Models\User;
 
+beforeEach(function () {
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+});
+
 test('profile page is displayed', function () {
     $user = User::factory()->create();
 

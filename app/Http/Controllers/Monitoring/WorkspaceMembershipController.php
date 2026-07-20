@@ -11,6 +11,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class WorkspaceMembershipController extends Controller
 {
@@ -63,13 +65,25 @@ class WorkspaceMembershipController extends Controller
         return back()->with('success', sprintf('Invitation sent to %s.', $membership->invited_email));
     }
 
+    public function show(Request $request, string $token): Response
+    {
+        $membership = $this->invitation($token);
+        $user = $request->user();
+
+        return Inertia::render('workspace-invitations/show', [
+            'invitation' => [
+                'workspaceName' => $membership->owner?->name ?? 'Shared workspace',
+                'invitedEmail' => $membership->invited_email,
+                'canAccept' => $user !== null
+                    && Str::lower($user->email) === Str::lower($membership->invited_email),
+                'acceptUrl' => route('workspace-invitations.accept', $membership->token),
+            ],
+        ]);
+    }
+
     public function accept(Request $request, string $token): RedirectResponse
     {
-        $membership = WorkspaceMembership::query()
-            ->with('owner')
-            ->where('token', $token)
-            ->whereNull('revoked_at')
-            ->firstOrFail();
+        $membership = $this->invitation($token);
 
         $user = $request->user();
         abort_unless($user !== null, 401);
@@ -122,5 +136,17 @@ class WorkspaceMembershipController extends Controller
         }
 
         return back()->with('success', 'Workspace access updated.');
+    }
+
+    protected function invitation(string $token): WorkspaceMembership
+    {
+        $expiresAfterDays = max(1, (int) config('realuptime.invitations.expires_after_days', 7));
+
+        return WorkspaceMembership::query()
+            ->with('owner')
+            ->where('token', $token)
+            ->whereNull('revoked_at')
+            ->where('invited_at', '>=', now()->subDays($expiresAfterDays))
+            ->firstOrFail();
     }
 }

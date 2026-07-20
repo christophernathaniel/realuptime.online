@@ -2,109 +2,47 @@
 
 namespace App\Console\Commands;
 
-use App\Models\CheckResult;
-use App\Models\Incident;
-use App\Models\NotificationLog;
-use Carbon\CarbonImmutable;
+use App\Services\Monitoring\MonitoringDataPruner;
 use Illuminate\Console\Command;
-use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class PruneMonitoringData extends Command
 {
     protected $signature = 'realuptime:prune-monitoring-data';
 
-    protected $description = 'Prune old notification logs and disposable healthy check results';
+    protected $description = 'Roll up historical checks and prune expired monitoring data';
 
-    public function handle(): int
+    public function handle(MonitoringDataPruner $pruner): int
     {
-        $notificationLogRetentionDays = max(1, (int) config('realuptime.retention.notification_logs_days', 30));
-        $healthyCheckRetentionDays = max(1, (int) config('realuptime.retention.healthy_check_results_days', 30));
-        $chunkSize = max(100, (int) config('realuptime.retention.prune_chunk_size', 1000));
+        $startedAt = microtime(true);
+        Log::info('Monitoring data retention started.');
 
-        $notificationLogCutoff = CarbonImmutable::now()->subDays($notificationLogRetentionDays);
-        $healthyCheckCutoff = CarbonImmutable::now()->subDays($healthyCheckRetentionDays);
+        try {
+            $result = $pruner->prune();
+        } catch (Throwable $exception) {
+            Log::error('Monitoring data retention failed.', [
+                'exception' => $exception,
+            ]);
 
-        $deletedLogs = 0;
+            throw $exception;
+        }
 
-        NotificationLog::query()
-            ->select('id')
-            ->where('created_at', '<', $notificationLogCutoff)
-            ->orderBy('id')
-            ->chunkById($chunkSize, function (Collection $logs) use (&$deletedLogs): void {
-                $logIds = $logs->pluck('id')->all();
+        $result['duration_ms'] = (int) round((microtime(true) - $startedAt) * 1000);
 
-                if ($logIds === []) {
-                    return;
-                }
-
-                $deletedLogs += NotificationLog::query()
-                    ->whereKey($logIds)
-                    ->delete();
-            });
-
-        $deletedHealthyResults = 0;
-
-        CheckResult::query()
-            ->select(['id', 'meta'])
-            ->where('status', 'up')
-            ->where('checked_at', '<', $healthyCheckCutoff)
-            ->orderBy('id')
-            ->chunkById($chunkSize, function (Collection $results) use (&$deletedHealthyResults): void {
-                $protectedIds = $this->incidentProtectedCheckResultIds($results->pluck('id')->all());
-
-                $deletableIds = $results
-                    ->reject(fn (CheckResult $result) => $protectedIds->contains($result->id) || (bool) data_get($result->meta, 'slow', false))
-                    ->pluck('id')
-                    ->all();
-
-                if ($deletableIds === []) {
-                    return;
-                }
-
-                $deletedHealthyResults += CheckResult::query()
-                    ->whereKey($deletableIds)
-                    ->delete();
-            });
+        Log::info('Monitoring data retention completed.', $result);
 
         $this->info(sprintf(
-            'Deleted %d notification logs and %d healthy check results.',
-            $deletedLogs,
-            $deletedHealthyResults,
+            'Deleted %d notification logs. Compacted %d check results into %d 15-minute buckets and %d 15-minute buckets into %d daily buckets. Deleted %d expired check results and %d expired rollups.',
+            $result['notification_logs_deleted'],
+            $result['raw_results_rolled'],
+            $result['fine_rollups_written'],
+            $result['fine_rollups_compacted'],
+            $result['daily_rollups_written'],
+            $result['expired_raw_results_deleted'],
+            $result['expired_rollups_deleted'],
         ));
 
         return self::SUCCESS;
-    }
-
-    /**
-     * @param  array<int, int>  $candidateIds
-     * @return Collection<int, int>
-     */
-    protected function incidentProtectedCheckResultIds(array $candidateIds): Collection
-    {
-        if ($candidateIds === []) {
-            return collect();
-        }
-
-        return Incident::query()
-            ->select([
-                'first_check_result_id',
-                'last_good_check_result_id',
-                'latest_check_result_id',
-            ])
-            ->where(function ($query) use ($candidateIds): void {
-                $query->whereIn('first_check_result_id', $candidateIds)
-                    ->orWhereIn('last_good_check_result_id', $candidateIds)
-                    ->orWhereIn('latest_check_result_id', $candidateIds);
-            })
-            ->get()
-            ->flatMap(fn (Incident $incident) => [
-                $incident->first_check_result_id,
-                $incident->last_good_check_result_id,
-                $incident->latest_check_result_id,
-            ])
-            ->filter()
-            ->map(fn (mixed $id) => (int) $id)
-            ->unique()
-            ->values();
     }
 }

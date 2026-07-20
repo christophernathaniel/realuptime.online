@@ -61,6 +61,19 @@ test('users can not authenticate with invalid password', function () {
     $this->assertGuest();
 });
 
+test('users can not authenticate with a password when password login is disabled', function () {
+    $user = User::factory()->create([
+        'password_login_enabled' => false,
+    ]);
+
+    $this->post(route('login.store'), [
+        'email' => $user->email,
+        'password' => 'password',
+    ])->assertSessionHasErrors('email');
+
+    $this->assertGuest();
+});
+
 test('users can logout', function () {
     $user = User::factory()->create();
 

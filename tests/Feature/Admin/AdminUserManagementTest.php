@@ -6,15 +6,21 @@ use App\Models\Monitor;
 use App\Models\NotificationContact;
 use App\Models\NotificationLog;
 use App\Models\StatusPage;
+use App\Models\User;
 use App\Models\UserSession;
 use App\Models\WorkspaceIntegration;
-use App\Models\User;
 use App\Models\WorkspaceMembership;
-use Illuminate\Support\Facades\DB;
+use App\Services\Billing\SubscriptionManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
 uses(RefreshDatabase::class);
+
+beforeEach(function () {
+    config()->set('realuptime.admin.main_admin_email', 'admin@example.com');
+    $this->withSession(['auth.password_confirmed_at' => time()]);
+});
 
 it('registers self-serve accounts as non-admin users by default', function () {
     $this->post('/register', [
@@ -48,7 +54,7 @@ it('does not elevate invited users to admin when they accept workspace access', 
     expect($membership)->not->toBeNull();
 
     $this->actingAs($invitee)
-        ->get("/workspace-invitations/{$membership->token}")
+        ->post("/workspace-invitations/{$membership->token}")
         ->assertRedirect('/team-members');
 
     expect($invitee->refresh()->is_admin)->toBeFalse();
@@ -56,6 +62,9 @@ it('does not elevate invited users to admin when they accept workspace access', 
 
 it('restricts admin user management to platform admins', function () {
     $user = User::factory()->create();
+    $legacyAdmin = User::factory()->admin()->create([
+        'email' => 'legacy-admin@example.com',
+    ]);
 
     $this->actingAs($user)
         ->get('/admin/users')
@@ -64,9 +73,37 @@ it('restricts admin user management to platform admins', function () {
     $this->actingAs($user)
         ->get('/admin/users/'.$user->id)
         ->assertForbidden();
+
+    $this->actingAs($legacyAdmin)
+        ->get('/admin/users')
+        ->assertForbidden();
 });
 
-it('lets admins monitor, create, promote, and delete users', function () {
+it('requires recent password confirmation for admin account changes', function () {
+    $admin = User::factory()->admin()->create([
+        'email' => 'admin@example.com',
+        'password_login_enabled' => true,
+    ]);
+    $user = User::factory()->create([
+        'name' => 'Original Name',
+    ]);
+
+    $this->actingAs($admin)
+        ->withSession(['auth.password_confirmed_at' => 0])
+        ->patch("/admin/users/{$user->id}", [
+            'name' => 'Changed Without Confirmation',
+            'email' => $user->email,
+            'email_verified' => true,
+            'password_login_enabled' => true,
+            'password' => '',
+            'password_confirmation' => '',
+        ])
+        ->assertRedirect(route('password.confirm'));
+
+    expect($user->fresh()->name)->toBe('Original Name');
+});
+
+it('lets the main admin monitor, create, update, and delete users', function () {
     $admin = User::factory()->admin()->create([
         'email' => 'admin@example.com',
     ]);
@@ -99,11 +136,21 @@ it('lets admins monitor, create, promote, and delete users', function () {
 
     $this->actingAs($admin)
         ->patch("/admin/users/{$user->id}", [
-            'is_admin' => true,
+            'name' => 'Updated Member',
+            'email' => 'updated-member@example.com',
+            'email_verified' => true,
+            'password_login_enabled' => true,
+            'password' => 'updated-password',
+            'password_confirmation' => 'updated-password',
         ])
         ->assertRedirect();
 
-    expect($user->refresh()->is_admin)->toBeTrue();
+    $user->refresh();
+
+    expect($user->name)->toBe('Updated Member');
+    expect($user->email)->toBe('updated-member@example.com');
+    expect($user->email_verified_at)->not->toBeNull();
+    expect($user->is_admin)->toBeFalse();
 
     $this->actingAs($admin)
         ->delete("/admin/users/{$user->id}")
@@ -114,8 +161,38 @@ it('lets admins monitor, create, promote, and delete users', function () {
     ]);
 });
 
+it('prevents the main admin from removing its own verified password login', function () {
+    $admin = User::factory()->admin()->create([
+        'email' => 'admin@example.com',
+        'password_login_enabled' => true,
+    ]);
+
+    $payload = [
+        'name' => $admin->name,
+        'email' => $admin->email,
+        'email_verified' => false,
+        'password_login_enabled' => true,
+        'password' => '',
+        'password_confirmation' => '',
+    ];
+
+    $this->actingAs($admin)
+        ->patch("/admin/users/{$admin->id}", $payload)
+        ->assertSessionHas('error', 'The main admin must remain verified with password login enabled.');
+
+    $payload['email_verified'] = true;
+    $payload['password_login_enabled'] = false;
+
+    $this->actingAs($admin)
+        ->patch("/admin/users/{$admin->id}", $payload)
+        ->assertSessionHas('error', 'The main admin must remain verified with password login enabled.');
+
+    expect($admin->refresh()->email_verified_at)->not->toBeNull()
+        ->and($admin->password_login_enabled)->toBeTrue();
+});
+
 it('lets admins override membership plans for users', function () {
-    $admin = User::factory()->admin()->create();
+    $admin = User::factory()->admin()->create(['email' => 'admin@example.com']);
     $user = User::factory()->create([
         'email' => 'member@example.com',
     ]);
@@ -142,7 +219,7 @@ it('lets admins override membership plans for users', function () {
 it('lets admins inspect a detailed support view for an account', function () {
     config()->set('membership.plans.premium.stripe_price_id', 'price_premium');
 
-    $admin = User::factory()->admin()->create();
+    $admin = User::factory()->admin()->create(['email' => 'admin@example.com']);
     $user = User::factory()->create([
         'email' => 'member@example.com',
         'pm_type' => 'visa',
@@ -267,8 +344,8 @@ it('lets admins inspect a detailed support view for an account', function () {
             ->component('admin/user-show')
             ->where('account.email', 'member@example.com')
             ->where('account.membershipPlanLabel', 'Premium')
+            ->where('account.lastActiveLabel', '2m ago')
             ->where('billing.currentSubscription.status', 'active')
-            ->where('billing.invoiceStatus', 'none')
             ->where('billing.paymentMethodLabel', 'Visa ending in 4242')
             ->where('usage.monitors', 1)
             ->where('monitors.0.name', 'Primary API')
@@ -278,11 +355,77 @@ it('lets admins inspect a detailed support view for an account', function () {
             ->where('apiTokens.0.name', 'Primary automation')
             ->where('team.0.status', 'Accepted')
             ->where('recentIncidents.0.reason', 'Expected HTTP 200 but received 500.')
-            ->where('recentNotifications.0.subject', 'Primary API is down'));
+            ->where('recentNotifications.0.subject', 'Primary API is down')
+            ->missing('stripeInvoices'));
+});
+
+it('shows only the reactivation action during a Stripe grace period', function () {
+    config()->set('cashier.key', 'pk_test_example');
+    config()->set('cashier.secret', 'sk_test_example');
+    config()->set('cashier.webhook.secret', 'whsec_example');
+    config()->set('membership.plans.premium.stripe_price_id', 'price_premium');
+    config()->set('membership.plans.ultra.stripe_price_id', 'price_ultra');
+
+    $admin = User::factory()->admin()->create(['email' => 'admin@example.com']);
+    $user = User::factory()->create([
+        'stripe_id' => 'cus_grace_period',
+        'pm_type' => 'visa',
+        'pm_last_four' => '4242',
+    ]);
+
+    DB::table('subscriptions')->insert([
+        'user_id' => $user->id,
+        'type' => 'default',
+        'stripe_id' => 'sub_grace_period',
+        'stripe_status' => 'active',
+        'stripe_price' => 'price_premium',
+        'quantity' => 1,
+        'trial_ends_at' => null,
+        'ends_at' => now()->addWeek(),
+        'created_at' => now()->subMonth(),
+        'updated_at' => now(),
+    ]);
+
+    $this->actingAs($admin)
+        ->get('/admin/users/'.$user->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('billing.currentSubscription.onGracePeriod', true)
+            ->where('billing.canChangePlan', false)
+            ->where('billing.canCancel', false)
+            ->where('billing.canReactivate', true));
+});
+
+it('caps expensive account detail collections', function () {
+    $admin = User::factory()->admin()->create(['email' => 'admin@example.com']);
+    $user = User::factory()->create();
+
+    foreach (range(1, 55) as $index) {
+        Monitor::query()->create([
+            'user_id' => $user->id,
+            'name' => sprintf('Monitor %02d', $index),
+            'type' => Monitor::TYPE_HTTP,
+            'status' => Monitor::STATUS_UP,
+            'target' => "https://example.com/{$index}",
+            'interval_seconds' => 300,
+            'timeout_seconds' => 15,
+            'retry_limit' => 1,
+            'region' => 'Europe',
+        ]);
+    }
+
+    $this->actingAs($admin)
+        ->get('/admin/users/'.$user->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('monitors', 50)
+            ->where('collectionMeta.monitors.shown', 50)
+            ->where('collectionMeta.monitors.total', 55)
+            ->where('collectionMeta.monitors.truncated', true));
 });
 
 it('lets admins grant, extend, and clear courtesy membership extensions', function () {
-    $admin = User::factory()->admin()->create();
+    $admin = User::factory()->admin()->create(['email' => 'admin@example.com']);
     $user = User::factory()->create([
         'email' => 'member@example.com',
     ]);
@@ -322,6 +465,8 @@ it('lets admins grant, extend, and clear courtesy membership extensions', functi
 });
 
 it('can grant admin access through the admin-user artisan command', function () {
+    config()->set('realuptime.admin.main_admin_email', 'ops@example.com');
+
     $user = User::factory()->create([
         'email' => 'ops@example.com',
     ]);
@@ -331,4 +476,31 @@ it('can grant admin access through the admin-user artisan command', function () 
     ])->assertExitCode(0);
 
     expect($user->refresh()->is_admin)->toBeTrue();
+});
+
+it('routes subscription lifecycle actions through the billing manager', function () {
+    config()->set('cashier.key', 'pk_test_example');
+    config()->set('cashier.secret', 'sk_test_example');
+    config()->set('cashier.webhook.secret', 'whsec_example');
+    config()->set('membership.plans.premium.stripe_price_id', 'price_premium');
+
+    $admin = User::factory()->admin()->create(['email' => 'admin@example.com']);
+    $user = User::factory()->create(['email' => 'member@example.com']);
+    $manager = Mockery::mock(SubscriptionManager::class);
+    $manager->shouldReceive('changePlan')->once()->withArgs(fn (User $subject, $plan) => $subject->is($user) && $plan->value === 'premium');
+    $manager->shouldReceive('cancel')->once()->withArgs(fn (User $subject) => $subject->is($user));
+    $manager->shouldReceive('reactivate')->once()->withArgs(fn (User $subject, $plan) => $subject->is($user) && $plan->value === 'premium');
+    app()->instance(SubscriptionManager::class, $manager);
+
+    $this->actingAs($admin)
+        ->patch("/admin/users/{$user->id}/subscription", ['plan' => 'premium'])
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->delete("/admin/users/{$user->id}/subscription")
+        ->assertRedirect();
+
+    $this->actingAs($admin)
+        ->post("/admin/users/{$user->id}/subscription/reactivate", ['plan' => 'premium'])
+        ->assertRedirect();
 });

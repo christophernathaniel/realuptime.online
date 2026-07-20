@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\Security\HostResolver;
+use App\Services\Security\SystemHostResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -18,7 +20,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(HostResolver::class, SystemHostResolver::class);
     }
 
     /**
@@ -28,6 +30,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
         $this->configureApiRateLimiting();
+        $this->configureHeartbeatRateLimiting();
     }
 
     /**
@@ -55,9 +58,32 @@ class AppServiceProvider extends ServiceProvider
     protected function configureApiRateLimiting(): void
     {
         RateLimiter::for('api', function (Request $request) {
-            return Limit::perMinute(120)->by(
-                $request->bearerToken() ?: $request->ip(),
-            );
+            $token = $request->bearerToken();
+            $perToken = max(1, (int) config('realuptime.security.api_rate_limit_per_minute', 120));
+            $perIp = max(1, (int) config('realuptime.security.api_ip_rate_limit_per_minute', 600));
+
+            return [
+                Limit::perMinute($perToken)->by(
+                    $token
+                        ? 'api-token:'.hash('sha256', $token)
+                        : 'api-missing:'.$request->ip(),
+                ),
+                Limit::perMinute($perIp)->by('api-ip:'.$request->ip()),
+            ];
+        });
+    }
+
+    protected function configureHeartbeatRateLimiting(): void
+    {
+        RateLimiter::for('heartbeat', function (Request $request) {
+            $token = (string) $request->route('token');
+            $perToken = max(1, (int) config('realuptime.security.heartbeat_rate_limit_per_minute', 12));
+            $perIp = max(1, (int) config('realuptime.security.heartbeat_ip_rate_limit_per_minute', 600));
+
+            return [
+                Limit::perMinute($perToken)->by('heartbeat-token:'.hash('sha256', $token)),
+                Limit::perMinute($perIp)->by('heartbeat-ip:'.$request->ip()),
+            ];
         });
     }
 }

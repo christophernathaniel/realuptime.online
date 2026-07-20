@@ -22,10 +22,17 @@ class ConnectedAccount extends Model
         'expires_at',
     ];
 
+    protected $hidden = [
+        'token',
+        'refresh_token',
+    ];
+
     protected function casts(): array
     {
         return [
             'expires_at' => 'datetime',
+            'token' => 'encrypted',
+            'refresh_token' => 'encrypted',
         ];
     }
 

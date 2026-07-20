@@ -3,8 +3,11 @@
 namespace App\Http\Requests\Monitoring;
 
 use App\Models\WorkspaceIntegration;
+use App\Services\Security\PublicNetworkGuard;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 
 class UpsertWorkspaceIntegrationRequest extends FormRequest
 {
@@ -56,11 +59,24 @@ class UpsertWorkspaceIntegrationRequest extends FormRequest
         $provider = $workspaceIntegration?->provider ?? $this->validated('provider');
         $existingConfig = $workspaceIntegration?->config ?? [];
         $webhookUrl = trim((string) ($this->validated('webhook_url') ?? ''));
+        $webhookUrl = $webhookUrl !== '' ? $webhookUrl : (string) ($existingConfig['webhook_url'] ?? '');
         $events = collect($this->validated('events') ?? ['monitor.down', 'monitor.recovered'])
             ->filter(fn (mixed $event) => is_string($event) && $event !== '')
             ->unique()
             ->values()
             ->all();
+
+        try {
+            if ($provider === WorkspaceIntegration::PROVIDER_SLACK) {
+                app(PublicNetworkGuard::class)->validateSlackWebhookUrl($webhookUrl);
+            } else {
+                app(PublicNetworkGuard::class)->validateHttpUrl($webhookUrl);
+            }
+        } catch (InvalidArgumentException $exception) {
+            throw ValidationException::withMessages([
+                'webhook_url' => $exception->getMessage(),
+            ]);
+        }
 
         return [
             'provider' => $provider,
@@ -70,7 +86,7 @@ class UpsertWorkspaceIntegrationRequest extends FormRequest
                 : WorkspaceIntegration::STATUS_DISABLED,
             'config' => [
                 ...$existingConfig,
-                'webhook_url' => $webhookUrl !== '' ? $webhookUrl : (string) ($existingConfig['webhook_url'] ?? ''),
+                'webhook_url' => $webhookUrl,
             ],
             'scopes' => $events,
         ];

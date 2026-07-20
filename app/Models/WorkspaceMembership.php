@@ -18,6 +18,10 @@ class WorkspaceMembership extends Model
         'revoked_at',
     ];
 
+    protected $hidden = [
+        'token',
+    ];
+
     protected function casts(): array
     {
         return [

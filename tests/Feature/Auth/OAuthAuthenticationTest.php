@@ -3,6 +3,7 @@
 use App\Models\ConnectedAccount;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\User as SocialiteUser;
@@ -19,6 +20,8 @@ beforeEach(function () {
 });
 
 it('authenticates users through oauth and creates a linked account', function () {
+    $accessToken = 'oauth-access-token-secret';
+    $refreshToken = 'oauth-refresh-token-secret';
     $socialiteUser = (new SocialiteUser)
         ->map([
             'id' => 'google-123',
@@ -26,13 +29,15 @@ it('authenticates users through oauth and creates a linked account', function ()
             'email' => 'oauth@example.com',
             'avatar' => 'https://example.com/avatar.png',
         ])
-        ->setToken(Str::random(20))
-        ->setRefreshToken(Str::random(20))
+        ->setToken($accessToken)
+        ->setRefreshToken($refreshToken)
         ->setExpiresIn(3600);
 
     Socialite::shouldReceive('driver->user')->once()->andReturn($socialiteUser);
 
-    $response = $this->get('/auth/google/callback');
+    $response = $this
+        ->withSession(['oauth.provider' => 'google'])
+        ->get('/auth/google/callback');
 
     $response->assertRedirect(route('dashboard', absolute: false));
     $this->assertAuthenticated();
@@ -47,6 +52,41 @@ it('authenticates users through oauth and creates a linked account', function ()
         'provider' => 'google',
         'provider_id' => 'google-123',
         'provider_email' => 'oauth@example.com',
+    ]);
+
+    $account = ConnectedAccount::query()->firstOrFail();
+    $rawAccount = DB::table('connected_accounts')->first();
+
+    expect($account->token)->toBe($accessToken)
+        ->and($account->refresh_token)->toBe($refreshToken)
+        ->and($rawAccount->token)->not->toContain($accessToken)
+        ->and($rawAccount->refresh_token)->not->toContain($refreshToken)
+        ->and($account->toArray())->not->toHaveKeys(['token', 'refresh_token']);
+});
+
+it('does not auto-link an unrecognized oauth identity to an existing email account', function () {
+    $user = User::factory()->create([
+        'email' => 'existing@example.com',
+    ]);
+    $socialiteUser = (new SocialiteUser)
+        ->map([
+            'id' => 'google-unrecognized',
+            'name' => 'Different Identity',
+            'email' => 'EXISTING@example.com',
+        ])
+        ->setToken(Str::random(20));
+
+    Socialite::shouldReceive('driver->user')->once()->andReturn($socialiteUser);
+
+    $this->withSession(['oauth.provider' => 'google'])
+        ->get('/auth/google/callback')
+        ->assertRedirect(route('login', absolute: false))
+        ->assertSessionHas('error');
+
+    $this->assertGuest();
+    $this->assertDatabaseMissing('connected_accounts', [
+        'user_id' => $user->id,
+        'provider' => 'google',
     ]);
 });
 
@@ -67,6 +107,7 @@ it('links an oauth provider to an authenticated account', function () {
     $this->actingAs($user)
         ->withSession([
             'oauth.intent' => 'link',
+            'oauth.provider' => 'github',
             'oauth.user_id' => $user->id,
         ])
         ->get('/auth/github/callback')
@@ -77,6 +118,19 @@ it('links an oauth provider to an authenticated account', function () {
         'provider' => 'github',
         'provider_id' => 'github-456',
     ]);
+});
+
+it('rejects an oauth callback for a provider that did not initiate the flow', function () {
+    Socialite::shouldReceive('driver->user')->never();
+
+    $this->withSession([
+        'oauth.intent' => 'login',
+        'oauth.provider' => 'google',
+    ])->get('/auth/github/callback')
+        ->assertRedirect(route('login', absolute: false))
+        ->assertSessionHas('error');
+
+    $this->assertGuest();
 });
 
 it('prevents disconnecting the last oauth provider when password login is disabled', function () {
@@ -92,6 +146,7 @@ it('prevents disconnecting the last oauth provider when password login is disabl
     ]);
 
     $this->actingAs($user)
+        ->withSession(['auth.password_confirmed_at' => time()])
         ->delete('/settings/oauth/google')
         ->assertRedirect();
 

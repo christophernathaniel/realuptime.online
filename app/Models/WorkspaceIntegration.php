@@ -31,6 +31,10 @@ class WorkspaceIntegration extends Model
         'last_error_message',
     ];
 
+    protected $hidden = [
+        'config',
+    ];
+
     protected function casts(): array
     {
         return [

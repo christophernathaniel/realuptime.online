@@ -13,6 +13,7 @@ use App\Services\Monitoring\MonitorRunner;
 use App\Services\Monitoring\TlsMetadataResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
@@ -601,6 +602,86 @@ it('renders and updates the incident detail page', function () {
         'operator_notes' => 'Escalated to platform team.',
         'root_cause_summary' => 'Upstream load balancer was returning 500s.',
     ]);
+});
+
+it('bounds long incident timelines and notification history', function () {
+    $user = User::factory()->premium()->create();
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Long outage API',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_DOWN,
+        'target' => 'https://example.com/long-outage',
+        'request_method' => 'GET',
+        'interval_seconds' => 30,
+        'timeout_seconds' => 30,
+        'retry_limit' => 1,
+        'region' => 'North America',
+    ]);
+    $firstFailed = $monitor->checkResults()->create([
+        'status' => 'down',
+        'checked_at' => now()->subMinutes(150),
+        'attempts' => 1,
+        'http_status_code' => 500,
+        'error_type' => 'invalid_status',
+        'error_message' => 'Expected HTTP 200 but received 500.',
+    ]);
+
+    $checkRows = collect(range(149, 2))->map(fn (int $minutes): array => [
+        'monitor_id' => $monitor->id,
+        'status' => 'down',
+        'checked_at' => now()->subMinutes($minutes),
+        'attempts' => 1,
+        'response_time_ms' => null,
+        'http_status_code' => 500,
+        'error_type' => 'invalid_status',
+        'error_message' => 'Expected HTTP 200 but received 500.',
+        'meta' => null,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ])->all();
+
+    DB::table('check_results')->insert($checkRows);
+
+    $latest = $monitor->checkResults()->create([
+        'status' => 'down',
+        'checked_at' => now()->subMinute(),
+        'attempts' => 1,
+        'http_status_code' => 500,
+        'error_type' => 'invalid_status',
+        'error_message' => 'Expected HTTP 200 but received 500.',
+    ]);
+    $incident = Incident::query()->create([
+        'monitor_id' => $monitor->id,
+        'first_check_result_id' => $firstFailed->id,
+        'latest_check_result_id' => $latest->id,
+        'started_at' => now()->subMinutes(150),
+        'type' => Incident::TYPE_DOWNTIME,
+        'severity' => Incident::SEVERITY_MAJOR,
+        'reason' => 'Expected HTTP 200 but received 500.',
+    ]);
+    $notificationRows = collect(range(1, 60))->map(fn (int $index): array => [
+        'monitor_id' => $monitor->id,
+        'incident_id' => $incident->id,
+        'channel' => 'email',
+        'type' => 'down',
+        'subject' => "Outage notification {$index}",
+        'status' => 'sent',
+        'sent_at' => now()->subMinutes($index),
+        'payload' => Crypt::encryptString(json_encode(['email' => 'ops@example.com'], JSON_THROW_ON_ERROR)),
+        'created_at' => now()->subMinutes($index),
+        'updated_at' => now()->subMinutes($index),
+    ])->all();
+
+    DB::table('notification_logs')->insert($notificationRows);
+
+    $this->actingAs($user)
+        ->get("/incidents/{$incident->id}")
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('incidents/show')
+            ->has('incident.timeline', 100)
+            ->has('incident.notificationHistory', 50));
 });
 
 it('deletes incidents from the current workspace and detaches notification logs', function () {

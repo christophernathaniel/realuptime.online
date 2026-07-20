@@ -5,12 +5,12 @@ namespace App\Jobs;
 use App\Models\Incident;
 use App\Models\Monitor;
 use App\Models\NotificationLog;
+use App\Services\Security\OutboundHttpClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Throwable;
 
@@ -22,16 +22,22 @@ class SendMonitorWebhookNotificationJob implements ShouldQueue
 
     public int $timeout = 60;
 
+    public ?string $webhookUrlHash = null;
+
+    /** @deprecated Kept temporarily so jobs queued by the previous release can drain safely. */
+    public ?string $webhookUrl = null;
+
     public function __construct(
         public int $notificationLogId,
         public int $monitorId,
         public int $incidentId,
-        public string $webhookUrl,
+        string $webhookUrlHash,
     ) {
+        $this->webhookUrlHash = $webhookUrlHash;
         $this->onQueue(config('realuptime.queues.notifications'));
     }
 
-    public function handle(): void
+    public function handle(OutboundHttpClient $outboundHttp): void
     {
         $log = NotificationLog::query()->find($this->notificationLogId);
         $monitor = Monitor::query()->with('user')->find($this->monitorId);
@@ -59,7 +65,14 @@ class SendMonitorWebhookNotificationJob implements ShouldQueue
             return;
         }
 
-        if (! in_array($this->webhookUrl, $monitor->downtime_webhook_urls ?? [], true)) {
+        $targetHash = $this->webhookUrlHash
+            ?? ($this->webhookUrl !== null ? hash('sha256', $this->webhookUrl) : null);
+        $webhookUrl = collect($monitor->downtime_webhook_urls ?? [])
+            ->map(fn (mixed $url): string => trim((string) $url))
+            ->first(fn (string $url): bool => $targetHash !== null
+                && hash_equals($targetHash, hash('sha256', $url)));
+
+        if (! is_string($webhookUrl) || $webhookUrl === '') {
             $log->forceFill([
                 'status' => 'failed',
                 'failure_message' => 'Webhook URL is no longer configured on this monitor.',
@@ -97,13 +110,16 @@ class SendMonitorWebhookNotificationJob implements ShouldQueue
         ];
 
         try {
-            $response = Http::asJson()
-                ->acceptJson()
-                ->timeout(10)
-                ->withHeaders([
+            $response = $outboundHttp->send(
+                method: 'POST',
+                url: $webhookUrl,
+                timeoutSeconds: 10,
+                headers: [
+                    'Accept' => 'application/json',
                     'User-Agent' => 'RealUptime Webhooks',
-                ])
-                ->post($this->webhookUrl, $payload);
+                ],
+                options: ['json' => $payload],
+            );
 
             if (! $response->successful()) {
                 throw new RuntimeException(sprintf('Webhook responded with HTTP %d.', $response->status()));

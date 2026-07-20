@@ -18,6 +18,7 @@ class MonitorDispatchService
     {
         $now ??= CarbonImmutable::now();
         $staleBefore = $now->subSeconds(max(60, (int) config('realuptime.dispatch.claim_ttl_seconds', 600)));
+        $dispatchCutoff = $now->subSeconds(max(60, (int) config('realuptime.dispatch.minimum_interval_seconds', 60)));
 
         $candidateIds = Monitor::query()
             ->whereIn('status', [Monitor::STATUS_UP, Monitor::STATUS_DOWN])
@@ -28,6 +29,10 @@ class MonitorDispatchService
             ->where(function ($query) use ($staleBefore): void {
                 $query->whereNull('check_claimed_at')
                     ->orWhere('check_claimed_at', '<=', $staleBefore);
+            })
+            ->where(function ($query) use ($dispatchCutoff): void {
+                $query->whereNull('last_dispatched_at')
+                    ->orWhere('last_dispatched_at', '<=', $dispatchCutoff);
             })
             ->orderBy('next_check_at')
             ->orderBy('id')
@@ -51,6 +56,10 @@ class MonitorDispatchService
                 $query->whereNull('check_claimed_at')
                     ->orWhere('check_claimed_at', '<=', $staleBefore);
             })
+            ->where(function ($query) use ($dispatchCutoff): void {
+                $query->whereNull('last_dispatched_at')
+                    ->orWhere('last_dispatched_at', '<=', $dispatchCutoff);
+            })
             ->update([
                 'check_claimed_at' => $now,
                 'check_claim_token' => $claimToken,
@@ -59,9 +68,52 @@ class MonitorDispatchService
 
         return Monitor::query()
             ->where('check_claim_token', $claimToken)
+            ->select(['id', 'type', 'region', 'next_check_at', 'check_claim_token'])
             ->orderBy('next_check_at')
             ->orderBy('id')
             ->get();
+    }
+
+    public function dispatchNow(Monitor $monitor, ?CarbonImmutable $now = null): bool
+    {
+        $now ??= CarbonImmutable::now();
+        $staleBefore = $now->subSeconds(max(60, (int) config('realuptime.dispatch.claim_ttl_seconds', 600)));
+        $monitor->loadMissing('user.subscriptions.items');
+        $minimumInterval = $monitor->user?->minimumMonitorIntervalSeconds()
+            ?? max(60, (int) config('realuptime.dispatch.minimum_interval_seconds', 60));
+        $dispatchCutoff = $now->subSeconds($minimumInterval);
+        $claimToken = Str::uuid()->toString();
+
+        $claimed = Monitor::query()
+            ->whereKey($monitor->id)
+            ->whereIn('status', [Monitor::STATUS_UP, Monitor::STATUS_DOWN])
+            ->where(function ($query) use ($staleBefore): void {
+                $query->whereNull('check_claimed_at')
+                    ->orWhere('check_claimed_at', '<=', $staleBefore);
+            })
+            ->where(function ($query) use ($dispatchCutoff): void {
+                $query->whereNull('last_dispatched_at')
+                    ->orWhere('last_dispatched_at', '<=', $dispatchCutoff);
+            })
+            ->update([
+                'check_claimed_at' => $now,
+                'check_claim_token' => $claimToken,
+                'last_dispatched_at' => $now,
+            ]);
+
+        if ($claimed !== 1) {
+            return false;
+        }
+
+        RunMonitorCheckJob::dispatch(
+            $monitor->id,
+            $now->toIso8601String(),
+            $monitor->type,
+            MonitorQueueResolver::usesRegionQueues() ? $monitor->region : null,
+            $claimToken,
+        );
+
+        return true;
     }
 
     public function dispatchDueMonitors(int $batchSize = 200, int $maxBatches = 10, ?CarbonImmutable $now = null): array
@@ -83,6 +135,7 @@ class MonitorDispatchService
                     $now->toIso8601String(),
                     $monitor->type,
                     MonitorQueueResolver::usesRegionQueues() ? $monitor->region : null,
+                    $monitor->check_claim_token,
                 );
             }
 

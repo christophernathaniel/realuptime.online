@@ -8,6 +8,8 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Laravel\Cashier\Checkout;
+use Throwable;
 
 class MembershipController extends Controller
 {
@@ -16,6 +18,7 @@ class MembershipController extends Controller
         $user = $request->user()->loadMissing('subscriptions.items');
         $currentPlan = $user->membershipPlan();
         $subscription = $user->subscription('default');
+        $stripeReady = $this->stripeReady();
 
         return Inertia::render('settings/membership', [
             'membership' => [
@@ -34,7 +37,7 @@ class MembershipController extends Controller
                         default => 'Free access',
                     },
                     'advancedFeaturesUnlocked' => $user->allowsAdvancedWorkspaceFeatures(),
-                    'isAdmin' => (bool) $user->is_admin,
+                    'isAdmin' => $user->isMainAdmin(),
                 ],
                 'plans' => collect(MembershipPlan::cases())->map(fn (MembershipPlan $plan) => [
                     'value' => $plan->value,
@@ -46,10 +49,14 @@ class MembershipController extends Controller
                     'stripeEnabled' => $plan === MembershipPlan::FREE || $plan->stripePriceId() !== null,
                     'isCurrent' => $currentPlan === $plan,
                 ])->all(),
-                'canCheckout' => $user->adminPlanOverride() === null && ! $user->subscribed('default'),
-                'canManageBilling' => $subscription !== null,
+                'stripeReady' => $stripeReady,
+                'stripeMissing' => $this->stripeMissingConfiguration(),
+                'canCheckout' => $stripeReady && $user->adminPlanOverride() === null && ! $user->subscribed('default'),
+                'canManageBilling' => $stripeReady && filled($user->stripe_id),
                 'subscriptionActive' => $subscription?->valid() ?? false,
                 'subscriptionStatus' => $subscription?->stripe_status,
+                'subscriptionOnGracePeriod' => $subscription?->onGracePeriod() ?? false,
+                'subscriptionEndsAt' => $subscription?->ends_at?->format('M j, Y H:i'),
                 'adminOverride' => $user->adminPlanOverride()?->value,
                 'supportExtension' => $user->supportPlanExtension() ? [
                     'plan' => $user->supportPlanExtension()?->value,
@@ -62,7 +69,7 @@ class MembershipController extends Controller
         ]);
     }
 
-    public function checkout(Request $request, string $plan): RedirectResponse|\Laravel\Cashier\Checkout
+    public function checkout(Request $request, string $plan): RedirectResponse|Checkout
     {
         $user = $request->user();
         $membershipPlan = MembershipPlan::tryFrom($plan);
@@ -81,18 +88,28 @@ class MembershipController extends Controller
             return redirect()->route('membership.show')->with('error', 'Manage your existing subscription from the billing portal.');
         }
 
+        if (! $this->stripeReady()) {
+            return back()->with('error', 'Stripe keys, webhook signing secret, and paid plan prices must be configured first.');
+        }
+
         $priceId = $membershipPlan->stripePriceId();
 
         if (! $priceId) {
             return back()->with('error', 'Stripe pricing is not configured for this plan yet.');
         }
 
-        return $user
-            ->newSubscription('default', $priceId)
-            ->checkout([
-                'success_url' => route('membership.show', ['checkout' => 1]),
-                'cancel_url' => route('membership.show', ['cancelled' => 1]),
-            ]);
+        try {
+            return $user
+                ->newSubscription('default', $priceId)
+                ->checkout([
+                    'success_url' => route('membership.show', ['checkout' => 1]),
+                    'cancel_url' => route('membership.show', ['cancelled' => 1]),
+                ]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->with('error', 'Stripe checkout is temporarily unavailable. Please try again.');
+        }
     }
 
     public function portal(Request $request): RedirectResponse
@@ -100,19 +117,50 @@ class MembershipController extends Controller
         $user = $request->user();
         abort_unless($user !== null, 401);
 
+        if (! $this->stripeReady()) {
+            return redirect()->route('membership.show')->with('error', 'Stripe billing is not fully configured.');
+        }
+
         if (! $user->subscriptions()->exists()) {
             return redirect()->route('membership.show')->with('error', 'No Stripe billing portal is available until a subscription exists.');
         }
 
-        return $user->redirectToBillingPortal(route('membership.show'));
+        try {
+            return $user->redirectToBillingPortal(route('membership.show'));
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return redirect()->route('membership.show')->with('error', 'The Stripe billing portal is temporarily unavailable.');
+        }
     }
 
     protected function intervalLabel(int $seconds): string
     {
-        return match (true) {
-            $seconds < 60 => $seconds.' seconds',
-            $seconds < 3600 => (int) round($seconds / 60).' minutes',
-            default => (int) round($seconds / 3600).' hours',
+        [$value, $unit] = match (true) {
+            $seconds < 60 => [$seconds, 'second'],
+            $seconds < 3600 => [(int) round($seconds / 60), 'minute'],
+            default => [(int) round($seconds / 3600), 'hour'],
         };
+
+        return $value.' '.$unit.($value === 1 ? '' : 's');
+    }
+
+    protected function stripeReady(): bool
+    {
+        return $this->stripeMissingConfiguration() === [];
+    }
+
+    protected function stripeMissingConfiguration(): array
+    {
+        return collect([
+            'Publishable key' => filled(config('cashier.key')),
+            'Secret key' => filled(config('cashier.secret')),
+            'Webhook signing secret' => filled(config('cashier.webhook.secret')),
+            'Premium price' => filled(MembershipPlan::PREMIUM->stripePriceId()),
+            'Ultra price' => filled(MembershipPlan::ULTRA->stripePriceId()),
+        ])->filter(fn (bool $configured) => ! $configured)
+            ->keys()
+            ->values()
+            ->all();
     }
 }

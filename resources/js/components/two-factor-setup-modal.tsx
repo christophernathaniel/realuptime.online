@@ -78,11 +78,10 @@ function TwoFactorSetupStep({
                 <div className="mx-auto aspect-square w-64 rounded-[20px] border border-white/8 bg-[#101b2f] p-4">
                     <div className="z-10 flex h-full w-full items-center justify-center">
                         {qrCodeSvg ? (
-                            <div
-                                className="aspect-square w-full rounded-[18px] bg-white p-3 [&_svg]:size-full"
-                                dangerouslySetInnerHTML={{
-                                    __html: qrCodeSvg,
-                                }}
+                            <img
+                                src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(qrCodeSvg)}`}
+                                alt="Two-factor authentication QR code"
+                                className="aspect-square w-full rounded-[18px] bg-white p-3"
                                 style={{
                                     filter:
                                         resolvedAppearance === 'dark'
@@ -98,14 +97,19 @@ function TwoFactorSetupStep({
             </div>
 
             <div className="flex w-full">
-                <Button className={`${surfacePrimaryButtonClass} w-full`} onClick={onNextStep}>
+                <Button
+                    className={`${surfacePrimaryButtonClass} w-full`}
+                    onClick={onNextStep}
+                >
                     {buttonText}
                 </Button>
             </div>
 
-            <div className="relative flex w-full items-center justify-center text-[12px] uppercase tracking-[0.22em] text-[#677a99]">
+            <div className="relative flex w-full items-center justify-center text-[12px] tracking-[0.22em] text-[#677a99] uppercase">
                 <div className="absolute inset-0 top-1/2 h-px w-full bg-white/8" />
-                <span className="relative bg-[#101b2f] px-3 py-1">Manual setup key</span>
+                <span className="relative bg-[#101b2f] px-3 py-1">
+                    Manual setup key
+                </span>
             </div>
 
             <div className="flex w-full">
@@ -167,7 +171,10 @@ function TwoFactorVerificationStep({
                 processing: boolean;
                 errors?: { confirmTwoFactorAuthentication?: { code?: string } };
             }) => (
-                <div ref={pinInputContainerRef} className="relative w-full space-y-5">
+                <div
+                    ref={pinInputContainerRef}
+                    className="relative w-full space-y-5"
+                >
                     <div className="flex w-full flex-col items-center space-y-3 py-2">
                         <InputOTP
                             id="otp"
@@ -191,7 +198,9 @@ function TwoFactorVerificationStep({
                             </InputOTPGroup>
                         </InputOTP>
                         <InputError
-                            message={errors?.confirmTwoFactorAuthentication?.code}
+                            message={
+                                errors?.confirmTwoFactorAuthentication?.code
+                            }
                         />
                     </div>
 
@@ -208,7 +217,9 @@ function TwoFactorVerificationStep({
                         <Button
                             type="submit"
                             className={`flex-1 ${surfacePrimaryButtonClass}`}
-                            disabled={processing || code.length < OTP_MAX_LENGTH}
+                            disabled={
+                                processing || code.length < OTP_MAX_LENGTH
+                            }
                         >
                             Confirm
                         </Button>

@@ -29,6 +29,7 @@ Set these before production traffic:
 - `REDIS_CACHE_CONNECTION=cache`
 - `REDIS_SESSION_CONNECTION=session`
 - `REALUPTIME_MONITOR_QUEUE=monitor-checks`
+- `REALUPTIME_MAIN_ADMIN_EMAIL=admin@your-domain.example`
 - `REALUPTIME_HTTP_MONITOR_QUEUE=monitor-checks`
 - `REALUPTIME_NETWORK_MONITOR_QUEUE=monitor-checks`
 - `REALUPTIME_SYNTHETIC_MONITOR_QUEUE=monitor-checks`
@@ -37,11 +38,48 @@ Set these before production traffic:
 - `REALUPTIME_DISPATCH_BATCH_SIZE=250`
 - `REALUPTIME_DISPATCH_MAX_BATCHES=12`
 - `REALUPTIME_CHECK_CLAIM_TTL_SECONDS=180`
+- `REALUPTIME_MINIMUM_MONITOR_INTERVAL_SECONDS=60`
+- `REALUPTIME_MAX_OUTBOUND_RESPONSE_BYTES=2097152`
+- `REALUPTIME_MAX_OUTBOUND_REDIRECTS=5`
+- `REALUPTIME_HEARTBEAT_RATE_LIMIT_PER_MINUTE=12`
+- `REALUPTIME_AUTOMATIC_PRUNING_ENABLED=true`
+- `REALUPTIME_PRUNE_AT=03:15`
+- `STRIPE_KEY`
+- `STRIPE_SECRET`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PREMIUM_PRICE_ID`
+- `STRIPE_ULTRA_PRICE_ID`
+- `CASHIER_CURRENCY=gbp`
+- `CASHIER_CURRENCY_LOCALE=en_GB`
 - `GOOGLE_*` and `GITHUB_*` if OAuth sign-in is enabled
 
 Do not enable `REALUPTIME_DEMO_DATA` in production.
 
 Redis is optional in local development. The app still defaults to database-backed queue, cache, and session drivers unless you explicitly switch the environment variables above.
+
+## Main admin
+
+Only the account matching `REALUPTIME_MAIN_ADMIN_EMAIL` and carrying the database admin flag can access platform user and subscription controls. After that user exists, provision it once during deployment:
+
+```bash
+php artisan realuptime:admin-user admin@your-domain.example
+```
+
+Granting the configured account automatically removes stale admin flags from every other account. Changing the main admin requires changing the environment variable, rebuilding the config cache, and running the command for the new address.
+
+## Stripe billing
+
+Create one GBP monthly recurring Stripe Price for Premium and one for Ultra. Put the resulting `price_...` identifiers in `STRIPE_PREMIUM_PRICE_ID` and `STRIPE_ULTRA_PRICE_ID`.
+
+Register this signed webhook endpoint in Stripe Workbench:
+
+```text
+https://your-domain.example/stripe/webhook
+```
+
+Use the endpoint signing secret as `STRIPE_WEBHOOK_SECRET`. Cashier registers and verifies this route and synchronises subscription creation, plan changes, cancellations, payment-method changes, and successful or action-required invoices. Enable Stripe's customer billing portal so customers can update payment methods and inspect billing without exposing Stripe credentials in RealUptime.
+
+Use Stripe test mode first, complete Checkout, change a plan, schedule cancellation, resume it, and verify the matching local `subscriptions` row changes after each webhook. Repeat with live keys before launch.
 
 ## Redis security
 
@@ -51,6 +89,12 @@ Redis is optional in local development. The app still defaults to database-backe
 - Provide either the `phpredis` PHP extension or a compatible Laravel Redis client in the deployment environment.
 - Moving sessions to Redis does not move authentication state into the browser. The browser still only stores the session cookie identifier. Revocation and device/session auditing continue to use the `user_sessions` table.
 - Keep `SESSION_HTTP_ONLY=true`, `SESSION_SAME_SITE=lax`, and `SESSION_SECURE_COOKIE=true` in production.
+
+## Monitor worker network isolation
+
+Run monitor and notification workers in a dedicated network segment with no route to databases, Redis, control panels, cloud metadata endpoints, or other private services. At the infrastructure firewall, deny loopback, link-local, carrier-grade NAT, private IPv4, unique-local IPv6, and cloud metadata ranges before allowing outbound internet traffic. The application validates and pins public DNS answers on every outbound request, but network egress policy remains the final boundary against SSRF and DNS-rebinding regressions.
+
+The PHP cURL extension is required so HTTP checks can pin the validated IP address with `CURLOPT_RESOLVE`. Do not deploy monitor workers with an HTTP proxy that can independently resolve or reach blocked private destinations.
 
 ## First deploy
 
@@ -62,7 +106,10 @@ php artisan migrate --force
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
+php artisan realuptime:ship-check
 ```
+
+The ship check fails without printing secrets when production, Redis, main-admin, Stripe, retention, or one-minute cadence configuration is incomplete.
 
 ## Mail providers
 
@@ -106,6 +153,10 @@ RealUptime needs both the scheduler and queue workers running continuously.
 php artisan schedule:work
 ```
 
+Register this as a managed, always-running service in the production platform alongside the queue workers. It is not a command that should be started manually after each deployment.
+
+The scheduler automatically runs monitoring data retention every day at `REALUPTIME_PRUNE_AT` in the application timezone. Laravel starts it as an isolated background process with a six-hour overlap lock and single-server coordination, and logs both completion totals and failures. A large compaction therefore cannot block the scheduler or occupy a monitor queue worker. Do not add a second cleanup cron entry or run the pruning command routinely.
+
 ### Dedicated dispatcher
 
 Run this as a separate long-running service for monitor throughput. It removes the 30-second scheduler burst pattern and dispatches due checks every second instead:
@@ -113,6 +164,8 @@ Run this as a separate long-running service for monitor throughput. It removes t
 ```bash
 php artisan monitors:dispatch-loop --sleep-ms=1000
 ```
+
+Run exactly one dispatcher process initially. Monitor claims are database-backed and safe across restarts; a composite due-monitor index keeps each claim query bounded. The scheduler remains a low-frequency fallback if the dedicated dispatcher is temporarily unavailable.
 
 ### Queue workers
 
@@ -191,6 +244,9 @@ For multi-node deployments, run multiple queue workers and keep the scheduler on
 - Keep `monitor-checks` workers stateless and horizontally scalable.
 - Watch queue lag, stale claims, and failed jobs from the `Integrations & API` page and your infrastructure monitoring.
 - If throughput outgrows Redis, move queue transport to a managed system such as SQS while keeping the same job boundaries.
+- Size monitor workers from measured check duration: required concurrency is approximately `sites × average check seconds ÷ 60`, then add at least 50% headroom. For 5,000 sites averaging one second, start near 125 concurrent check slots across the worker fleet.
+- Keep timeouts and retries conservative. A 15-second timeout with two retries can occupy a worker for roughly 45 seconds, so widespread upstream failure requires substantially more capacity than the healthy baseline.
+- Alert when queue lag exceeds 30 seconds or stale claims increase. Those are earlier capacity signals than page-response time.
 
 ## Post-deploy checks
 
@@ -199,3 +255,8 @@ For multi-node deployments, run multiple queue workers and keep the scheduler on
 - Trigger `Test Notification` and confirm a log entry moves from `Pending` to `Sent`.
 - Generate an API token from `Integrations & API` and call `/api/v1/workspace`.
 - Confirm `/status/{user_id}/{slug}` is reachable for a published status page.
+- Confirm the production process manager reports the scheduler as healthy. Daily retention uses that existing service and requires no separate worker, cleanup daemon, or recurring manual command.
+- Confirm the process manager reports the dedicated dispatcher and every queue shard worker as healthy.
+- Confirm monitor worker firewall rules reject private addresses and the platform cloud metadata endpoint.
+- Run `php artisan realuptime:ship-check` against the live environment and resolve every failed row.
+- Confirm a signed Stripe test webhook reaches `/stripe/webhook` and changes local subscription state.

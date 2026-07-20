@@ -1,8 +1,10 @@
 <?php
 
+use App\Jobs\RunMonitorCheckJob;
 use App\Models\Monitor;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 
 uses(RefreshDatabase::class);
 
@@ -22,6 +24,7 @@ it('creates api tokens from the integrations area and uses them against the api'
     ]);
 
     $response = $this->actingAs($user)
+        ->withSession(['auth.password_confirmed_at' => time()])
         ->post('/api-tokens', [
             'name' => 'CI pipeline',
         ]);
@@ -46,6 +49,34 @@ it('rejects invalid api tokens', function () {
         'Authorization' => 'Bearer invalid-token',
     ])->assertUnauthorized()->assertJson([
         'message' => 'Invalid token.',
+    ]);
+});
+
+it('rate limits rotating invalid api tokens by source address', function () {
+    config()->set('realuptime.security.api_ip_rate_limit_per_minute', 2);
+
+    foreach (['invalid-one', 'invalid-two'] as $token) {
+        $this->getJson('/api/v1/workspace', [
+            'Authorization' => 'Bearer '.$token,
+        ])->assertUnauthorized();
+    }
+
+    $this->getJson('/api/v1/workspace', [
+        'Authorization' => 'Bearer invalid-three',
+    ])->assertTooManyRequests();
+});
+
+it('revokes api entitlement immediately when a workspace loses its paid feature access', function () {
+    $user = User::factory()->create();
+    $user->apiTokens()->create([
+        'name' => 'Former paid token',
+        'token_hash' => hash('sha256', 'former-paid-token'),
+    ]);
+
+    $this->getJson('/api/v1/workspace', [
+        'Authorization' => 'Bearer former-paid-token',
+    ])->assertForbidden()->assertJson([
+        'message' => 'This workspace no longer includes API access.',
     ]);
 });
 
@@ -88,4 +119,35 @@ it('paginates api monitor listings', function () {
     expect($response->json('links.previous'))->toContain('per_page=20');
     expect($response->json('links.next'))->toContain('page=3');
     expect($response->json('links.next'))->toContain('per_page=20');
+});
+
+it('rate limits on-demand api checks per monitor', function () {
+    Queue::fake();
+
+    $user = User::factory()->premium()->create();
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'API check target',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com/health',
+        'request_method' => 'GET',
+        'interval_seconds' => 60,
+        'timeout_seconds' => 15,
+        'retry_limit' => 1,
+        'region' => 'Europe',
+    ]);
+    $user->apiTokens()->create([
+        'name' => 'Check client',
+        'token_hash' => hash('sha256', 'check-token'),
+    ]);
+    $headers = ['Authorization' => 'Bearer check-token'];
+
+    $this->postJson("/api/v1/monitors/{$monitor->id}/run-now", [], $headers)
+        ->assertOk();
+
+    $this->postJson("/api/v1/monitors/{$monitor->id}/run-now", [], $headers)
+        ->assertStatus(429);
+
+    Queue::assertPushed(RunMonitorCheckJob::class, 1);
 });

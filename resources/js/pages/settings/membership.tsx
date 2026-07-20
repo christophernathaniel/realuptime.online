@@ -1,8 +1,9 @@
-import { Head, Link, router, usePage } from '@inertiajs/react';
-import { CreditCard, Lock, ShieldCheck, Sparkles } from 'lucide-react';
+import { Head, router, usePage } from '@inertiajs/react';
+import { Check, CreditCard, Gauge, ShieldCheck, XCircle } from 'lucide-react';
 import { PageCard } from '@/components/monitoring/page-card';
 import MonitoringLayout from '@/layouts/monitoring-layout';
 import SettingsLayout from '@/layouts/settings/layout';
+import { cn } from '@/lib/utils';
 
 type MembershipPageProps = {
     membership: {
@@ -28,18 +29,29 @@ type MembershipPageProps = {
             stripeEnabled: boolean;
             isCurrent: boolean;
         }>;
+        stripeReady: boolean;
+        stripeMissing: string[];
         canCheckout: boolean;
         canManageBilling: boolean;
         subscriptionActive: boolean;
         subscriptionStatus: string | null;
+        subscriptionOnGracePeriod: boolean;
+        subscriptionEndsAt: string | null;
         adminOverride: string | null;
+        supportExtension?: {
+            plan: string;
+            planLabel: string;
+            expiresAt: string | null;
+        } | null;
         checkoutSuccess: boolean;
         checkoutCancelled: boolean;
     };
 };
 
 export default function MembershipPage({ membership }: MembershipPageProps) {
-    const flash = usePage<{ flash?: { success?: string | null; error?: string | null } }>().props.flash;
+    const flash = usePage<{
+        flash?: { success?: string | null; error?: string | null };
+    }>().props.flash;
 
     return (
         <MonitoringLayout>
@@ -47,138 +59,204 @@ export default function MembershipPage({ membership }: MembershipPageProps) {
 
             <SettingsLayout
                 title="Membership"
-                description="Upgrade the workspace subscription, review check limits, and manage billing through Stripe when applicable."
+                description="Plan limits, subscription status, and Stripe billing for this workspace."
             >
-                <PageCard className="space-y-6 p-6 sm:p-7">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                {flash?.error ||
+                flash?.success ||
+                membership.checkoutSuccess ||
+                membership.checkoutCancelled ? (
+                    <div
+                        className={cn(
+                            'rounded-md border px-4 py-3 text-sm',
+                            flash?.error
+                                ? 'border-[#ff6269]/25 bg-[#2a1621] text-[#ffd4d7]'
+                                : 'border-[#57c7c2]/20 bg-[#0f2527] text-[#b8ece8]',
+                        )}
+                    >
+                        {flash?.error ??
+                            flash?.success ??
+                            (membership.checkoutSuccess
+                                ? 'Checkout completed. Stripe will confirm the subscription through the signed webhook.'
+                                : 'Checkout was cancelled before completion.')}
+                    </div>
+                ) : null}
+
+                <PageCard className="p-0">
+                    <div className="flex flex-col gap-5 border-b border-white/8 p-5 sm:p-6 lg:flex-row lg:items-start lg:justify-between">
                         <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.26em] text-[#61718f]">
+                            <div className="text-sm text-[#9ca7b9]">
                                 Current plan
                             </div>
-                            <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.05em] text-white">
+                            <div className="mt-1 text-2xl font-semibold text-white">
                                 {membership.currentPlan.label}
-                                <span className="text-[#7c8cff]">.</span>
-                            </h2>
-                            <div className="mt-2 text-[15px] text-[#9ca7b9]">
-                                {membership.currentPlan.priceLabel} • {membership.currentPlan.sourceLabel}
+                            </div>
+                            <div className="mt-1 text-sm text-[#9ca7b9]">
+                                {membership.currentPlan.priceLabel} ·{' '}
+                                {membership.currentPlan.sourceLabel}
                             </div>
                         </div>
-                        {membership.currentPlan.isAdmin ? (
-                            <div className="rounded-[16px] border border-[#7c8cff]/18 bg-[#171c33] px-4 py-3 text-sm text-[#dbe1ff]">
-                                Platform admin access is enabled on this account. Workspace subscriptions and limits still follow the selected membership plan.
-                            </div>
-                        ) : null}
+                        <div className="flex flex-wrap items-center gap-2">
+                            {membership.currentPlan.isAdmin ? (
+                                <span className="inline-flex items-center gap-2 rounded-md border border-[#7c8cff]/20 px-3 py-2 text-xs text-[#dbe1ff]">
+                                    <ShieldCheck className="size-4" />
+                                    Main admin
+                                </span>
+                            ) : null}
+                            {membership.canManageBilling ? (
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        router.post(
+                                            '/settings/membership/portal',
+                                        )
+                                    }
+                                    className="inline-flex h-10 items-center gap-2 rounded-md bg-[#7c8cff] px-4 text-sm font-medium text-white"
+                                >
+                                    <CreditCard className="size-4" />
+                                    Manage billing
+                                </button>
+                            ) : null}
+                        </div>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-3">
-                        <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
-                            <div className="text-sm text-[#9ca7b9]">Monitor limit</div>
-                            <div className="mt-1 text-[26px] font-semibold text-white">{membership.currentPlan.monitorLimitLabel}</div>
-                        </div>
-                        <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
-                            <div className="text-sm text-[#9ca7b9]">Fastest interval</div>
-                            <div className="mt-1 text-[26px] font-semibold text-white">{membership.currentPlan.minimumIntervalLabel}</div>
-                        </div>
-                        <div className="rounded-[18px] bg-[#171d28] px-5 py-5">
-                            <div className="text-sm text-[#9ca7b9]">Customization & workspace</div>
-                            <div className={`mt-1 text-[26px] font-semibold ${membership.currentPlan.advancedFeaturesUnlocked ? 'text-[#7c8cff]' : 'text-[#7c8cff]'}`}>
-                                {membership.currentPlan.advancedFeaturesUnlocked ? 'Unlocked' : 'Locked'}
+                    <div className="grid divide-y divide-white/8 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+                        <div className="p-5">
+                            <div className="text-xs text-[#7f8eab] uppercase">
+                                Monitor limit
+                            </div>
+                            <div className="mt-2 text-xl font-semibold text-white">
+                                {membership.currentPlan.monitorLimitLabel}
                             </div>
                         </div>
+                        <div className="p-5">
+                            <div className="text-xs text-[#7f8eab] uppercase">
+                                Fastest check
+                            </div>
+                            <div className="mt-2 text-xl font-semibold text-white">
+                                {membership.currentPlan.minimumIntervalLabel}
+                            </div>
+                        </div>
+                        <div className="p-5">
+                            <div className="text-xs text-[#7f8eab] uppercase">
+                                Subscription
+                            </div>
+                            <div className="mt-2 text-xl font-semibold text-white">
+                                {membership.subscriptionOnGracePeriod
+                                    ? 'Cancelling'
+                                    : (membership.subscriptionStatus ??
+                                      'No Stripe plan')}
+                            </div>
+                            {membership.subscriptionEndsAt ? (
+                                <div className="mt-1 text-xs text-[#9ca7b9]">
+                                    Access ends {membership.subscriptionEndsAt}
+                                </div>
+                            ) : null}
+                        </div>
                     </div>
-
-                    {flash?.error ? (
-                        <div className="rounded-[18px] border border-[#ff6269]/20 bg-[#2a1621] px-4 py-3 text-sm text-[#ffd4d7]">
-                            {flash.error}
-                        </div>
-                    ) : null}
-
-                    {flash?.success ? (
-                        <div className="rounded-[18px] border border-[#7c8cff]/18 bg-[#171c33] px-4 py-3 text-sm text-[#dbe1ff]">
-                            {flash.success}
-                        </div>
-                    ) : null}
-
-                    {membership.checkoutSuccess ? (
-                        <div className="rounded-[18px] border border-[#7c8cff]/18 bg-[#171c33] px-4 py-3 text-sm text-[#dbe1ff]">
-                            Stripe checkout completed. Subscription access will reflect as soon as Stripe syncs the subscription back into the app.
-                        </div>
-                    ) : null}
-
-                    {membership.checkoutCancelled ? (
-                        <div className="rounded-[18px] border border-[#7c8cff]/18 bg-[#1f2644] px-4 py-3 text-sm text-[#c7d0ff]">
-                            Stripe checkout was cancelled before completion.
-                        </div>
-                    ) : null}
                 </PageCard>
 
-                <div className="grid gap-5 xl:grid-cols-3">
-                    {membership.plans.map((plan) => (
-                        <PageCard key={plan.value} className="flex flex-col p-6">
-                            <div className="flex items-start justify-between gap-3">
-                                <div>
-                                    <div className="text-[22px] font-semibold text-white">{plan.label}</div>
-                                    <div className="mt-1 text-[15px] text-[#9ca7b9]">{plan.priceLabel}</div>
-                                </div>
-                                {plan.isCurrent ? (
-                                    <div className="rounded-full border border-[#7c8cff]/20 bg-[#171c33] px-3 py-1 text-xs font-medium text-[#dbe1ff]">
-                                        Current
-                                    </div>
-                                ) : null}
-                            </div>
+                {!membership.stripeReady && membership.currentPlan.isAdmin ? (
+                    <div className="flex items-start gap-3 rounded-md border border-[#ff6269]/20 bg-[#2a1621] px-4 py-3 text-sm text-[#ffd4d7]">
+                        <XCircle className="mt-0.5 size-4 shrink-0" />
+                        Stripe setup is incomplete:{' '}
+                        {membership.stripeMissing.join(', ')}.
+                    </div>
+                ) : null}
 
-                            <div className="mt-5 space-y-3 text-sm text-[#dce6fb]">
-                                <div className="flex items-center gap-2">
-                                    <Sparkles className="size-4 text-[#7c8cff]" />
-                                    {plan.monitorLimit} monitors
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <CreditCard className="size-4 text-[#9bb4ff]" />
-                                    Fastest interval: {plan.minimumIntervalLabel}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {plan.advancedFeaturesUnlocked ? (
-                                        <ShieldCheck className="size-4 text-[#7c8cff]" />
-                                    ) : (
-                                        <Lock className="size-4 text-[#7c8cff]" />
-                                    )}
-                                    {plan.advancedFeaturesUnlocked ? 'Full check customization plus status pages, incidents, maintenance, team, and integrations' : 'Core monitoring with the fixed Free profile'}
-                                </div>
-                            </div>
-
-                            <div className="mt-6">
-                                {plan.value === 'free' ? (
-                                    <div className="rounded-[14px] bg-[#171d28] px-4 py-3 text-sm text-[#9ca7b9]">
-                                        Free workspaces include 10 monitors with the standard 5-minute profile and no custom check configuration.
-                                    </div>
-                                ) : membership.canCheckout && !plan.isCurrent ? (
-                                    <Link
-                                        href={`/settings/membership/checkout/${plan.value}`}
-                                        method="post"
-                                        as="button"
-                                        className={`inline-flex h-11 w-full items-center justify-center rounded-[14px] bg-[#7c8cff] px-4 text-sm font-medium text-white ${plan.stripeEnabled ? '' : 'pointer-events-none opacity-50'}`}
-                                    >
-                                        {plan.stripeEnabled ? `Subscribe to ${plan.label}` : 'Stripe not configured'}
-                                    </Link>
-                                ) : membership.canManageBilling && membership.subscriptionActive ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => router.post('/settings/membership/portal')}
-                                        className="inline-flex h-11 w-full items-center justify-center rounded-[14px] border border-white/10 bg-[#171d28] px-4 text-sm font-medium text-[#dce6fb]"
-                                    >
-                                        Manage in Stripe
-                                    </button>
-                                ) : (
-                                    <div className="rounded-[14px] bg-[#171d28] px-4 py-3 text-sm text-[#9ca7b9]">
-                                        {membership.adminOverride
-                                            ? 'This workspace plan is not available for self-service changes.'
-                                            : 'This plan is already active or managed through Stripe.'}
-                                    </div>
+                <PageCard className="overflow-hidden p-0">
+                    <div className="border-b border-white/8 px-5 py-4 sm:px-6">
+                        <div className="text-lg font-semibold text-white">
+                            Plan comparison
+                        </div>
+                    </div>
+                    <div className="hidden grid-cols-[1.1fr_0.8fr_0.8fr_1.4fr_180px] gap-4 border-b border-white/8 px-6 py-3 text-xs text-[#7f8eab] uppercase lg:grid">
+                        <span>Plan</span>
+                        <span>Monitors</span>
+                        <span>Interval</span>
+                        <span>Workspace</span>
+                        <span />
+                    </div>
+                    <div className="divide-y divide-white/8">
+                        {membership.plans.map((plan) => (
+                            <div
+                                key={plan.value}
+                                className={cn(
+                                    'grid gap-4 px-5 py-5 sm:px-6 lg:grid-cols-[1.1fr_0.8fr_0.8fr_1.4fr_180px] lg:items-center',
+                                    plan.isCurrent && 'bg-[#151b2a]',
                                 )}
+                            >
+                                <div>
+                                    <div className="flex items-center gap-2 font-medium text-white">
+                                        {plan.label}
+                                        {plan.isCurrent ? (
+                                            <span className="rounded-md bg-[#263052] px-2 py-0.5 text-[11px] text-[#dbe1ff]">
+                                                Current
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                    <div className="mt-1 text-sm text-[#9ca7b9]">
+                                        {plan.priceLabel}
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 text-sm text-[#dce6fb]">
+                                    <Gauge className="size-4 text-[#7c8cff]" />
+                                    {plan.monitorLimit}
+                                </div>
+                                <div className="text-sm text-[#dce6fb]">
+                                    {plan.minimumIntervalLabel}
+                                </div>
+                                <div className="flex items-start gap-2 text-sm text-[#9ca7b9]">
+                                    <Check className="mt-0.5 size-4 shrink-0 text-[#57c7c2]" />
+                                    {plan.advancedFeaturesUnlocked
+                                        ? 'Status pages, incidents, maintenance, team, integrations, and custom checks'
+                                        : 'Core uptime monitoring with the standard check profile'}
+                                </div>
+                                <div>
+                                    {plan.value === 'free' || plan.isCurrent ? (
+                                        <span className="text-sm text-[#7f8eab]">
+                                            {plan.isCurrent
+                                                ? 'Active plan'
+                                                : 'Included'}
+                                        </span>
+                                    ) : membership.canCheckout ? (
+                                        <button
+                                            type="button"
+                                            disabled={!plan.stripeEnabled}
+                                            onClick={() =>
+                                                router.post(
+                                                    `/settings/membership/checkout/${plan.value}`,
+                                                )
+                                            }
+                                            className="inline-flex h-10 w-full items-center justify-center rounded-md bg-[#7c8cff] px-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            {plan.stripeEnabled
+                                                ? `Choose ${plan.label}`
+                                                : 'Unavailable'}
+                                        </button>
+                                    ) : membership.canManageBilling ? (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                router.post(
+                                                    '/settings/membership/portal',
+                                                )
+                                            }
+                                            className="inline-flex h-10 w-full items-center justify-center rounded-md border border-white/10 px-3 text-sm text-[#dce6fb]"
+                                        >
+                                            Manage in Stripe
+                                        </button>
+                                    ) : (
+                                        <span className="text-sm text-[#7f8eab]">
+                                            {membership.adminOverride
+                                                ? 'Managed by admin'
+                                                : 'Not available'}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
-                        </PageCard>
-                    ))}
-                </div>
+                        ))}
+                    </div>
+                </PageCard>
             </SettingsLayout>
         </MonitoringLayout>
     );

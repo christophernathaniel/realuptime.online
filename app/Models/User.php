@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\MembershipPlan;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -16,7 +17,7 @@ use RuntimeException;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
+    /** @use HasFactory<UserFactory> */
     use Billable, HasFactory, Notifiable, TwoFactorAuthenticatable;
 
     protected bool $subscriptionPlanResolved = false;
@@ -277,7 +278,19 @@ class User extends Authenticatable
 
     public function minimumMonitorIntervalSeconds(?self $actor = null): int
     {
-        return $this->membershipPlan()->minimumIntervalSeconds();
+        return max(
+            (int) config('realuptime.dispatch.minimum_interval_seconds', 60),
+            $this->membershipPlan()->minimumIntervalSeconds(),
+        );
+    }
+
+    public function isMainAdmin(): bool
+    {
+        $mainAdminEmail = trim((string) config('realuptime.admin.main_admin_email'));
+
+        return $mainAdminEmail !== ''
+            && (bool) $this->is_admin
+            && strcasecmp($mainAdminEmail, (string) $this->email) === 0;
     }
 
     public function hasReachedMonitorLimit(?self $actor = null): bool

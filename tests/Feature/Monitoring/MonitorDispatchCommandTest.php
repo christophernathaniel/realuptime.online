@@ -3,6 +3,7 @@
 use App\Jobs\RunMonitorCheckJob;
 use App\Models\Monitor;
 use App\Models\User;
+use App\Services\Monitoring\MonitorRunner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Queue;
@@ -56,6 +57,21 @@ it('dispatches only due monitors onto the queue', function () {
         'next_check_at' => now()->subMinute(),
     ]);
 
+    $recentlyDispatched = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Recently dispatched API',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com/recent',
+        'request_method' => 'GET',
+        'interval_seconds' => 60,
+        'timeout_seconds' => 15,
+        'retry_limit' => 1,
+        'region' => 'North America',
+        'next_check_at' => now()->subMinute(),
+        'last_dispatched_at' => now()->subSeconds(30),
+    ]);
+
     Artisan::call('monitors:run-due', [
         '--batch' => 100,
         '--max-batches' => 2,
@@ -66,6 +82,7 @@ it('dispatches only due monitors onto the queue', function () {
 
     expect($dueMonitor->fresh()->check_claimed_at)->not->toBeNull();
     expect(Monitor::query()->where('name', 'Future API')->first()?->check_claimed_at)->toBeNull();
+    expect($recentlyDispatched->fresh()->check_claimed_at)->toBeNull();
 });
 
 it('shards monitor check jobs across configured monitor queues', function () {
@@ -217,4 +234,51 @@ it('dispatch loop can run a single iteration on demand', function () {
     ]);
 
     Queue::assertPushed(RunMonitorCheckJob::class, 1);
+});
+
+it('discards a queued check after a newer dispatcher claim replaces its token', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Reclaimed API',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com/health',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 15,
+        'retry_limit' => 1,
+        'region' => 'North America',
+        'next_check_at' => now()->subMinute(),
+    ]);
+
+    Artisan::call('monitors:run-due', [
+        '--batch' => 100,
+        '--max-batches' => 2,
+    ]);
+
+    $queuedJob = null;
+    Queue::assertPushed(RunMonitorCheckJob::class, function (RunMonitorCheckJob $job) use (&$queuedJob, $monitor) {
+        if ($job->monitorId !== $monitor->id) {
+            return false;
+        }
+
+        $queuedJob = $job;
+
+        return filled($job->claimToken);
+    });
+
+    $monitor->forceFill([
+        'check_claim_token' => 'newer-claim-token',
+        'check_claimed_at' => now(),
+    ])->save();
+
+    $runner = Mockery::mock(MonitorRunner::class);
+    $runner->shouldNotReceive('runMonitor');
+
+    $queuedJob->handle($runner);
+
+    expect($monitor->fresh()->check_claim_token)->toBe('newer-claim-token');
 });

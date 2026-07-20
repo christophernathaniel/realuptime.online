@@ -16,8 +16,21 @@ class AdminUserCommand extends Command
 
     public function handle(): int
     {
-        $email = Str::lower((string) $this->argument('email'));
+        $email = Str::lower(trim((string) $this->argument('email')));
+        $mainAdminEmail = Str::lower(trim((string) config('realuptime.admin.main_admin_email')));
         $grantAdmin = ! $this->option('revoke');
+
+        if ($mainAdminEmail === '') {
+            $this->error('Set REALUPTIME_MAIN_ADMIN_EMAIL before granting platform admin access.');
+
+            return self::FAILURE;
+        }
+
+        if ($email !== $mainAdminEmail) {
+            $this->error(sprintf('%s is not the configured REALUPTIME_MAIN_ADMIN_EMAIL.', $email));
+
+            return self::FAILURE;
+        }
 
         $user = User::query()
             ->whereRaw('LOWER(email) = ?', [$email])
@@ -29,10 +42,11 @@ class AdminUserCommand extends Command
             return self::FAILURE;
         }
 
-        if (! $grantAdmin && $user->is_admin && User::query()->where('is_admin', true)->whereKeyNot($user->id)->doesntExist()) {
-            $this->error('At least one admin user must remain.');
-
-            return self::FAILURE;
+        if ($grantAdmin) {
+            User::query()
+                ->whereKeyNot($user->id)
+                ->where('is_admin', true)
+                ->update(['is_admin' => false]);
         }
 
         $user->forceFill([
@@ -42,7 +56,7 @@ class AdminUserCommand extends Command
         $this->info(sprintf(
             '%s %s.',
             $user->email,
-            $grantAdmin ? 'now has admin access' : 'no longer has admin access',
+            $grantAdmin ? 'is now the sole main admin' : 'no longer has main admin access',
         ));
 
         return self::SUCCESS;

@@ -86,14 +86,23 @@ class Monitor extends Model
         'ssl_checked_at',
     ];
 
+    protected $hidden = [
+        'auth_password',
+        'check_claim_token',
+        'custom_headers',
+        'downtime_webhook_urls',
+        'heartbeat_token',
+        'synthetic_steps',
+    ];
+
     protected function casts(): array
     {
         return [
             'follow_redirects' => 'boolean',
             'admin_interval_override' => 'boolean',
-            'custom_headers' => 'array',
-            'synthetic_steps' => 'array',
-            'downtime_webhook_urls' => 'array',
+            'custom_headers' => 'encrypted:array',
+            'synthetic_steps' => 'encrypted:array',
+            'downtime_webhook_urls' => 'encrypted:array',
             'last_checked_at' => 'datetime',
             'last_result_stored_at' => 'datetime',
             'next_check_at' => 'datetime',
@@ -111,6 +120,13 @@ class Monitor extends Model
 
     protected static function booted(): void
     {
+        static::saving(function (Monitor $monitor): void {
+            $monitor->interval_seconds = max(
+                (int) config('realuptime.dispatch.minimum_interval_seconds', 60),
+                (int) $monitor->interval_seconds,
+            );
+        });
+
         static::creating(function (Monitor $monitor): void {
             if (empty($monitor->public_id)) {
                 $monitor->public_id = (string) Str::ulid();
@@ -144,6 +160,11 @@ class Monitor extends Model
     public function checkResults(): HasMany
     {
         return $this->hasMany(CheckResult::class);
+    }
+
+    public function checkResultRollups(): HasMany
+    {
+        return $this->hasMany(CheckResultRollup::class);
     }
 
     public function incidents(): HasMany

@@ -3,11 +3,13 @@
 namespace App\Services\Monitoring\Integrations;
 
 use App\Models\WorkspaceIntegration;
-use Illuminate\Support\Facades\Http;
+use App\Services\Security\OutboundHttpClient;
 use RuntimeException;
 
 class WebhookWorkspaceIntegrationProvider implements WorkspaceIntegrationProvider
 {
+    public function __construct(protected OutboundHttpClient $outboundHttp) {}
+
     public function provider(): string
     {
         return WorkspaceIntegration::PROVIDER_WEBHOOK;
@@ -47,13 +49,16 @@ class WebhookWorkspaceIntegrationProvider implements WorkspaceIntegrationProvide
             throw new RuntimeException('Webhook URL is missing.');
         }
 
-        $response = Http::asJson()
-            ->acceptJson()
-            ->timeout(10)
-            ->withHeaders([
+        $response = $this->outboundHttp->send(
+            method: 'POST',
+            url: $webhookUrl,
+            timeoutSeconds: 10,
+            headers: [
+                'Accept' => 'application/json',
                 'User-Agent' => 'RealUptime Workflow Webhooks',
-            ])
-            ->post($webhookUrl, $this->workflowPayload($integration, $event, $payload));
+            ],
+            options: ['json' => $this->workflowPayload($integration, $event, $payload)],
+        );
 
         if (! $response->successful()) {
             throw new RuntimeException(sprintf('Webhook responded with HTTP %d.', $response->status()));

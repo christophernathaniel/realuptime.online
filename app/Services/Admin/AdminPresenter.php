@@ -22,10 +22,13 @@ use Throwable;
 
 class AdminPresenter
 {
+    protected const MONITOR_PREVIEW_LIMIT = 50;
+
+    protected const RELATED_PREVIEW_LIMIT = 25;
+
     public function users(?string $search = null, int $page = 1): array
     {
         $search = trim((string) $search);
-        $openIncidentCounts = $this->openIncidentCountsByUser();
 
         $users = User::query()
             ->withCount([
@@ -52,11 +55,18 @@ class AdminPresenter
             ->orderBy('name')
             ->paginate(16, ['*'], 'page', $page)
             ->withQueryString();
+        $openIncidentCounts = $this->openIncidentCountsByUser(
+            collect($users->items())->pluck('id')->map(fn ($id) => (int) $id)->all(),
+        );
+        $mainAdminEmail = trim((string) config('realuptime.admin.main_admin_email'));
 
         return [
             'summary' => [
                 'users' => User::query()->count(),
-                'admins' => User::query()->where('is_admin', true)->count(),
+                'admins' => $mainAdminEmail === '' ? 0 : User::query()
+                    ->where('is_admin', true)
+                    ->whereRaw('LOWER(email) = ?', [Str::lower($mainAdminEmail)])
+                    ->count(),
                 'monitors' => Monitor::query()->count(),
                 'supportExtensions' => User::query()
                     ->whereNotNull('support_plan_extension')
@@ -64,6 +74,7 @@ class AdminPresenter
                     ->count(),
                 'openIncidents' => Incident::query()->whereNull('resolved_at')->count(),
             ],
+            'billingConfiguration' => $this->billingConfiguration(),
             'filters' => [
                 'search' => $search,
             ],
@@ -86,32 +97,54 @@ class AdminPresenter
             'assignedAdmin:id,name,email',
             'supportPlanGranter:id,name,email',
             'monitors' => fn ($query) => $query
-                ->withCount(['openIncidents', 'checkResults', 'notificationLogs'])
+                ->withCount(['openIncidents', 'notificationLogs'])
                 ->with([
-                    'statusPages:id,name,slug',
-                    'notificationContacts:id,name',
-                    'capabilities:id,name',
+                    'statusPages' => fn ($relationQuery) => $relationQuery
+                        ->select(['status_pages.id', 'status_pages.name', 'status_pages.slug'])
+                        ->orderBy('status_pages.name')
+                        ->limit(8),
+                    'notificationContacts' => fn ($relationQuery) => $relationQuery
+                        ->select(['notification_contacts.id', 'notification_contacts.name'])
+                        ->orderBy('notification_contacts.name')
+                        ->limit(8),
+                    'capabilities' => fn ($relationQuery) => $relationQuery
+                        ->select(['capabilities.id', 'capabilities.name'])
+                        ->orderBy('capabilities.name')
+                        ->limit(8),
                 ])
                 ->orderByRaw("case when status = 'down' then 0 when status = 'up' then 1 else 2 end")
-                ->orderBy('name'),
+                ->orderBy('name')
+                ->limit(self::MONITOR_PREVIEW_LIMIT),
             'statusPages' => fn ($query) => $query
                 ->withCount(['monitors', 'incidents'])
-                ->with('monitors:id,name')
+                ->with(['monitors' => fn ($relationQuery) => $relationQuery
+                    ->select(['monitors.id', 'monitors.name'])
+                    ->orderBy('monitors.name')
+                    ->limit(4)])
                 ->orderByDesc('published')
-                ->orderBy('name'),
+                ->orderBy('name')
+                ->limit(self::RELATED_PREVIEW_LIMIT),
             'notificationContacts' => fn ($query) => $query
                 ->withCount('notificationLogs')
-                ->with('monitors:id,name')
+                ->with(['monitors' => fn ($relationQuery) => $relationQuery
+                    ->select(['monitors.id', 'monitors.name'])
+                    ->orderBy('monitors.name')
+                    ->limit(4)])
                 ->orderByDesc('is_primary')
-                ->orderBy('name'),
+                ->orderBy('name')
+                ->limit(self::RELATED_PREVIEW_LIMIT),
             'workspaceIntegrations' => fn ($query) => $query
                 ->withCount('notificationLogs')
-                ->latest(),
-            'apiTokens' => fn ($query) => $query->latest(),
+                ->latest()
+                ->limit(self::RELATED_PREVIEW_LIMIT),
+            'apiTokens' => fn ($query) => $query
+                ->latest()
+                ->limit(self::RELATED_PREVIEW_LIMIT),
             'ownedWorkspaceMemberships' => fn ($query) => $query
                 ->with(['member:id,name,email', 'inviter:id,name,email'])
                 ->orderByDesc('accepted_at')
-                ->orderByDesc('invited_at'),
+                ->orderByDesc('invited_at')
+                ->limit(self::RELATED_PREVIEW_LIMIT),
             'trackedSessions' => fn ($query) => $query
                 ->latest('last_active_at')
                 ->limit(8),
@@ -154,7 +187,8 @@ class AdminPresenter
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
-                'isAdmin' => (bool) $user->is_admin,
+                'isAdmin' => $user->isMainAdmin(),
+                'passwordLoginEnabled' => (bool) $user->password_login_enabled,
                 'emailVerified' => $user->email_verified_at !== null,
                 'createdAt' => $user->created_at?->format('M j, Y H:i'),
                 'lastActiveAt' => $user->latestTrackedSession?->last_active_at?->format('M j, Y H:i'),
@@ -201,6 +235,14 @@ class AdminPresenter
                 'supportPlanOptions' => $this->supportPlanOptions(),
             ],
             'billing' => $this->billingData($user),
+            'collectionMeta' => [
+                'monitors' => $this->collectionMeta($user->monitors->count(), (int) $user->monitors_count),
+                'statusPages' => $this->collectionMeta($user->statusPages->count(), (int) $user->status_pages_count),
+                'contacts' => $this->collectionMeta($user->notificationContacts->count(), (int) $user->notification_contacts_count),
+                'integrations' => $this->collectionMeta($user->workspaceIntegrations->count(), (int) $user->workspace_integrations_count),
+                'apiTokens' => $this->collectionMeta($user->apiTokens->count(), (int) $user->api_tokens_count),
+                'team' => $this->collectionMeta($user->ownedWorkspaceMemberships->count(), (int) $user->accepted_members_count + (int) $user->pending_invitations_count),
+            ],
             'monitors' => $user->monitors->map(function (Monitor $monitor): array {
                 return [
                     'id' => $monitor->id,
@@ -219,7 +261,6 @@ class AdminPresenter
                     'lastHttpStatus' => $monitor->last_http_status,
                     'lastError' => $monitor->last_error_message,
                     'openIncidentsCount' => (int) $monitor->open_incidents_count,
-                    'checkResultsCount' => (int) $monitor->check_results_count,
                     'notificationLogsCount' => (int) $monitor->notification_logs_count,
                     'statusPages' => $monitor->statusPages->pluck('name')->values()->all(),
                     'contacts' => $monitor->notificationContacts->pluck('name')->values()->all(),
@@ -331,7 +372,7 @@ class AdminPresenter
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
-            'isAdmin' => (bool) $user->is_admin,
+            'isAdmin' => $user->isMainAdmin(),
             'emailVerified' => $user->email_verified_at !== null,
             'membershipPlan' => $user->membershipPlan()->value,
             'membershipPlanLabel' => $user->membershipPlan()->label(),
@@ -361,9 +402,13 @@ class AdminPresenter
     {
         $subscription = $user->subscription('default');
         $subscriptionPlan = $user->subscriptionPlan();
+        $configuration = $this->billingConfiguration();
+        $onGracePeriod = $subscription?->onGracePeriod() ?? false;
+        $ended = $subscription?->ended() ?? false;
         $currentSubscription = $subscription ? [
             'stripeId' => $subscription->stripe_id,
             'status' => $subscription->stripe_status,
+            'plan' => $subscriptionPlan?->value,
             'planLabel' => $subscriptionPlan?->label(),
             'priceIds' => $subscription->items->isNotEmpty()
                 ? $subscription->items->pluck('stripe_price')->values()->all()
@@ -373,41 +418,93 @@ class AdminPresenter
             'endsAt' => $subscription->ends_at?->format('M j, Y H:i'),
             'createdAt' => $subscription->created_at?->format('M j, Y H:i'),
             'valid' => $subscription->valid(),
+            'onGracePeriod' => $onGracePeriod,
+            'ended' => $ended,
         ] : null;
 
-        $paymentMethodLabel = $user->pm_type && $user->pm_last_four
+        $hasSavedPaymentMethod = (bool) ($user->pm_type && $user->pm_last_four);
+        $paymentMethodLabel = $hasSavedPaymentMethod
             ? sprintf('%s ending in %s', ucfirst($user->pm_type), $user->pm_last_four)
             : 'No saved card on record';
-
-        $invoices = [];
-        $invoiceStatus = 'unavailable';
-        $invoiceError = null;
-
-        if (blank($user->stripe_id)) {
-            $invoiceStatus = 'none';
-        } elseif (blank(config('cashier.secret'))) {
-            $invoiceStatus = 'error';
-            $invoiceError = 'Stripe secret is not configured in this environment.';
-        } else {
-            try {
-                $invoices = $user->invoices(true, ['limit' => 12])
-                    ->map(fn (Invoice $invoice) => $this->invoiceItem($invoice))
-                    ->values()
-                    ->all();
-                $invoiceStatus = 'loaded';
-            } catch (Throwable $exception) {
-                $invoiceStatus = 'error';
-                $invoiceError = 'Stripe invoice history is currently unavailable.';
-            }
-        }
 
         return [
             'customerId' => $user->stripe_id,
             'paymentMethodLabel' => $paymentMethodLabel,
+            'hasSavedPaymentMethod' => $hasSavedPaymentMethod,
             'currentSubscription' => $currentSubscription,
-            'invoiceStatus' => $invoiceStatus,
-            'invoiceError' => $invoiceError,
-            'invoices' => $invoices,
+            'configuration' => $configuration,
+            'planOptions' => collect(MembershipPlan::paidCases())->map(fn (MembershipPlan $plan) => [
+                'value' => $plan->value,
+                'label' => $plan->label(),
+                'priceLabel' => $plan->priceLabel(),
+                'configured' => filled($plan->stripePriceId()),
+            ])->values()->all(),
+            'canChangePlan' => $configuration['ready'] && $subscription !== null && ! $ended && ! $onGracePeriod,
+            'canCancel' => $configuration['ready'] && $subscription !== null && ! $ended && ! $onGracePeriod,
+            'canReactivate' => $configuration['ready'] && (
+                $onGracePeriod
+                || (($subscription === null || $ended) && filled($user->stripe_id) && $hasSavedPaymentMethod)
+            ),
+            'invoiceHistoryAvailable' => filled($user->stripe_id) && filled(config('cashier.secret')),
+        ];
+    }
+
+    public function invoices(User $user): array
+    {
+        if (blank($user->stripe_id)) {
+            return [
+                'status' => 'none',
+                'error' => null,
+                'items' => [],
+            ];
+        }
+
+        if (blank(config('cashier.secret'))) {
+            return [
+                'status' => 'error',
+                'error' => 'Stripe secret is not configured in this environment.',
+                'items' => [],
+            ];
+        }
+
+        try {
+            return [
+                'status' => 'loaded',
+                'error' => null,
+                'items' => $user->invoices(true, ['limit' => 8])
+                    ->map(fn (Invoice $invoice) => $this->invoiceItem($invoice))
+                    ->values()
+                    ->all(),
+            ];
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return [
+                'status' => 'error',
+                'error' => 'Stripe invoice history is currently unavailable.',
+                'items' => [],
+            ];
+        }
+    }
+
+    public function billingConfiguration(): array
+    {
+        $checks = [
+            'Publishable key' => filled(config('cashier.key')),
+            'Secret key' => filled(config('cashier.secret')),
+            'Webhook signing secret' => filled(config('cashier.webhook.secret')),
+            'Premium price' => filled(MembershipPlan::PREMIUM->stripePriceId()),
+            'Ultra price' => filled(MembershipPlan::ULTRA->stripePriceId()),
+        ];
+
+        return [
+            'ready' => ! in_array(false, $checks, true),
+            'webhookUrl' => rtrim((string) config('app.url'), '/').'/stripe/webhook',
+            'missing' => collect($checks)
+                ->filter(fn (bool $configured) => ! $configured)
+                ->keys()
+                ->values()
+                ->all(),
         ];
     }
 
@@ -439,15 +536,29 @@ class AdminPresenter
         ];
     }
 
-    protected function openIncidentCountsByUser(): array
+    protected function openIncidentCountsByUser(array $userIds): array
     {
+        if ($userIds === []) {
+            return [];
+        }
+
         return Incident::query()
             ->selectRaw('monitors.user_id, count(*) as aggregate')
             ->join('monitors', 'monitors.id', '=', 'incidents.monitor_id')
+            ->whereIn('monitors.user_id', $userIds)
             ->whereNull('incidents.resolved_at')
             ->groupBy('monitors.user_id')
             ->pluck('aggregate', 'monitors.user_id')
             ->all();
+    }
+
+    protected function collectionMeta(int $shown, int $total): array
+    {
+        return [
+            'shown' => $shown,
+            'total' => $total,
+            'truncated' => $shown < $total,
+        ];
     }
 
     protected function paginateData(LengthAwarePaginator $paginator, callable $mapper): array
@@ -538,7 +649,7 @@ class AdminPresenter
 
     protected function timeAgo($time): string
     {
-        $seconds = CarbonImmutable::parse($time)->diffInSeconds(now());
+        $seconds = (int) floor(CarbonImmutable::parse($time)->diffInSeconds(now()));
 
         if ($seconds < 60) {
             return $seconds.' sec ago';

@@ -24,11 +24,15 @@ class NotificationLog extends Model
         'payload',
     ];
 
+    protected $hidden = [
+        'payload',
+    ];
+
     protected function casts(): array
     {
         return [
             'sent_at' => 'datetime',
-            'payload' => 'array',
+            'payload' => 'encrypted:array',
         ];
     }
 

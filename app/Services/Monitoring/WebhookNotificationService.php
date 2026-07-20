@@ -31,7 +31,7 @@ class WebhookNotificationService
                 'subject' => sprintf('Downtime webhook for %s', $monitor->name),
                 'status' => 'pending',
                 'payload' => [
-                    'url' => $webhookUrl,
+                    'url_host' => parse_url($webhookUrl, PHP_URL_HOST) ?: 'Configured webhook',
                     'event' => 'monitor.down',
                 ],
             ]);
@@ -40,7 +40,7 @@ class WebhookNotificationService
                 notificationLogId: $log->id,
                 monitorId: $monitor->id,
                 incidentId: $incident->id,
-                webhookUrl: $webhookUrl,
+                webhookUrlHash: hash('sha256', $webhookUrl),
             )->afterCommit();
         }
     }

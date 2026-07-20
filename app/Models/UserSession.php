@@ -10,6 +10,10 @@ class UserSession extends Model
 {
     use HasFactory;
 
+    protected $hidden = [
+        'session_id',
+    ];
+
     protected $fillable = [
         'user_id',
         'session_id',

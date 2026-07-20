@@ -17,7 +17,7 @@ class TrackAuthenticatedSession
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  Closure(Request): (Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -63,6 +63,10 @@ class TrackAuthenticatedSession
                 ->first(['id', 'user_id', 'session_id', 'last_active_at', 'revoked_at']);
 
             if ($trackedSession) {
+                if ($trackedSession->revoked_at) {
+                    return $response;
+                }
+
                 if (! $trackedSession->last_active_at || $trackedSession->last_active_at->lte($now->copy()->subSeconds($refreshSeconds))) {
                     $trackedSession->forceFill($payload)->save();
                 }

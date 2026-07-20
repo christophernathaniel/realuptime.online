@@ -2,15 +2,17 @@
 
 namespace App\Services\Monitoring;
 
+use App\Services\Security\OutboundHttpClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Throwable;
 
 class DomainMetadataResolver
 {
+    public function __construct(protected ?OutboundHttpClient $outboundHttp = null) {}
+
     /**
      * @return array{domain: string, expires_at: CarbonImmutable|null, registrar: string|null}|null
      */
@@ -29,9 +31,13 @@ class DomainMetadataResolver
         }
 
         try {
-            $payload = Http::acceptJson()
-                ->timeout($timeoutSeconds)
-                ->get($url)
+            $payload = $this->http()->send(
+                method: 'GET',
+                url: $url,
+                timeoutSeconds: $timeoutSeconds,
+                headers: ['Accept' => 'application/json'],
+                followRedirects: true,
+            )
                 ->throw()
                 ->json();
         } catch (Throwable) {
@@ -69,9 +75,13 @@ class DomainMetadataResolver
     {
         try {
             $services = Cache::remember('monitoring.rdap.bootstrap.v1', now()->addDay(), function () use ($timeoutSeconds): array {
-                $payload = Http::acceptJson()
-                    ->timeout($timeoutSeconds)
-                    ->get('https://data.iana.org/rdap/dns.json')
+                $payload = $this->http()->send(
+                    method: 'GET',
+                    url: 'https://data.iana.org/rdap/dns.json',
+                    timeoutSeconds: $timeoutSeconds,
+                    headers: ['Accept' => 'application/json'],
+                    followRedirects: true,
+                )
                     ->throw()
                     ->json('services', []);
 
@@ -90,6 +100,11 @@ class DomainMetadataResolver
         }
 
         return [];
+    }
+
+    protected function http(): OutboundHttpClient
+    {
+        return $this->outboundHttp ??= app(OutboundHttpClient::class);
     }
 
     protected function registrableDomain(?string $host): ?string

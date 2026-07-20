@@ -10,10 +10,11 @@ use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
 use App\Models\ProbeConfirmation;
 use App\Services\Monitoring\Integrations\WorkspaceIntegrationNotificationService;
+use App\Services\Security\OutboundHttpClient;
+use App\Services\Security\PublicNetworkGuard;
 use App\Support\HttpStatusPolicy;
 use Carbon\CarbonImmutable;
 use GuzzleHttp\Cookie\CookieJar;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use Throwable;
 
@@ -25,6 +26,8 @@ class MonitorRunner
         protected WorkspaceIntegrationNotificationService $integrations,
         protected TlsMetadataResolver $tlsMetadata,
         protected MonitorMetadataRefresher $metadataRefresher,
+        protected OutboundHttpClient $outboundHttp,
+        protected PublicNetworkGuard $network,
     ) {}
 
     public function runDueMonitors(): int
@@ -123,8 +126,7 @@ class MonitorRunner
         ?CarbonImmutable $checkedAt = null,
         ?int $queueLagMs = null,
         ?string $probeRegion = null,
-    ): MonitorCheckOutcome
-    {
+    ): MonitorCheckOutcome {
         $checkedAt ??= CarbonImmutable::now();
         $previousStatus = $monitor->status;
         $openIncidents = $this->openIncidentMap($monitor);
@@ -262,15 +264,17 @@ class MonitorRunner
         $started = microtime(true);
 
         try {
-            $request = Http::timeout($monitor->timeout_seconds)
-                ->withOptions(['allow_redirects' => $monitor->follow_redirects])
-                ->withHeaders($monitor->custom_headers ?? []);
-
-            if ($monitor->auth_username && $monitor->auth_password) {
-                $request = $request->withBasicAuth($monitor->auth_username, $monitor->auth_password);
-            }
-
-            $response = $request->send($monitor->request_method ?: 'GET', $monitor->target ?: '');
+            $basicAuth = $monitor->auth_username && $monitor->auth_password
+                ? [$monitor->auth_username, $monitor->auth_password]
+                : null;
+            $response = $this->outboundHttp->send(
+                method: $monitor->request_method ?: 'GET',
+                url: $monitor->target ?: '',
+                timeoutSeconds: $monitor->timeout_seconds,
+                headers: $monitor->custom_headers ?? [],
+                followRedirects: $monitor->follow_redirects,
+                basicAuth: $basicAuth,
+            );
             $responseTime = (int) round((microtime(true) - $started) * 1000);
             $httpStatus = $response->status();
             $statusPolicy = $this->statusPolicyForMonitor($monitor);
@@ -366,8 +370,14 @@ class MonitorRunner
             ? (string) ($timeout * 1000)
             : (string) $timeout;
 
+        try {
+            $address = $this->network->resolveHost((string) ($monitor->target ?? ''));
+        } catch (Throwable $exception) {
+            return MonitorCheckOutcome::down($checkedAt, $attempt, 'invalid_target', $exception->getMessage());
+        }
+
         $result = Process::timeout(max(5, $timeout * $count))
-            ->run(['ping', '-c', (string) $count, '-W', $waitArgument, $monitor->target ?: '']);
+            ->run(['ping', '-c', (string) $count, '-W', $waitArgument, $address]);
 
         $output = trim($result->output()."\n".$result->errorOutput());
 
@@ -437,8 +447,14 @@ class MonitorRunner
             return MonitorCheckOutcome::down($checkedAt, $attempt, 'invalid_target', 'Port monitors require a target in the format host:port.');
         }
 
+        try {
+            $address = $this->network->resolveHost($host);
+        } catch (Throwable $exception) {
+            return MonitorCheckOutcome::down($checkedAt, $attempt, 'invalid_target', $exception->getMessage());
+        }
+
         $started = microtime(true);
-        $socket = $this->openTcpSocket($host, $port, max(1, $monitor->timeout_seconds), $errno, $errorMessage);
+        $socket = $this->openTcpSocket($address, $port, max(1, $monitor->timeout_seconds), $errno, $errorMessage);
         $responseTime = (int) round((microtime(true) - $started) * 1000);
 
         if (! is_resource($socket)) {
@@ -468,8 +484,10 @@ class MonitorRunner
 
     protected function openTcpSocket(string $host, int $port, int $timeoutSeconds, ?int &$errno = 0, ?string &$errorMessage = null)
     {
+        $socketHost = str_contains($host, ':') ? '['.$host.']' : $host;
+
         return @stream_socket_client(
-            sprintf('tcp://%s:%d', $host, $port),
+            sprintf('tcp://%s:%d', $socketHost, $port),
             $errno,
             $errorMessage,
             $timeoutSeconds,
@@ -594,21 +612,24 @@ class MonitorRunner
             $stepStarted = microtime(true);
 
             try {
-                $request = Http::timeout($monitor->timeout_seconds)
-                    ->withOptions([
-                        'allow_redirects' => $monitor->follow_redirects,
-                        'cookies' => $cookieJar,
-                    ])
-                    ->withHeaders([
+                $basicAuth = $monitor->auth_username && $monitor->auth_password
+                    ? [$monitor->auth_username, $monitor->auth_password]
+                    : null;
+                $response = $this->outboundHttp->send(
+                    method: $method,
+                    url: $stepUrl,
+                    timeoutSeconds: $monitor->timeout_seconds,
+                    headers: [
                         ...($monitor->custom_headers ?? []),
                         ...$this->syntheticStepHeaders($step),
-                    ]);
-
-                if ($monitor->auth_username && $monitor->auth_password) {
-                    $request = $request->withBasicAuth($monitor->auth_username, $monitor->auth_password);
-                }
-
-                $response = $request->send($method, $stepUrl, $this->syntheticStepRequestOptions($step));
+                    ],
+                    options: [
+                        'cookies' => $cookieJar,
+                        ...$this->syntheticStepRequestOptions($step),
+                    ],
+                    followRedirects: $monitor->follow_redirects,
+                    basicAuth: $basicAuth,
+                );
                 $stepTime = (int) round((microtime(true) - $stepStarted) * 1000);
                 $lastStatusCode = $response->status();
                 $expectedStatusCode = (int) data_get($step, 'expected_status_code', 200);
@@ -797,12 +818,13 @@ class MonitorRunner
     protected function effectiveIntervalSeconds(Monitor $monitor): int
     {
         $user = $monitor->relationLoaded('user') ? $monitor->user : $monitor->user()->first();
+        $globalMinimum = (int) config('realuptime.dispatch.minimum_interval_seconds', 60);
 
         if (! $user) {
-            return (int) $monitor->interval_seconds;
+            return max($globalMinimum, (int) $monitor->interval_seconds);
         }
 
-        return max((int) $monitor->interval_seconds, $user->minimumMonitorIntervalSeconds());
+        return max($globalMinimum, (int) $monitor->interval_seconds, $user->minimumMonitorIntervalSeconds());
     }
 
     protected function scheduledNextCheckAt(Monitor $monitor, CarbonImmutable $checkedAt, int $intervalSeconds): CarbonImmutable

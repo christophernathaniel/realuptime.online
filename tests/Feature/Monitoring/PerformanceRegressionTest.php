@@ -3,6 +3,7 @@
 use App\Jobs\RefreshMonitorMetadataJob;
 use App\Jobs\RunMonitorCheckJob;
 use App\Models\Monitor;
+use App\Models\StatusPage;
 use App\Models\User;
 use App\Services\Monitoring\MonitorPresenter;
 use App\Services\Monitoring\MonitorRunner;
@@ -40,6 +41,13 @@ it('queues an on-demand check from the monitor screen', function () {
         RunMonitorCheckJob::class,
         fn (RunMonitorCheckJob $job) => $job->monitorId === $monitor->id
     );
+
+    $this->actingAs($user)
+        ->post(route('monitors.run-now', $monitor))
+        ->assertRedirect()
+        ->assertSessionHas('error', 'This monitor already ran or was queued within its allowed check interval.');
+
+    Queue::assertPushed(RunMonitorCheckJob::class, 1);
 });
 
 it('queues metadata refresh work after a successful https check', function () {
@@ -158,4 +166,77 @@ it('builds monitor detail history from current-monitor aggregate queries', funct
     expect($history['responseTimeStats']['p95'])->toBe(236);
     expect($history['responseTimeChart'])->toHaveCount(24);
     expect($queries)->not->toContain('"response_time_ms", "meta" from "check_results"');
+});
+
+it('builds reliability and latency detail payloads independently', function () {
+    $user = User::factory()->create();
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Independent API',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com/independent',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 1,
+        'region' => 'Europe',
+    ]);
+    $monitor->checkResults()->create([
+        'status' => 'up',
+        'checked_at' => now()->subMinute(),
+        'attempts' => 1,
+        'response_time_ms' => 150,
+        'http_status_code' => 200,
+    ]);
+
+    $presenter = app(MonitorPresenter::class);
+    $reliability = $presenter->showReliability($monitor->fresh())['monitorReliability'];
+    $latency = $presenter->showLatency($monitor->fresh(), 'day', '1h')['monitorLatency'];
+
+    expect($reliability)
+        ->toHaveKeys(['last24Bars', 'last24Stats', 'last365Days', 'mtbf'])
+        ->not->toHaveKey('responseTimeChart');
+    expect($latency)
+        ->toHaveKeys(['responseTimeChart', 'responseTimeStats', 'responseTimeSignals'])
+        ->not->toHaveKey('last24Bars');
+});
+
+it('keeps monitor core query count flat across attached status pages', function () {
+    $user = User::factory()->create();
+    $monitor = Monitor::query()->create([
+        'user_id' => $user->id,
+        'name' => 'Status page API',
+        'type' => Monitor::TYPE_HTTP,
+        'status' => Monitor::STATUS_UP,
+        'target' => 'https://example.com/status',
+        'request_method' => 'GET',
+        'interval_seconds' => 300,
+        'timeout_seconds' => 30,
+        'retry_limit' => 1,
+        'region' => 'Europe',
+    ]);
+
+    foreach (range(1, 12) as $index) {
+        $statusPage = StatusPage::query()->create([
+            'user_id' => $user->id,
+            'name' => "Status {$index}",
+            'slug' => "status-{$index}",
+            'published' => true,
+        ]);
+        $statusPage->monitors()->attach($monitor);
+    }
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $payload = app(MonitorPresenter::class)->showPage($monitor->fresh());
+    $queries = collect(DB::getQueryLog());
+
+    DB::disableQueryLog();
+
+    $userQueries = $queries->filter(fn (array $query) => str_contains($query['query'], 'from "users"'));
+
+    expect($payload['monitor']['statusPages'])->toHaveCount(12);
+    expect($userQueries)->toHaveCount(2);
 });

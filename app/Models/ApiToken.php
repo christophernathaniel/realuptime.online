@@ -14,6 +14,10 @@ class ApiToken extends Model
         'last_used_at',
     ];
 
+    protected $hidden = [
+        'token_hash',
+    ];
+
     protected function casts(): array
     {
         return [

@@ -21,6 +21,7 @@ it('renders the membership settings page', function () {
 
 it('renders the actual membership plan for platform admins', function () {
     $user = User::factory()->admin()->create();
+    config()->set('realuptime.admin.main_admin_email', $user->email);
 
     $this->actingAs($user)
         ->get('/settings/membership')
@@ -31,4 +32,12 @@ it('renders the actual membership plan for platform admins', function () {
             ->where('membership.currentPlan.monitorLimitLabel', '10')
             ->where('membership.currentPlan.priceLabel', 'Free')
             ->where('membership.currentPlan.isAdmin', true));
+});
+
+it('rejects unsigned Stripe webhooks when signature verification is configured', function () {
+    config()->set('cashier.webhook.secret', 'whsec_test');
+
+    $this->postJson('/stripe/webhook', [
+        'type' => 'customer.subscription.updated',
+    ])->assertForbidden();
 });

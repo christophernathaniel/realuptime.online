@@ -4,6 +4,7 @@ namespace App\Services\Monitoring;
 
 use App\Models\Capability;
 use App\Models\CheckResult;
+use App\Models\CheckResultRollup;
 use App\Models\Incident;
 use App\Models\MaintenanceWindow;
 use App\Models\Monitor;
@@ -14,6 +15,7 @@ use App\Models\StatusPageIncident;
 use App\Models\User;
 use App\Models\WorkspaceIntegration;
 use App\Models\WorkspaceMembership;
+use App\Services\Security\MonitorSecretMasker;
 use App\Support\MonitorQueueResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,11 +27,15 @@ use Illuminate\Support\Number;
 
 class MonitorPresenter
 {
+    protected const INCIDENT_TIMELINE_RESULT_LIMIT = 100;
+
+    protected const INCIDENT_NOTIFICATION_LIMIT = 50;
+
     protected ?CarbonImmutable $requestTime = null;
 
     /**
      * @var array<string, array{
-     *     incidents: \Illuminate\Support\Collection<int, Incident>,
+     *     incidents: Collection<int, Incident>,
      *     monitoringStart: CarbonImmutable|null,
      *     monitoredSeconds: int,
      *     downtimeSeconds: int
@@ -58,12 +64,25 @@ class MonitorPresenter
      *     failedChecks: int,
      *     slowChecks: int,
      *     latencySamples: int,
+     *     rolledLatencySamples: int,
      *     average: int|null,
      *     minimum: int|null,
      *     maximum: int|null
      * }>
      */
     protected array $responseTimeSummaryCache = [];
+
+    /**
+     * @var array<string, Collection<int, array{value: int, weight: int}>>
+     */
+    protected array $responseTimeDistributionCache = [];
+
+    public function __construct(protected MonitorSecretMasker $secrets) {}
+
+    /**
+     * @var array<string, Collection<int, CheckResultRollup>>
+     */
+    protected array $windowCheckResultRollupCache = [];
 
     /**
      * @var array<int, array<int, array{
@@ -180,6 +199,29 @@ class MonitorPresenter
         ];
     }
 
+    public function showReliability(Monitor $monitor): array
+    {
+        return [
+            'monitorReliability' => $this->monitorReliabilityPayload(
+                $this->loadMonitorShowHistoryRelations($monitor),
+            ),
+        ];
+    }
+
+    public function showLatency(Monitor $monitor, ?string $responseRange = null, ?string $responseGranularity = null): array
+    {
+        $responseRange = $this->normalizeResponseRange($responseRange);
+        $responseGranularity = $this->normalizeResponseGranularity($responseGranularity, $responseRange);
+
+        return [
+            'monitorLatency' => $this->monitorLatencyPayload(
+                $this->loadMonitorShowHistoryRelations($monitor),
+                $responseRange,
+                $responseGranularity,
+            ),
+        ];
+    }
+
     public function showCapabilities(Monitor $monitor): array
     {
         return [
@@ -195,15 +237,66 @@ class MonitorPresenter
 
         $monitor->load([
             'user',
-            'incidents' => fn ($query) => $query->latest('started_at')->limit(10),
-            'notificationLogs' => fn ($query) => $query->with(['notificationContact', 'integration'])->latest()->limit(8),
-            'heartbeatEvents' => fn ($query) => $query->latest('received_at')->limit(1),
+            'incidents' => fn ($query) => $query
+                ->select([
+                    'id',
+                    'monitor_id',
+                    'started_at',
+                    'resolved_at',
+                    'duration_seconds',
+                    'reason',
+                    'type',
+                    'severity',
+                ])
+                ->latest('started_at')
+                ->limit(10),
+            'notificationLogs' => fn ($query) => $query
+                ->select([
+                    'id',
+                    'monitor_id',
+                    'notification_contact_id',
+                    'integration_id',
+                    'type',
+                    'channel',
+                    'status',
+                    'subject',
+                    'payload',
+                    'created_at',
+                ])
+                ->with([
+                    'notificationContact:id,email',
+                    'integration:id,name',
+                ])
+                ->latest()
+                ->limit(8),
+            'heartbeatEvents' => fn ($query) => $query
+                ->select(['id', 'monitor_id', 'received_at'])
+                ->latest('received_at')
+                ->limit(1),
             'maintenanceWindows' => fn ($query) => $query
+                ->select([
+                    'maintenance_windows.id',
+                    'maintenance_windows.user_id',
+                    'maintenance_windows.title',
+                    'maintenance_windows.message',
+                    'maintenance_windows.starts_at',
+                    'maintenance_windows.ends_at',
+                    'maintenance_windows.status',
+                    'maintenance_windows.notify_contacts',
+                ])
                 ->with('monitors:id,name')
                 ->where('ends_at', '>=', $now->subDay())
                 ->orderBy('starts_at')
                 ->limit(8),
-            'statusPages',
+            'statusPages' => fn ($query) => $query
+                ->select([
+                    'status_pages.id',
+                    'status_pages.user_id',
+                    'status_pages.name',
+                    'status_pages.slug',
+                    'status_pages.published',
+                ])
+                ->with('user:id,public_status_key'),
         ]);
 
         return $monitor;
@@ -211,10 +304,7 @@ class MonitorPresenter
 
     protected function loadMonitorShowHistoryRelations(Monitor $monitor): Monitor
     {
-        $monitor->loadMissing([
-            'user',
-            'incidents' => fn ($query) => $query->latest('started_at')->limit(10),
-        ]);
+        $monitor->loadMissing('user');
 
         return $monitor;
     }
@@ -361,12 +451,21 @@ class MonitorPresenter
      */
     protected function monitorHistoryPayload(Monitor $monitor, string $responseRange, string $responseGranularity): array
     {
+        return [
+            ...$this->monitorReliabilityPayload($monitor),
+            ...$this->monitorLatencyPayload($monitor, $responseRange, $responseGranularity),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function monitorReliabilityPayload(Monitor $monitor): array
+    {
         $now = $this->currentTime();
 
         $this->preloadDowntimeIncidents(collect([$monitor]), $now->subYear(), $now);
-        $this->preloadMonitorHistoryCheckResultSummaries($monitor, $now, $responseRange);
-
-        $responseTimeData = $this->responseTimeData($monitor, $responseRange, $responseGranularity);
+        $this->preloadMonitorHistoryCheckResultSummaries($monitor, $now);
 
         return [
             'last6Bars' => $this->uptimeBars($monitor, 6, 12),
@@ -379,6 +478,25 @@ class MonitorPresenter
             'last365Days' => $this->windowStats($monitor, 365),
             'customRange' => $this->windowStats($monitor, 14),
             'mtbf' => $this->mtbfLabel($monitor, 7),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function monitorLatencyPayload(Monitor $monitor, string $responseRange, string $responseGranularity): array
+    {
+        $range = $this->responseRangeConfig($responseRange);
+        $to = $this->currentTime();
+        $from = $to->subSeconds($range['seconds']);
+
+        if ($this->preloadedDowntimeIncidentsForWindow($monitor, $from, $to) === null) {
+            $this->preloadDowntimeIncidents(collect([$monitor]), $from, $to);
+        }
+
+        $responseTimeData = $this->responseTimeData($monitor, $responseRange, $responseGranularity);
+
+        return [
             'responseTimeRange' => $responseRange,
             'responseTimeRangeLabel' => $responseTimeData['label'],
             'responseTimeRangeOptions' => $this->responseTimeRangeOptions(),
@@ -508,9 +626,8 @@ class MonitorPresenter
         }
     }
 
-    protected function preloadMonitorHistoryCheckResultSummaries(Monitor $monitor, CarbonImmutable $to, string $responseRange): void
+    protected function preloadMonitorHistoryCheckResultSummaries(Monitor $monitor, CarbonImmutable $to, ?string $responseRange = null): void
     {
-        $responseRangeConfig = $this->responseRangeConfig($responseRange);
         $windows = collect([
             $to->subHours(6),
             $to->subDay(),
@@ -518,8 +635,13 @@ class MonitorPresenter
             $to->subDays(14),
             $to->subDays(30),
             $to->subYear(),
-            $to->subSeconds($responseRangeConfig['seconds']),
-        ])->unique(fn (CarbonImmutable $from) => $from->timestamp)->values();
+        ]);
+
+        if ($responseRange !== null) {
+            $windows->push($to->subSeconds($this->responseRangeConfig($responseRange)['seconds']));
+        }
+
+        $windows = $windows->unique(fn (CarbonImmutable $from) => $from->timestamp)->values();
 
         if ($windows->isEmpty()) {
             return;
@@ -538,11 +660,43 @@ class MonitorPresenter
         }
 
         $earliestFrom = $windows->sortBy(fn (CarbonImmutable $from) => $from->timestamp)->first();
-        $summary = CheckResult::query()
+        $rawSummaryQuery = CheckResult::query()
             ->where('monitor_id', $monitor->id)
             ->where('checked_at', '>=', $earliestFrom)
             ->where('checked_at', '<', $to)
-            ->selectRaw(implode(",\n", $selects), $bindings)
+            ->selectRaw(implode(",\n", $selects), $bindings);
+
+        $rollupSelects = [];
+        $rollupBindings = [];
+
+        foreach ($windows as $index => $from) {
+            $rollupSelects[] = "MIN(CASE WHEN bucket_ended_at > ? THEN first_checked_at END) as first_checked_at_{$index}";
+            $rollupBindings[] = $from;
+            $rollupSelects[] = "SUM(CASE WHEN bucket_ended_at > ? THEN total_checks ELSE 0 END) as total_results_{$index}";
+            $rollupBindings[] = $from;
+            $rollupSelects[] = "SUM(CASE WHEN bucket_ended_at > ? THEN down_checks ELSE 0 END) as down_results_{$index}";
+            $rollupBindings[] = $from;
+        }
+
+        $rollupSummaryQuery = CheckResultRollup::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('bucket_started_at', '<', $to)
+            ->where('bucket_ended_at', '>', $earliestFrom)
+            ->selectRaw(implode(",\n", $rollupSelects), $rollupBindings);
+        $combinedSelects = [];
+
+        foreach ($windows as $index => $from) {
+            $combinedSelects[] = "MIN(first_checked_at_{$index}) as first_checked_at_{$index}";
+            $combinedSelects[] = "SUM(total_results_{$index}) as total_results_{$index}";
+            $combinedSelects[] = "SUM(down_results_{$index}) as down_results_{$index}";
+        }
+
+        $summary = DB::query()
+            ->fromSub(
+                $rawSummaryQuery->toBase()->unionAll($rollupSummaryQuery->toBase()),
+                'check_result_summaries',
+            )
+            ->selectRaw(implode(",\n", $combinedSelects))
             ->first();
 
         foreach ($windows as $index => $from) {
@@ -685,9 +839,11 @@ class MonitorPresenter
                 'timeout_seconds' => min($monitor?->timeout_seconds ?? $maxTimeoutSeconds, $maxTimeoutSeconds),
                 'retry_limit' => min($monitor?->retry_limit ?? $maxRetryLimit, $maxRetryLimit),
                 'follow_redirects' => $monitor?->follow_redirects ?? true,
-                'custom_headers' => $monitor?->custom_headers ? json_encode($monitor->custom_headers, JSON_PRETTY_PRINT) : '',
+                'custom_headers' => $monitor?->custom_headers
+                    ? json_encode($this->secrets->maskHeaders($monitor->custom_headers), JSON_PRETTY_PRINT)
+                    : '',
                 'auth_username' => $monitor?->auth_username ?? '',
-                'auth_password' => $monitor?->auth_password ?? '',
+                'auth_password' => '',
                 'expected_status_code' => $monitor?->expected_status_code ?? 200,
                 'accepted_http_statuses' => $monitor?->accepted_http_statuses ?? '200-299',
                 'expected_keyword' => $monitor?->expected_keyword ?? '',
@@ -697,7 +853,9 @@ class MonitorPresenter
                 'latency_threshold_ms' => $monitor?->latency_threshold_ms ?? 1500,
                 'degraded_consecutive_checks' => $monitor?->degraded_consecutive_checks ?? 3,
                 'critical_alert_after_minutes' => $monitor?->critical_alert_after_minutes ?? 30,
-                'downtime_webhook_urls' => $monitor?->downtime_webhook_urls ? implode("\n", $monitor->downtime_webhook_urls) : '',
+                'downtime_webhook_urls' => $monitor?->downtime_webhook_urls
+                    ? implode("\n", $this->secrets->maskWebhookUrls($monitor->downtime_webhook_urls))
+                    : '',
                 'capability_names' => $monitor ? $monitor->capabilities()->orderBy('name')->pluck('name')->implode("\n") : '',
                 'ssl_threshold_days' => $monitor?->ssl_threshold_days ?? 21,
                 'domain_threshold_days' => $monitor?->domain_threshold_days ?? 30,
@@ -795,23 +953,53 @@ class MonitorPresenter
         abort_unless($incident->monitor()->where('user_id', $user->id)->exists(), 404);
 
         $incident->load([
-            'monitor.capabilities',
-            'firstCheckResult',
-            'lastGoodCheckResult',
-            'latestCheckResult',
-            'notificationLogs.notificationContact',
-            'notificationLogs.integration',
+            'monitor' => fn ($query) => $query->with([
+                'capabilities' => fn ($capabilityQuery) => $capabilityQuery
+                    ->with([
+                        'monitors' => fn (BelongsToMany $monitorQuery) => $this->applyCapabilityMonitorSummaryQuery($monitorQuery),
+                    ])
+                    ->orderBy('name'),
+            ]),
+            'notificationLogs' => fn ($query) => $query
+                ->select([
+                    'id',
+                    'incident_id',
+                    'notification_contact_id',
+                    'integration_id',
+                    'type',
+                    'status',
+                    'subject',
+                    'sent_at',
+                    'payload',
+                    'created_at',
+                ])
+                ->with([
+                    'notificationContact:id,email',
+                    'integration:id,name',
+                ])
+                ->latest()
+                ->limit(self::INCIDENT_NOTIFICATION_LIMIT),
         ]);
 
+        $boundaryCheckResults = CheckResult::query()
+            ->whereKey(collect([
+                $incident->first_check_result_id,
+                $incident->last_good_check_result_id,
+                $incident->latest_check_result_id,
+            ])->filter()->unique())
+            ->get($this->incidentCheckResultColumns())
+            ->keyBy('id');
+
+        $incident->setRelation('firstCheckResult', $boundaryCheckResults->get($incident->first_check_result_id));
+        $incident->setRelation('lastGoodCheckResult', $boundaryCheckResults->get($incident->last_good_check_result_id));
+        $incident->setRelation('latestCheckResult', $boundaryCheckResults->get($incident->latest_check_result_id));
+
         $windowEnd = $incident->resolved_at ? CarbonImmutable::parse($incident->resolved_at) : CarbonImmutable::now();
-        $checkResults = CheckResult::query()
-            ->where('monitor_id', $incident->monitor_id)
-            ->whereBetween('checked_at', [
-                CarbonImmutable::parse($incident->started_at)->subMinutes(5),
-                $windowEnd->addMinute(),
-            ])
-            ->orderBy('checked_at')
-            ->get();
+        $checkResults = $this->incidentTimelineCheckResults(
+            $incident,
+            CarbonImmutable::parse($incident->started_at)->subMinutes(5),
+            $windowEnd->addMinute(),
+        );
 
         return [
             'incident' => [
@@ -828,13 +1016,7 @@ class MonitorPresenter
                 'operatorNotes' => $incident->operator_notes ?? '',
                 'rootCauseSummary' => $incident->root_cause_summary ?? '',
                 'capabilities' => $incident->monitor?->capabilities
-                    ->map(fn (Capability $capability) => $this->capabilityItem(
-                        $capability->relationLoaded('monitors')
-                            ? $capability
-                            : $capability->loadMissing([
-                                'monitors' => fn ($query) => $query->with(['openIncidents', 'maintenanceWindows']),
-                            ])
-                    ))
+                    ->map(fn (Capability $capability) => $this->capabilityItem($capability))
                     ->values()
                     ->all() ?? [],
                 'customerImpact' => $this->incidentCustomerImpact($incident),
@@ -1150,7 +1332,7 @@ class MonitorPresenter
             ?? $log->integration?->name
             ?? data_get($log->payload, 'integration_name')
             ?? data_get($log->payload, 'email')
-            ?? data_get($log->payload, 'url');
+            ?? data_get($log->payload, 'url_host');
     }
 
     /**
@@ -1423,6 +1605,12 @@ class MonitorPresenter
         $now = $this->currentTime();
 
         $query
+            ->select([
+                'monitors.id',
+                'monitors.name',
+                'monitors.status',
+                'monitors.region',
+            ])
             ->withCount([
                 'openIncidents',
                 'openIncidents as open_downtime_incidents_count' => fn (Builder $incidentQuery) => $incidentQuery->where('type', Incident::TYPE_DOWNTIME),
@@ -1875,7 +2063,7 @@ class MonitorPresenter
             return $this->windowCheckResultSummaryCache[$cacheKey] = $preloadedSummary;
         }
 
-        $summary = CheckResult::query()
+        $rawSummary = CheckResult::query()
             ->where('monitor_id', $monitor->id)
             ->where('checked_at', '>=', $from)
             ->where('checked_at', '<', $to)
@@ -1884,12 +2072,24 @@ class MonitorPresenter
             )
             ->first();
 
+        $rollupSummary = $this->shouldIncludeCheckResultRollups($from)
+            ? $this->checkResultRollupWindowQuery($monitor, $from, $to)
+                ->selectRaw(
+                    'MIN(first_checked_at) as first_checked_at, COALESCE(SUM(total_checks), 0) as total_results, COALESCE(SUM(down_checks), 0) as down_results'
+                )
+                ->first()
+            : null;
+
+        $firstCheckedAt = collect([$rawSummary?->first_checked_at, $rollupSummary?->first_checked_at])
+            ->filter()
+            ->map(fn ($time): CarbonImmutable => CarbonImmutable::parse($time))
+            ->sortBy(fn (CarbonImmutable $time): int => $time->timestamp)
+            ->first();
+
         return $this->windowCheckResultSummaryCache[$cacheKey] = [
-            'firstCheckedAt' => $summary?->first_checked_at
-                ? CarbonImmutable::parse($summary->first_checked_at)
-                : null,
-            'totalResults' => (int) ($summary?->total_results ?? 0),
-            'downResults' => (int) ($summary?->down_results ?? 0),
+            'firstCheckedAt' => $firstCheckedAt,
+            'totalResults' => (int) ($rawSummary?->total_results ?? 0) + (int) ($rollupSummary?->total_results ?? 0),
+            'downResults' => (int) ($rawSummary?->down_results ?? 0) + (int) ($rollupSummary?->down_results ?? 0),
         ];
     }
 
@@ -2022,12 +2222,13 @@ class MonitorPresenter
     protected function effectiveIntervalSeconds(Monitor $monitor): int
     {
         $user = $monitor->relationLoaded('user') ? $monitor->user : $monitor->user()->first();
+        $globalMinimum = (int) config('realuptime.dispatch.minimum_interval_seconds', 60);
 
         if (! $user) {
-            return (int) $monitor->interval_seconds;
+            return max($globalMinimum, (int) $monitor->interval_seconds);
         }
 
-        return max((int) $monitor->interval_seconds, $user->minimumMonitorIntervalSeconds());
+        return max($globalMinimum, (int) $monitor->interval_seconds, $user->minimumMonitorIntervalSeconds());
     }
 
     protected function timeAgo($time): string
@@ -2577,10 +2778,23 @@ class MonitorPresenter
 
         $stats = [
             'average' => $summary['average'],
-            'median' => $this->responseTimeMedian($monitor, $from, $to, $summary['latencySamples']),
+            'median' => $this->responseTimeMedian(
+                $monitor,
+                $from,
+                $to,
+                $summary['latencySamples'],
+                $summary['rolledLatencySamples'] > 0,
+            ),
             'minimum' => $summary['minimum'],
             'maximum' => $summary['maximum'],
-            'p95' => $this->responseTimePercentile($monitor, $from, $to, 95, $summary['latencySamples']),
+            'p95' => $this->responseTimePercentile(
+                $monitor,
+                $from,
+                $to,
+                95,
+                $summary['latencySamples'],
+                $summary['rolledLatencySamples'] > 0,
+            ),
             'downtimeLabel' => $windowStats['downtimeLabel'],
         ];
         $sampleCount = $summary['sampleCount'];
@@ -2607,6 +2821,7 @@ class MonitorPresenter
      *     failedChecks: int,
      *     slowChecks: int,
      *     latencySamples: int,
+     *     rolledLatencySamples: int,
      *     average: int|null,
      *     minimum: int|null,
      *     maximum: int|null
@@ -2621,40 +2836,77 @@ class MonitorPresenter
         }
 
         $slowExpression = $this->slowCheckSqlExpression();
-        $summary = $this->checkResultWindowQuery($monitor, $from, $to)
+        $rawSummary = $this->checkResultWindowQuery($monitor, $from, $to)
             ->selectRaw(
                 "COUNT(*) as sample_count,
                 SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END) as failed_checks,
                 SUM(CASE WHEN {$slowExpression} THEN 1 ELSE 0 END) as slow_checks,
                 COUNT(response_time_ms) as latency_samples,
+                COALESCE(SUM(response_time_ms), 0) as response_time_sum_ms,
                 MIN(checked_at) as first_checked_at,
-                AVG(response_time_ms) as average_response_time,
                 MIN(response_time_ms) as minimum_response_time,
                 MAX(response_time_ms) as maximum_response_time"
             )
             ->first();
 
+        $rollupSummary = $this->shouldIncludeCheckResultRollups($from)
+            ? $this->checkResultRollupWindowQuery($monitor, $from, $to)
+                ->selectRaw(
+                    'COALESCE(SUM(total_checks), 0) as sample_count,
+                    COALESCE(SUM(down_checks), 0) as failed_checks,
+                    COALESCE(SUM(slow_checks), 0) as slow_checks,
+                    COALESCE(SUM(response_time_samples), 0) as latency_samples,
+                    COALESCE(SUM(response_time_sum_ms), 0) as response_time_sum_ms,
+                    MIN(first_checked_at) as first_checked_at,
+                    MIN(response_time_min_ms) as minimum_response_time,
+                    MAX(response_time_max_ms) as maximum_response_time'
+                )
+                ->first()
+            : null;
+
+        $sampleCount = (int) ($rawSummary?->sample_count ?? 0) + (int) ($rollupSummary?->sample_count ?? 0);
+        $failedChecks = (int) ($rawSummary?->failed_checks ?? 0) + (int) ($rollupSummary?->failed_checks ?? 0);
+        $latencySamples = (int) ($rawSummary?->latency_samples ?? 0) + (int) ($rollupSummary?->latency_samples ?? 0);
+        $responseTimeSum = (int) ($rawSummary?->response_time_sum_ms ?? 0) + (int) ($rollupSummary?->response_time_sum_ms ?? 0);
+        $firstCheckedAt = collect([$rawSummary?->first_checked_at, $rollupSummary?->first_checked_at])
+            ->filter()
+            ->map(fn ($time): CarbonImmutable => CarbonImmutable::parse($time))
+            ->sortBy(fn (CarbonImmutable $time): int => $time->timestamp)
+            ->first();
+        $minimum = collect([$rawSummary?->minimum_response_time, $rollupSummary?->minimum_response_time])
+            ->filter(fn ($value): bool => $value !== null)
+            ->map(fn ($value): int => (int) $value)
+            ->min();
+        $maximum = collect([$rawSummary?->maximum_response_time, $rollupSummary?->maximum_response_time])
+            ->filter(fn ($value): bool => $value !== null)
+            ->map(fn ($value): int => (int) $value)
+            ->max();
+
         $this->windowCheckResultSummaryCache[implode(':', ['summary', $monitor->id, $from->timestamp, $to->timestamp])] = [
-            'firstCheckedAt' => $summary?->first_checked_at
-                ? CarbonImmutable::parse($summary->first_checked_at)
-                : null,
-            'totalResults' => (int) ($summary?->sample_count ?? 0),
-            'downResults' => (int) ($summary?->failed_checks ?? 0),
+            'firstCheckedAt' => $firstCheckedAt,
+            'totalResults' => $sampleCount,
+            'downResults' => $failedChecks,
         ];
 
         return $this->responseTimeSummaryCache[$cacheKey] = [
-            'sampleCount' => (int) ($summary?->sample_count ?? 0),
-            'failedChecks' => (int) ($summary?->failed_checks ?? 0),
-            'slowChecks' => (int) ($summary?->slow_checks ?? 0),
-            'latencySamples' => (int) ($summary?->latency_samples ?? 0),
-            'average' => $summary?->average_response_time !== null ? (int) round((float) $summary->average_response_time) : null,
-            'minimum' => $summary?->minimum_response_time !== null ? (int) $summary->minimum_response_time : null,
-            'maximum' => $summary?->maximum_response_time !== null ? (int) $summary->maximum_response_time : null,
+            'sampleCount' => $sampleCount,
+            'failedChecks' => $failedChecks,
+            'slowChecks' => (int) ($rawSummary?->slow_checks ?? 0) + (int) ($rollupSummary?->slow_checks ?? 0),
+            'latencySamples' => $latencySamples,
+            'rolledLatencySamples' => (int) ($rollupSummary?->latency_samples ?? 0),
+            'average' => $latencySamples > 0 ? (int) round($responseTimeSum / $latencySamples) : null,
+            'minimum' => $minimum !== null ? (int) $minimum : null,
+            'maximum' => $maximum !== null ? (int) $maximum : null,
         ];
     }
 
-    protected function responseTimeMedian(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to, int $sampleCount): ?int
-    {
+    protected function responseTimeMedian(
+        Monitor $monitor,
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        int $sampleCount,
+        bool $hasRollups,
+    ): ?int {
         if ($sampleCount <= 0) {
             return null;
         }
@@ -2662,11 +2914,11 @@ class MonitorPresenter
         $middle = intdiv($sampleCount, 2);
 
         if ($sampleCount % 2 === 1) {
-            return $this->responseTimeValueAtOffset($monitor, $from, $to, $middle);
+            return $this->responseTimeValueAtOffset($monitor, $from, $to, $middle, $hasRollups);
         }
 
-        $lowerValue = $this->responseTimeValueAtOffset($monitor, $from, $to, $middle - 1);
-        $upperValue = $this->responseTimeValueAtOffset($monitor, $from, $to, $middle);
+        $lowerValue = $this->responseTimeValueAtOffset($monitor, $from, $to, $middle - 1, $hasRollups);
+        $upperValue = $this->responseTimeValueAtOffset($monitor, $from, $to, $middle, $hasRollups);
 
         if ($lowerValue === null || $upperValue === null) {
             return null;
@@ -2681,6 +2933,7 @@ class MonitorPresenter
         CarbonImmutable $to,
         int $percentile,
         int $sampleCount,
+        bool $hasRollups,
     ): ?int {
         if ($sampleCount <= 0) {
             return null;
@@ -2689,7 +2942,7 @@ class MonitorPresenter
         $offset = (int) ceil(($sampleCount * $percentile) / 100) - 1;
         $offset = max(0, min($sampleCount - 1, $offset));
 
-        return $this->responseTimeValueAtOffset($monitor, $from, $to, $offset);
+        return $this->responseTimeValueAtOffset($monitor, $from, $to, $offset, $hasRollups);
     }
 
     protected function responseTimeValueAtOffset(
@@ -2697,7 +2950,22 @@ class MonitorPresenter
         CarbonImmutable $from,
         CarbonImmutable $to,
         int $offset,
+        bool $hasRollups,
     ): ?int {
+        if ($hasRollups) {
+            $seen = 0;
+
+            foreach ($this->responseTimeDistribution($monitor, $from, $to) as $point) {
+                $seen += $point['weight'];
+
+                if ($seen > $offset) {
+                    return $point['value'];
+                }
+            }
+
+            return null;
+        }
+
         $value = $this->checkResultWindowQuery($monitor, $from, $to)
             ->whereNotNull('response_time_ms')
             ->orderBy('response_time_ms')
@@ -2708,12 +2976,89 @@ class MonitorPresenter
         return $value !== null ? (int) $value : null;
     }
 
+    /**
+     * Historical rollups retain exact counts and sums. Their average is used as
+     * a weighted representative value when estimating distribution percentiles.
+     *
+     * @return Collection<int, array{value: int, weight: int}>
+     */
+    protected function responseTimeDistribution(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to): Collection
+    {
+        $cacheKey = implode(':', [$monitor->id, $from->timestamp, $to->timestamp]);
+
+        if (array_key_exists($cacheKey, $this->responseTimeDistributionCache)) {
+            return $this->responseTimeDistributionCache[$cacheKey];
+        }
+
+        $raw = $this->checkResultWindowQuery($monitor, $from, $to)
+            ->whereNotNull('response_time_ms')
+            ->selectRaw('response_time_ms as value, COUNT(*) as weight')
+            ->groupBy('response_time_ms')
+            ->get()
+            ->map(fn ($row): array => [
+                'value' => (int) $row->value,
+                'weight' => (int) $row->weight,
+            ]);
+        $rolled = $this->windowCheckResultRollups($monitor, $from, $to)
+            ->where('response_time_samples', '>', 0)
+            ->map(fn (CheckResultRollup $rollup): array => [
+                'value' => (int) round($rollup->response_time_sum_ms / $rollup->response_time_samples),
+                'weight' => (int) $rollup->response_time_samples,
+            ]);
+
+        return $this->responseTimeDistributionCache[$cacheKey] = $raw
+            ->concat($rolled)
+            ->groupBy('value')
+            ->map(fn (Collection $points, int|string $value): array => [
+                'value' => (int) $value,
+                'weight' => (int) $points->sum('weight'),
+            ])
+            ->sortBy('value')
+            ->values();
+    }
+
     protected function checkResultWindowQuery(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to): Builder
     {
         return CheckResult::query()
             ->where('monitor_id', $monitor->id)
             ->where('checked_at', '>=', $from)
             ->where('checked_at', '<', $to);
+    }
+
+    protected function checkResultRollupWindowQuery(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to): Builder
+    {
+        return CheckResultRollup::query()
+            ->where('monitor_id', $monitor->id)
+            ->where('bucket_started_at', '<', $to)
+            ->where('bucket_ended_at', '>', $from);
+    }
+
+    /**
+     * @return Collection<int, CheckResultRollup>
+     */
+    protected function windowCheckResultRollups(Monitor $monitor, CarbonImmutable $from, CarbonImmutable $to): Collection
+    {
+        $cacheKey = implode(':', [$monitor->id, $from->timestamp, $to->timestamp]);
+
+        if (array_key_exists($cacheKey, $this->windowCheckResultRollupCache)) {
+            return $this->windowCheckResultRollupCache[$cacheKey];
+        }
+
+        return $this->windowCheckResultRollupCache[$cacheKey] = $this->checkResultRollupWindowQuery($monitor, $from, $to)
+            ->get([
+                'bucket_started_at',
+                'response_time_samples',
+                'response_time_sum_ms',
+                'down_checks',
+                'slow_checks',
+            ]);
+    }
+
+    protected function shouldIncludeCheckResultRollups(CarbonImmutable $from): bool
+    {
+        $rawRetentionDays = max(1, (int) config('realuptime.retention.raw_check_results_days', 30));
+
+        return $from->lessThan($this->currentTime()->subDays($rawRetentionDays));
     }
 
     /**
@@ -2942,28 +3287,63 @@ class MonitorPresenter
         [$bucketExpression, $bucketBindings] = $this->bucketIndexExpression($bucketAnchor, $bucketSeconds);
         $slowExpression = $this->slowCheckSqlExpression();
 
-        $rows = $this->checkResultWindowQuery($monitor, $from, $to)
+        $rawRows = $this->checkResultWindowQuery($monitor, $from, $to)
             ->selectRaw($bucketExpression.' as bucket_index', $bucketBindings)
             ->selectRaw(
-                "AVG(response_time_ms) as average_response_time,
+                "COUNT(response_time_ms) as response_time_samples,
+                COALESCE(SUM(response_time_ms), 0) as response_time_sum_ms,
                 SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END) as down_count,
                 SUM(CASE WHEN {$slowExpression} THEN 1 ELSE 0 END) as slow_count"
             )
             ->groupBy('bucket_index')
             ->orderBy('bucket_index')
-            ->get();
+            ->get()
+            ->map(fn ($row): array => [
+                'bucket_index' => (int) $row->bucket_index,
+                'response_time_samples' => (int) $row->response_time_samples,
+                'response_time_sum_ms' => (int) $row->response_time_sum_ms,
+                'down_count' => (int) $row->down_count,
+                'slow_count' => (int) $row->slow_count,
+            ]);
+        $rolledRows = $this->shouldIncludeCheckResultRollups($from)
+            ? $this->windowCheckResultRollups($monitor, $from, $to)
+                ->map(fn (CheckResultRollup $rollup): array => [
+                    'bucket_index' => (int) floor(($rollup->bucket_started_at->timestamp - $bucketAnchor->timestamp) / $bucketSeconds),
+                    'response_time_samples' => (int) $rollup->response_time_samples,
+                    'response_time_sum_ms' => (int) $rollup->response_time_sum_ms,
+                    'down_count' => (int) $rollup->down_checks,
+                    'slow_count' => (int) $rollup->slow_checks,
+                ])
+            : collect();
+        $rows = $rawRows
+            ->concat($rolledRows)
+            ->groupBy('bucket_index')
+            ->map(function (Collection $bucketRows, int|string $bucketIndex): array {
+                $responseTimeSamples = (int) $bucketRows->sum('response_time_samples');
+
+                return [
+                    'bucket_index' => (int) $bucketIndex,
+                    'average_response_time' => $responseTimeSamples > 0
+                        ? (int) round($bucketRows->sum('response_time_sum_ms') / $responseTimeSamples)
+                        : null,
+                    'down_count' => (int) $bucketRows->sum('down_count'),
+                    'slow_count' => (int) $bucketRows->sum('slow_count'),
+                ];
+            })
+            ->sortBy('bucket_index')
+            ->values();
 
         return $rows->map(function ($row) use ($bucketAnchor, $bucketSeconds, $shortLabelFormat): array {
-            $bucketStart = $bucketAnchor->addSeconds(((int) $row->bucket_index) * $bucketSeconds);
+            $bucketStart = $bucketAnchor->addSeconds($row['bucket_index'] * $bucketSeconds);
 
-            $status = (int) $row->down_count > 0
+            $status = $row['down_count'] > 0
                 ? 'down'
-                : ((int) $row->slow_count > 0 ? 'warning' : 'up');
+                : ($row['slow_count'] > 0 ? 'warning' : 'up');
 
             return [
                 'label' => $bucketStart->format('M j, Y H:i'),
                 'shortLabel' => $bucketStart->format($shortLabelFormat),
-                'value' => $row->average_response_time !== null ? (int) round((float) $row->average_response_time) : null,
+                'value' => $row['average_response_time'],
                 'status' => $status,
             ];
         })->values()->all();
@@ -2998,11 +3378,16 @@ class MonitorPresenter
 
     protected function slowCheckSqlExpression(): string
     {
+        return $this->checkResultMetaFlagSqlExpression('slow');
+    }
+
+    protected function checkResultMetaFlagSqlExpression(string $key): string
+    {
         return match (DB::connection()->getDriverName()) {
-            'sqlite' => "json_extract(meta, '$.slow') IN (1, '1', 'true')",
-            'pgsql' => "(meta->>'slow') IN ('true', '1')",
-            'sqlsrv' => "JSON_VALUE(meta, '$.slow') IN ('true', '1')",
-            default => "JSON_UNQUOTE(JSON_EXTRACT(meta, '$.slow')) IN ('true', '1')",
+            'sqlite' => "json_extract(meta, '$.{$key}') IN (1, '1', 'true')",
+            'pgsql' => "(meta->>'{$key}') IN ('true', '1')",
+            'sqlsrv' => "JSON_VALUE(meta, '$.{$key}') IN ('true', '1')",
+            default => "JSON_UNQUOTE(JSON_EXTRACT(meta, '$.{$key}')) IN ('true', '1')",
         };
     }
 
@@ -3053,6 +3438,67 @@ class MonitorPresenter
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * @return Collection<int, CheckResult>
+     */
+    protected function incidentTimelineCheckResults(
+        Incident $incident,
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+    ): Collection {
+        $boundaryResults = collect([
+            $incident->firstCheckResult,
+            $incident->latestCheckResult,
+        ])->filter()->unique('id')->values();
+        $resultLimit = max(0, self::INCIDENT_TIMELINE_RESULT_LIMIT - $boundaryResults->count());
+
+        if ($resultLimit === 0) {
+            return $boundaryResults->sortBy('checked_at')->values();
+        }
+
+        $query = CheckResult::query()
+            ->select($this->incidentCheckResultColumns())
+            ->where('monitor_id', $incident->monitor_id)
+            ->whereBetween('checked_at', [$from, $to])
+            ->when(
+                $boundaryResults->isNotEmpty(),
+                fn (Builder $checkQuery) => $checkQuery->whereNotIn('id', $boundaryResults->pluck('id')),
+            );
+
+        match ($incident->type) {
+            Incident::TYPE_DOWNTIME => $query->where('status', 'down'),
+            Incident::TYPE_DEGRADED_PERFORMANCE => $query->whereRaw($this->slowCheckSqlExpression()),
+            Incident::TYPE_SSL_EXPIRY => $query->whereRaw($this->checkResultMetaFlagSqlExpression('ssl_expiring')),
+            Incident::TYPE_DOMAIN_EXPIRY => $query->whereRaw($this->checkResultMetaFlagSqlExpression('domain_expiring')),
+            default => $query->whereRaw('1 = 0'),
+        };
+
+        return $boundaryResults
+            ->concat($query->latest('checked_at')->limit($resultLimit)->get())
+            ->unique('id')
+            ->sortBy('checked_at')
+            ->values();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function incidentCheckResultColumns(): array
+    {
+        return [
+            'id',
+            'monitor_id',
+            'status',
+            'checked_at',
+            'attempts',
+            'response_time_ms',
+            'http_status_code',
+            'error_type',
+            'error_message',
+            'meta',
+        ];
     }
 
     protected function checkResultRelevantToIncident(Incident $incident, CheckResult $result): bool

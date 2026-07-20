@@ -30,9 +30,17 @@ class AuthenticateApiToken
             ], 401);
         }
 
-        $token->forceFill([
-            'last_used_at' => now(),
-        ])->save();
+        if (! $token->user->allowsAdvancedWorkspaceFeatures()) {
+            return response()->json([
+                'message' => 'This workspace no longer includes API access.',
+            ], 403);
+        }
+
+        if (! $token->last_used_at || $token->last_used_at->lte(now()->subMinutes(5))) {
+            $token->forceFill([
+                'last_used_at' => now(),
+            ])->save();
+        }
 
         $request->attributes->set('apiToken', $token);
         $request->setUserResolver(fn () => $token->user);

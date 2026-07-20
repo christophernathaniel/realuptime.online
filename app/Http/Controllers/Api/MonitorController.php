@@ -3,14 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\RunMonitorCheckJob;
 use App\Models\Monitor;
-use App\Support\MonitorQueueResolver;
+use App\Services\Monitoring\MonitorDispatchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class MonitorController extends Controller
 {
+    public function __construct(protected MonitorDispatchService $dispatcher) {}
+
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -61,12 +62,11 @@ class MonitorController extends Controller
             ], 422);
         }
 
-        RunMonitorCheckJob::dispatch(
-            $monitor->id,
-            now()->toIso8601String(),
-            $monitor->type,
-            MonitorQueueResolver::usesRegionQueues() ? $monitor->region : null,
-        );
+        if (! $this->dispatcher->dispatchNow($monitor)) {
+            return response()->json([
+                'message' => 'This monitor already ran or was queued within its allowed check interval.',
+            ], 429);
+        }
 
         return response()->json([
             'message' => 'Monitor check dispatched.',

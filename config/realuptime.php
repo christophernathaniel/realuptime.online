@@ -43,8 +43,21 @@ $probeRegions = [
         ))),
     ],
 ];
+$rawCheckResultRetentionDays = min(30, max(1, (int) env('REALUPTIME_RAW_CHECK_RESULT_RETENTION_DAYS', 30)));
+$fineRollupRetentionDays = min(180, max(
+    $rawCheckResultRetentionDays + 1,
+    (int) env('REALUPTIME_FINE_ROLLUP_RETENTION_DAYS', 180),
+));
+$checkHistoryRetentionDays = min(730, max(
+    $fineRollupRetentionDays + 1,
+    (int) env('REALUPTIME_CHECK_HISTORY_RETENTION_DAYS', 730),
+));
 
 return [
+    'admin' => [
+        'main_admin_email' => env('REALUPTIME_MAIN_ADMIN_EMAIL'),
+    ],
+
     'queues' => [
         'monitor_checks' => $monitorCheckShards[0] ?? $monitorCheckQueue,
         'monitor_check_shards' => $monitorCheckShards !== [] ? $monitorCheckShards : [$monitorCheckQueue],
@@ -62,6 +75,7 @@ return [
         'batch_size' => (int) env('REALUPTIME_DISPATCH_BATCH_SIZE', 250),
         'max_batches' => (int) env('REALUPTIME_DISPATCH_MAX_BATCHES', 12),
         'claim_ttl_seconds' => (int) env('REALUPTIME_CHECK_CLAIM_TTL_SECONDS', 180),
+        'minimum_interval_seconds' => max(60, (int) env('REALUPTIME_MINIMUM_MONITOR_INTERVAL_SECONDS', 60)),
     ],
 
     'probe_regions' => [
@@ -83,8 +97,39 @@ return [
         'cache_seconds' => (int) env('REALUPTIME_PUBLIC_STATUS_CACHE_SECONDS', 15),
     ],
 
+    'invitations' => [
+        'expires_after_days' => (int) env('REALUPTIME_INVITATION_EXPIRES_AFTER_DAYS', 7),
+    ],
+
     'ping' => [
         'healthy_result_sample_seconds' => (int) env('REALUPTIME_PING_HEALTHY_RESULT_SAMPLE_SECONDS', 300),
+    ],
+
+    'security' => [
+        'max_outbound_response_bytes' => (int) env('REALUPTIME_MAX_OUTBOUND_RESPONSE_BYTES', 2 * 1024 * 1024),
+        'max_outbound_redirects' => (int) env('REALUPTIME_MAX_OUTBOUND_REDIRECTS', 5),
+        'api_rate_limit_per_minute' => (int) env('REALUPTIME_API_RATE_LIMIT_PER_MINUTE', 120),
+        'api_ip_rate_limit_per_minute' => (int) env('REALUPTIME_API_IP_RATE_LIMIT_PER_MINUTE', 600),
+        'heartbeat_rate_limit_per_minute' => (int) env('REALUPTIME_HEARTBEAT_RATE_LIMIT_PER_MINUTE', 12),
+        'heartbeat_ip_rate_limit_per_minute' => (int) env('REALUPTIME_HEARTBEAT_IP_RATE_LIMIT_PER_MINUTE', 600),
+        'slack_webhook_hosts' => [
+            'hooks.slack.com',
+            'hooks.slack-gov.com',
+        ],
+        'blocked_outbound_headers' => [
+            'connection',
+            'content-length',
+            'expect',
+            'host',
+            'keep-alive',
+            'proxy-authenticate',
+            'proxy-authorization',
+            'proxy-connection',
+            'te',
+            'trailer',
+            'transfer-encoding',
+            'upgrade',
+        ],
     ],
 
     'guardrails' => [
@@ -102,7 +147,11 @@ return [
 
     'retention' => [
         'notification_logs_days' => (int) env('REALUPTIME_NOTIFICATION_LOG_RETENTION_DAYS', 30),
-        'healthy_check_results_days' => (int) env('REALUPTIME_HEALTHY_CHECK_RESULT_RETENTION_DAYS', 30),
+        'raw_check_results_days' => $rawCheckResultRetentionDays,
+        'fine_rollup_days' => $fineRollupRetentionDays,
+        'check_history_days' => $checkHistoryRetentionDays,
         'prune_chunk_size' => (int) env('REALUPTIME_PRUNE_CHUNK_SIZE', 1000),
+        'automatic_pruning_enabled' => (bool) env('REALUPTIME_AUTOMATIC_PRUNING_ENABLED', true),
+        'prune_at' => env('REALUPTIME_PRUNE_AT', '03:15'),
     ],
 ];

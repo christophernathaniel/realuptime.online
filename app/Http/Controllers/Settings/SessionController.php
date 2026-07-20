@@ -64,7 +64,6 @@ class SessionController extends Controller
         return Inertia::render('settings/sessions', [
             'sessions' => $sessions->map(fn (UserSession $session) => [
                 'id' => $session->id,
-                'sessionId' => $session->session_id,
                 'deviceLabel' => $this->deviceLabel($session->user_agent),
                 'browser' => $this->browser($session->user_agent),
                 'platform' => $this->platform($session->user_agent),

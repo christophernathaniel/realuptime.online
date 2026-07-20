@@ -16,7 +16,11 @@ import {
     surfacePrimaryButtonClass,
 } from '@/lib/realuptime-theme';
 
-export default function Password() {
+export default function Password({
+    requiresCurrentPassword,
+}: {
+    requiresCurrentPassword: boolean;
+}) {
     const passwordInput = useRef<HTMLInputElement>(null);
     const currentPasswordInput = useRef<HTMLInputElement>(null);
 
@@ -32,10 +36,14 @@ export default function Password() {
                     <div className="space-y-6">
                         <div>
                             <h2 className="text-[20px] font-semibold tracking-[-0.04em] text-white">
-                                Update password
+                                {requiresCurrentPassword
+                                    ? 'Update password'
+                                    : 'Set password'}
                             </h2>
                             <p className="mt-2 text-[14px] leading-6 text-[#8fa0bf]">
-                                Use a long, unique password so monitor configuration, email alerts, and status pages remain protected.
+                                Use a long, unique password so monitor
+                                configuration, email alerts, and status pages
+                                remain protected.
                             </p>
                         </div>
 
@@ -61,28 +69,43 @@ export default function Password() {
                         >
                             {({ errors, processing, recentlySuccessful }) => (
                                 <>
-                                    <div className="grid gap-5 md:grid-cols-3">
-                                        <div className="grid gap-2.5">
-                                            <Label
-                                                htmlFor="current_password"
-                                                className={surfaceLabelClass}
-                                            >
-                                                Current password
-                                            </Label>
-                                            <Input
-                                                id="current_password"
-                                                ref={currentPasswordInput}
-                                                name="current_password"
-                                                type="password"
-                                                className={surfaceInputClass}
-                                                autoComplete="current-password"
-                                                placeholder="Current password"
-                                            />
-                                            <InputError message={errors.current_password} />
-                                        </div>
+                                    <div
+                                        className={`grid gap-5 ${requiresCurrentPassword ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}
+                                    >
+                                        {requiresCurrentPassword ? (
+                                            <div className="grid gap-2.5">
+                                                <Label
+                                                    htmlFor="current_password"
+                                                    className={
+                                                        surfaceLabelClass
+                                                    }
+                                                >
+                                                    Current password
+                                                </Label>
+                                                <Input
+                                                    id="current_password"
+                                                    ref={currentPasswordInput}
+                                                    name="current_password"
+                                                    type="password"
+                                                    className={
+                                                        surfaceInputClass
+                                                    }
+                                                    autoComplete="current-password"
+                                                    placeholder="Current password"
+                                                />
+                                                <InputError
+                                                    message={
+                                                        errors.current_password
+                                                    }
+                                                />
+                                            </div>
+                                        ) : null}
 
                                         <div className="grid gap-2.5">
-                                            <Label htmlFor="password" className={surfaceLabelClass}>
+                                            <Label
+                                                htmlFor="password"
+                                                className={surfaceLabelClass}
+                                            >
                                                 New password
                                             </Label>
                                             <Input
@@ -94,7 +117,9 @@ export default function Password() {
                                                 autoComplete="new-password"
                                                 placeholder="New password"
                                             />
-                                            <InputError message={errors.password} />
+                                            <InputError
+                                                message={errors.password}
+                                            />
                                         </div>
 
                                         <div className="grid gap-2.5">
@@ -113,7 +138,9 @@ export default function Password() {
                                                 placeholder="Confirm password"
                                             />
                                             <InputError
-                                                message={errors.password_confirmation}
+                                                message={
+                                                    errors.password_confirmation
+                                                }
                                             />
                                         </div>
                                     </div>
@@ -122,7 +149,9 @@ export default function Password() {
                                         <Button
                                             disabled={processing}
                                             data-test="update-password-button"
-                                            className={surfacePrimaryButtonClass}
+                                            className={
+                                                surfacePrimaryButtonClass
+                                            }
                                         >
                                             Save password
                                         </Button>
@@ -134,7 +163,13 @@ export default function Password() {
                                             leave="transition ease-in-out duration-200"
                                             leaveTo="opacity-0"
                                         >
-                                            <p className={surfaceMutedTextClass}>Password updated.</p>
+                                            <p
+                                                className={
+                                                    surfaceMutedTextClass
+                                                }
+                                            >
+                                                Password updated.
+                                            </p>
                                         </Transition>
                                     </div>
                                 </>

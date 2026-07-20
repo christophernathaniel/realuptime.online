@@ -35,11 +35,36 @@ import type { Auth } from '@/types/auth';
 
 const navigation = [
     { label: 'Checks', href: '/monitors', icon: Activity, requiresPaid: false },
-    { label: 'Event log', href: '/incidents', icon: ShieldAlert, requiresPaid: true },
-    { label: 'Status hub', href: '/status-pages', icon: RadioTower, requiresPaid: true },
-    { label: 'Change windows', href: '/maintenance', icon: Wrench, requiresPaid: true },
-    { label: 'Workspace access', href: '/team-members', icon: Users, requiresPaid: true },
-    { label: 'Automation & API', href: '/integrations', icon: Cable, requiresPaid: true },
+    {
+        label: 'Event log',
+        href: '/incidents',
+        icon: ShieldAlert,
+        requiresPaid: true,
+    },
+    {
+        label: 'Status hub',
+        href: '/status-pages',
+        icon: RadioTower,
+        requiresPaid: true,
+    },
+    {
+        label: 'Change windows',
+        href: '/maintenance',
+        icon: Wrench,
+        requiresPaid: true,
+    },
+    {
+        label: 'Workspace access',
+        href: '/team-members',
+        icon: Users,
+        requiresPaid: true,
+    },
+    {
+        label: 'Automation & API',
+        href: '/integrations',
+        icon: Cable,
+        requiresPaid: true,
+    },
 ];
 
 const accountLinks = [
@@ -105,21 +130,39 @@ function SidebarContent({
     mobile = false,
     onCloseMobile,
 }: SidebarContentProps) {
-    const platformNavigation = user.is_admin
-        ? [{ label: 'Platform admin', href: '/admin/users', icon: ShieldCheck, requiresPaid: false }]
+    const platformNavigation = user.is_main_admin
+        ? [
+              {
+                  label: 'Platform admin',
+                  href: '/admin/users',
+                  icon: ShieldCheck,
+                  requiresPaid: false,
+              },
+          ]
         : [];
-    const dropdownLinks = user.is_admin
-        ? [{ label: 'Platform admin', href: '/admin/users', icon: ShieldCheck }, ...accountLinks]
+    const dropdownLinks = user.is_main_admin
+        ? [
+              {
+                  label: 'Platform admin',
+                  href: '/admin/users',
+                  icon: ShieldCheck,
+              },
+              ...accountLinks,
+          ]
         : accountLinks;
 
     return (
         <div className="monitoring-sidebar-inner relative flex h-full flex-col lg:overflow-y-auto">
-            <div className="flex items-center justify-between gap-3 px-1.5 pb-5 pt-1">
+            <div className="flex items-center justify-between gap-3 px-1.5 pt-1 pb-5">
                 <div className="flex items-center gap-3">
                     <AppLogoIcon className="size-[28px]" />
                     <div>
-                        <div className="text-[21px] font-semibold tracking-[-0.05em] text-[#edf2fa]">RealUptime</div>
-                        <div className="text-[11px] uppercase tracking-[0.24em] text-[#7f8b9b]">Operations cloud</div>
+                        <div className="text-[21px] font-semibold tracking-[-0.05em] text-[#edf2fa]">
+                            RealUptime
+                        </div>
+                        <div className="text-[11px] tracking-[0.24em] text-[#7f8b9b] uppercase">
+                            Operations cloud
+                        </div>
                     </div>
                 </div>
                 {mobile ? (
@@ -136,7 +179,7 @@ function SidebarContent({
 
             {workspace?.current ? (
                 <div className="mb-4 rounded-[18px] border border-[#2a3443] bg-[linear-gradient(180deg,rgba(22,29,40,0.96)_0%,rgba(18,23,32,0.96)_100%)] px-3.5 py-3.5">
-                    <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#7f8b9b]">
+                    <div className="flex items-center gap-2 text-[11px] font-semibold tracking-[0.2em] text-[#7f8b9b] uppercase">
                         <BriefcaseBusiness className="size-3.5 text-[#57c7c2]" />
                         Active workspace
                     </div>
@@ -144,7 +187,9 @@ function SidebarContent({
                         {workspace.current.name}
                     </div>
                     <div className="mt-1 text-[12px] text-[#9ba7ba]">
-                        {workspace.current.isPersonal ? 'Personal workspace' : workspace.current.email}
+                        {workspace.current.isPersonal
+                            ? 'Personal workspace'
+                            : workspace.current.email}
                     </div>
                 </div>
             ) : null}
@@ -153,10 +198,14 @@ function SidebarContent({
                 {[...navigation, ...platformNavigation].map((item) => {
                     const Icon = item.icon;
                     const active = pathname.startsWith(item.href);
-                    const locked = Boolean(item.requiresPaid && advancedSectionsLocked);
-                    const upgradeHref = workspace?.current?.isPersonal && workspaceMembership?.manageUrl
-                        ? workspaceMembership.manageUrl
-                        : '/monitors';
+                    const locked = Boolean(
+                        item.requiresPaid && advancedSectionsLocked,
+                    );
+                    const upgradeHref =
+                        workspace?.current?.isPersonal &&
+                        workspaceMembership?.manageUrl
+                            ? workspaceMembership.manageUrl
+                            : '/monitors';
 
                     return locked ? (
                         <Link
@@ -166,7 +215,10 @@ function SidebarContent({
                             className="flex items-center gap-3 rounded-[16px] border border-transparent px-3.5 py-2.5 text-[14px] font-medium text-[#97a4b8] transition hover:border-[#263241] hover:bg-[#151c28] hover:text-white"
                         >
                             <span className="inline-flex size-[32px] items-center justify-center rounded-[11px] border border-[#2b3544] bg-[#161d28] text-[#7c879b]">
-                                <Icon className="size-[15px]" strokeWidth={2.1} />
+                                <Icon
+                                    className="size-[15px]"
+                                    strokeWidth={2.1}
+                                />
                             </span>
                             <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
                                 <span>{item.label}</span>
@@ -180,11 +232,22 @@ function SidebarContent({
                             onClick={onNavigate}
                             className={cn(
                                 'flex items-center gap-3 rounded-[16px] border border-transparent px-3.5 py-2.5 text-[14px] font-medium text-[#d9e1f1] transition hover:border-[#263241] hover:bg-[#151c28] hover:text-white',
-                                active && 'border-[#394455] bg-[#171d28] text-white',
+                                active &&
+                                    'border-[#394455] bg-[#171d28] text-white',
                             )}
                         >
-                            <span className={cn('inline-flex size-[32px] items-center justify-center rounded-[11px] border bg-[#161d28]', active ? 'border-[#7c8cff]/35 text-[#7c8cff]' : 'border-[#2b3544] text-[#7c879b]')}>
-                                <Icon className="size-[15px]" strokeWidth={2.1} />
+                            <span
+                                className={cn(
+                                    'inline-flex size-[32px] items-center justify-center rounded-[11px] border bg-[#161d28]',
+                                    active
+                                        ? 'border-[#7c8cff]/35 text-[#7c8cff]'
+                                        : 'border-[#2b3544] text-[#7c879b]',
+                                )}
+                            >
+                                <Icon
+                                    className="size-[15px]"
+                                    strokeWidth={2.1}
+                                />
                             </span>
                             <span>{item.label}</span>
                         </Link>
@@ -200,10 +263,12 @@ function SidebarContent({
                             {workspaceMembership.planLabel}
                         </div>
                         <div className="text-[12px] text-[#dce6fb]">
-                            {workspaceMembership.monitorCount} / {workspaceMembership.monitorLimitLabel} monitors
+                            {workspaceMembership.monitorCount} /{' '}
+                            {workspaceMembership.monitorLimitLabel} monitors
                         </div>
                         <div className="mt-1 text-[11px] text-[#9ca7b9]">
-                            Fastest interval {workspaceMembership.minimumIntervalLabel}
+                            Fastest interval{' '}
+                            {workspaceMembership.minimumIntervalLabel}
                         </div>
                         {!workspaceMembership.advancedFeaturesUnlocked ? (
                             <div className="mt-2 text-[11px] text-[#d3daff]">
@@ -216,7 +281,9 @@ function SidebarContent({
                                 onClick={onNavigate}
                                 className="mt-3 inline-flex rounded-[12px] bg-[#7c8cff] px-3 py-2 text-[12px] font-medium text-white"
                             >
-                                {workspaceMembership.plan === 'free' ? 'Upgrade plan' : 'Manage plan'}
+                                {workspaceMembership.plan === 'free'
+                                    ? 'Upgrade plan'
+                                    : 'Manage plan'}
                             </Link>
                         ) : null}
                     </div>
@@ -227,7 +294,8 @@ function SidebarContent({
                         <BellRing className="size-[13px] text-[#57c7c2]" />
                         Alert delivery
                     </div>
-                    Email notifications and webhook deliveries are dispatched from the active workspace policy.
+                    Email notifications and webhook deliveries are dispatched
+                    from the active workspace policy.
                 </div>
 
                 <DropdownMenu>
@@ -268,7 +336,7 @@ function SidebarContent({
                         <DropdownMenuSeparator className="bg-[#273140]" />
                         {workspace && availableWorkspaces.length > 1 ? (
                             <>
-                                <DropdownMenuLabel className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[#7f8b9b]">
+                                <DropdownMenuLabel className="px-3 py-2 text-[11px] font-semibold tracking-[0.2em] text-[#7f8b9b] uppercase">
                                     Switch workspace
                                 </DropdownMenuLabel>
                                 <DropdownMenuGroup>
@@ -305,7 +373,11 @@ function SidebarContent({
                                         asChild
                                         className="rounded-[14px] px-3 py-2.5 text-[14px] text-[#dce6fb] focus:bg-[#1b2330] focus:text-white"
                                     >
-                                        <Link href={item.href} className="flex w-full items-center gap-2.5" onClick={onNavigate}>
+                                        <Link
+                                            href={item.href}
+                                            className="flex w-full items-center gap-2.5"
+                                            onClick={onNavigate}
+                                        >
                                             <Icon className="size-4 text-[#7e8fad]" />
                                             {item.label}
                                         </Link>
@@ -360,12 +432,14 @@ export default function MonitoringLayout({ children }: PropsWithChildren) {
         .slice(0, 2)
         .toUpperCase();
     const workspaceMembership = workspace?.current?.membership;
-    const advancedSectionsLocked = Boolean(workspaceMembership && !workspaceMembership.advancedFeaturesUnlocked);
+    const advancedSectionsLocked = Boolean(
+        workspaceMembership && !workspaceMembership.advancedFeaturesUnlocked,
+    );
 
     return (
         <div className="monitoring-shell min-h-screen bg-[#0d1117] text-[#f4f7ff]">
             <div className="flex min-h-screen flex-col lg:h-screen lg:flex-row">
-                <aside className="monitoring-sidebar relative hidden overflow-hidden border-b border-[#212a38] bg-[linear-gradient(180deg,#161b25_0%,#151922_52%,#10141b_100%)] px-3.5 py-4 lg:sticky lg:top-0 lg:block lg:h-screen lg:w-[296px] lg:shrink-0 lg:border-b-0 lg:border-r">
+                <aside className="monitoring-sidebar relative hidden overflow-hidden border-b border-[#212a38] bg-[linear-gradient(180deg,#161b25_0%,#151922_52%,#10141b_100%)] px-3.5 py-4 lg:sticky lg:top-0 lg:block lg:h-screen lg:w-[296px] lg:shrink-0 lg:border-r lg:border-b-0">
                     <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(124,140,255,0.12)_0%,transparent_38%),radial-gradient(circle_at_top,rgba(87,199,194,0.12)_0%,transparent_48%)]" />
                     <SidebarContent
                         user={user}
@@ -405,8 +479,8 @@ export default function MonitoringLayout({ children }: PropsWithChildren) {
                 ) : null}
 
                 <main className="relative min-w-0 flex-1 overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(124,140,255,0.12)_0%,transparent_32%),radial-gradient(circle_at_right,rgba(87,199,194,0.08)_0%,transparent_38%),linear-gradient(180deg,#0b0f15_0%,#10141b_100%)] px-3.5 py-4 sm:px-[18px] lg:h-screen lg:overflow-y-auto lg:px-5 lg:py-4">
-                    <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(145,157,179,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(145,157,179,0.04)_1px,transparent_1px)] [background-size:76px_76px]" />
-                    <div className="monitoring-page relative mx-auto min-w-0 w-full max-w-[1600px] space-y-3">
+                    <div className="pointer-events-none absolute inset-0 [background-image:linear-gradient(rgba(145,157,179,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(145,157,179,0.04)_1px,transparent_1px)] [background-size:76px_76px] opacity-30" />
+                    <div className="monitoring-page relative mx-auto w-full max-w-[1600px] min-w-0 space-y-3">
                         <div className="flex items-center justify-between rounded-[18px] border border-[#273140] bg-[#111722]/88 px-3.5 py-2.5 lg:hidden">
                             <div className="flex items-center gap-3">
                                 <AppLogoIcon className="size-[26px]" />
@@ -414,7 +488,7 @@ export default function MonitoringLayout({ children }: PropsWithChildren) {
                                     <span className="block text-[19px] font-semibold tracking-[-0.04em] text-white">
                                         RealUptime
                                     </span>
-                                    <span className="block text-[10px] uppercase tracking-[0.22em] text-[#7f8b9b]">
+                                    <span className="block text-[10px] tracking-[0.22em] text-[#7f8b9b] uppercase">
                                         Operations cloud
                                     </span>
                                 </div>

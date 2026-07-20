@@ -59,6 +59,29 @@ test('password can be reset with valid token', function () {
     });
 });
 
+test('resetting a password enables password login', function () {
+    Notification::fake();
+
+    $user = User::factory()->create([
+        'password_login_enabled' => false,
+    ]);
+
+    $this->post(route('password.email'), ['email' => $user->email]);
+
+    Notification::assertSentTo($user, ResetPassword::class, function ($notification) use ($user) {
+        $this->post(route('password.update'), [
+            'token' => $notification->token,
+            'email' => $user->email,
+            'password' => 'new-password',
+            'password_confirmation' => 'new-password',
+        ])->assertSessionHasNoErrors();
+
+        return true;
+    });
+
+    expect($user->refresh()->password_login_enabled)->toBeTrue();
+});
+
 test('password cannot be reset with invalid token', function () {
     $user = User::factory()->create();
 

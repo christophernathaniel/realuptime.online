@@ -27,6 +27,7 @@ class RunMonitorCheckJob implements ShouldQueue
         public ?string $checkedAtIso = null,
         public ?string $monitorType = null,
         public ?string $probeRegion = null,
+        public ?string $claimToken = null,
     ) {
         $this->onQueue(MonitorQueueResolver::monitorCheckQueue($this->monitorId, $this->monitorType, $this->probeRegion));
     }
@@ -48,11 +49,18 @@ class RunMonitorCheckJob implements ShouldQueue
             return;
         }
 
+        if ($this->claimToken !== null && $monitor->check_claim_token !== $this->claimToken) {
+            return;
+        }
+
         if ($monitor->status === Monitor::STATUS_PAUSED) {
-            $monitor->forceFill([
-                'check_claimed_at' => null,
-                'check_claim_token' => null,
-            ])->save();
+            Monitor::query()
+                ->whereKey($monitor->id)
+                ->when($this->claimToken !== null, fn ($query) => $query->where('check_claim_token', $this->claimToken))
+                ->update([
+                    'check_claimed_at' => null,
+                    'check_claim_token' => null,
+                ]);
 
             return;
         }
@@ -71,6 +79,7 @@ class RunMonitorCheckJob implements ShouldQueue
     {
         Monitor::query()
             ->whereKey($this->monitorId)
+            ->when($this->claimToken !== null, fn ($query) => $query->where('check_claim_token', $this->claimToken))
             ->update([
                 'check_claimed_at' => null,
                 'check_claim_token' => null,

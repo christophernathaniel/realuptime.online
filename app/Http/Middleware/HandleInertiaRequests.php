@@ -36,7 +36,8 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
-        $workspace = $request->user()
+        $user = $request->user();
+        $workspace = $user
             ? app(WorkspaceResolver::class)->share($request)
             : null;
 
@@ -45,16 +46,19 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'appUrl' => rtrim((string) config('app.url'), '/'),
             'auth' => [
-                'user' => $request->user()?->only([
-                    'id',
-                    'name',
-                    'email',
-                    'email_verified_at',
-                    'password_login_enabled',
-                    'is_admin',
-                    'created_at',
-                    'updated_at',
-                ]),
+                'user' => $user ? [
+                    ...$user->only([
+                        'id',
+                        'name',
+                        'email',
+                        'email_verified_at',
+                        'password_login_enabled',
+                        'is_admin',
+                        'created_at',
+                        'updated_at',
+                    ]),
+                    'is_main_admin' => $user->isMainAdmin(),
+                ] : null,
             ],
             'workspace' => $workspace,
             'flash' => [
